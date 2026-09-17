@@ -1,0 +1,35 @@
+# Copy to reovault.toml and adjust. Never commit the real file if it ever
+# grows a secret — as of Phase 0 it shouldn't (see CLAUDE.md: never store
+# secrets in source control). The camera password lives in reolink-cli's own
+# encrypted aliases.toml, never here.
+
+[[devices]]
+alias = "doorbell"       # must match `reolink-cli device add <alias> ...`
+channel = 0
+timezone = "Europe/Brussels"
+
+[reolink_cli]
+binary = "reolink-cli"
+pinned_version = "0.19.0"
+gateway_addr = "127.0.0.1:9000"
+search_timeout_secs = 30
+download_timeout_secs = 300
+
+[storage]
+config_dir = "./data/config"
+vault_dir = "./data/vault"
+staging_dir = "./data/staging"
+db_path = "./data/config/reovault.db"
+master_key_path = "./data/config/master.key"
+
+[schedule]
+archive_cron = "0 5 * * *"
+archive_overlap_hours = 48
+backfill_cron = "0 4 * * 0"
+backfill_days = 30
+reconcile_interval_hours = 6
+integrity_scan_sample_pct = 5.0
+
+[web]
+host = "127.0.0.1"
+port = 8080

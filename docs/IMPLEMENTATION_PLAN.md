@@ -22,28 +22,31 @@ Checked against the real sources, not memory. Facts that shape the design:
 |---|---|---|
 | `reolink/reolink-cli` is official, LAN-only, **prebuilt proprietary binary**, latest **v0.19.0 (2026-09-08)** | repo + releases API | Pin the version; no source-level auditing possible |
 | Releases ship a per-asset `.sha256` (no combined SHA256SUMS) | releases API | Verify binary by its own `.sha256` at image build |
-| `vod download --file <name>` returns the device's **native MP4** and is explicitly unchanged across releases | CHANGELOG | Chosen download path |
+| **CORRECTED 2026-09-17:** the by-name download syntax is `vod download NAME [-o FILE]` (a positional filename, `-o` not `--directory`) — resolves open question 2 below in favor of `-o`, not `--file --directory` | `skills/reolink-cli/references/media.md` | Update `ReolinkCliProvider.fetch()` to build `vod download "<remote_name>" -o <staging_path>` |
+| That by-name download returns the device's **native MP4** and is explicitly unchanged across releases | CHANGELOG | Chosen download path |
 | `vod download --from/--to` returns **MPEG-TS** + separate `--audio .aac`, needs ffmpeg remux; format changed in 0.17.0, 0.18.0, 0.18.2, 0.19.0 | CHANGELOG | Rejected — unstable, extra dependency |
 | Class-based exit codes: `0` ok, `1` input, `2` network (**retryable**), `3` auth, `4` device, `5` protocol | `skills/reolink-cli/SKILL.md` | Drives retry/backoff classification |
 | Times are **naive local ISO** `YYYY-MM-DDTHH:MM:SS`, no timezone, no ms; `--since` only `<N>m\|h\|d` | SKILL.md, `references/media.md` | DST hazard — see Time handling |
 | `vod search --limit 0` = unlimited (ceiling 100000); response has `scanned` and `truncated` | CHANGELOG 0.12.4 | Always `--limit 0`, assert `truncated` is false |
 | Multi-file download uses `application/vnd.reolink.vod-batch` framing, per-file `requested`/`downloaded`/`skipped` | CHANGELOG 0.11.0, 0.19.0 | Not used in v1 — see below |
 | Batch download **silently dropped everything past ~the 210th recording** (fixed 0.13.1) | CHANGELOG | Reinforces one-file-per-invocation |
-| Historic VOD bugs: `--type` silently ignored, month-boundary searches returned empty, multi-day ranges empty | CHANGELOG | Never filter server-side on `--type`; pin schema with fixtures |
+| Historic VOD bugs: `--type` silently ignored, month-boundary searches returned empty, multi-day ranges empty. `vod search` now documents `--type T,...` as working (post-fix) | CHANGELOG, SKILL.md | Still never filter server-side on `--type` — enumerate everything and filter locally; pin schema with fixtures |
 | Credentials: `~/.config/reolink-cli/aliases.toml` (0600), AES-256-GCM `RLENC1:` ciphertext, decrypted by `credentials.key` **beside it**; CLI refuses group/world-readable files | SECURITY.md, SKILL.md | Delegate credential storage; never store the camera password in ReoVault |
 | `--password` on argv is forbidden; use `--password-stdin`, `REOLINK_PASSWORD`, or `--camera <alias>` | SKILL.md | ReoVault only ever passes `--camera <alias>` |
-| "The CLI is the supported surface" for automation; gateway HTTP exists for UIs; gateway tokens expire on long pauses | `references/gateway-http.md`, troubleshooting | Use subprocess CLI, not the gateway or MCP |
+| **CORRECTED 2026-09-17 — this was wrong in the original plan:** `reolink-cli` is a **thin client**. It routes almost every command — including `vod search`, `vod download`, `storage status`, `info`, `capabilities` — through a local `reolink-gateway` daemon on `127.0.0.1:9000` that caches the device session/token. Only `device add\|list\|update\|remove\|resolve\|show`, `config init`, `discover`, `features`, `doctor`, `cache status\|clean` work without it. The browser-facing `POST /api` HTTP surface is a *separate concern* served by the same daemon — ReoVault does not use that, but it **does** need the daemon itself running as a supervised sidecar process before any VOD/storage command will succeed | `skills/reolink-cli/SKILL.md` ("The gateway is mandatory for almost every control command") | ReoVault must start/supervise `reolink-cli gateway start --addr 127.0.0.1:9000` as a background process (own thread/subprocess, restarted on crash) before the archiver issues any command; preflight checks `gateway status` before a run |
 | CLI is **read-only** against the SD card (cannot format, cannot delete); loop-overwrite is normal | `references/troubleshooting.md`, `storage.md` | Archive-only is the only option; hence the lag alarm |
-| `storage` returns `number`, `totalGB`, `remainGB`, `formatted`, `mounted` | `references/storage.md` | Feed the dashboard and the coverage alarm |
+| `storage status` returns `totalGB`, `remainGB`, `formatted`, `mounted` (field name is `storage status`, not bare `storage`) | `references/storage.md` | Feed the dashboard and the coverage alarm |
 | Large downloads may time out; use explicit `--timeout-secs` | troubleshooting | Per-command timeouts, generous for downloads |
+| Camera reached via `--host <ip>` (native Reolink/"Baichuan" protocol, camera-side TCP port **9000**, on by default) — **not** ONVIF, **not** RTSP. ONVIF only feeds `discover`'s WS-Discovery metadata, which ReoVault doesn't use since it registers the camera by static IP | `skills/reolink-cli/references/setup.md` | No ONVIF/RTSP toggle needed on the doorbell for archiving; only LAN reachability on TCP 9000 matters |
 
 **Local environment:** `reolink-cli` is **not installed**; `ffmpeg`/`ffprobe` are **not installed**; Python 3.12.3 present; `/mnt/storage` does **not exist** on this WSL machine.
 
 ### Unverified — must be confirmed against the real device early
 
 1. The **exact JSON schema of `vod search`**. Public docs name the fields loosely ("file name, start/end time, size, type, stream") but publish no schema. Task 1.3 below is a probe that captures the real payload into a fixture.
-2. Whether `-o FILE` (SKILL.md) or `--file NAME --directory DIR` (CHANGELOG 0.14.1/0.16.1) is the current download syntax — the two docs disagree. Resolve with `reolink-cli vod download --help`.
+2. ~~Whether `-o FILE` or `--file NAME --directory DIR` is the current download syntax~~ — **resolved 2026-09-17**: `vod download NAME [-o FILE]`, confirmed in `skills/reolink-cli/references/media.md`.
 3. **"D350W"** as a model string is not confirmed by public Reolink sources (searches surface D340W and "Video Doorbell WiFi"). Confirm from the device itself via `reolink-cli device info`. Does not change the architecture.
+4. **New — whether a non-admin (`users add NAME --level user`) device account can run `vod search`/`vod download`/`storage status`/`info`.** Upstream docs only confirm admin-only ops for things like `users add`; VOD/storage read permissions for a `user`-level account are unverified. Try least privilege first on the real doorbell; fall back to the admin account if a non-admin gets `auth`/permission errors on VOD/storage.
 
 ---
 
@@ -80,7 +83,12 @@ Four layers with one-way dependencies. Camera specifics exist only in the provid
         └───────────┬──────────┘                │
      ReolinkCliProvider / FakeProvider   EncryptedFsVault
                     │                           │
-            subprocess reolink-cli        /vault on /mnt/storage
+       subprocess reolink-cli (--output json)   │
+                    │                           │
+      reolink-gateway daemon, 127.0.0.1:9000    │
+       (supervised sidecar, ReoVault-managed)   │
+                    │                           │
+            LAN → doorbell (TCP 9000)     /vault on /mnt/storage
                     │                           │
         ┌───────────▼───────────────────────────▼──────────┐
         │  Repository (SQLite, WAL)  — single source of truth│
@@ -91,7 +99,7 @@ Four layers with one-way dependencies. Camera specifics exist only in the provid
 
 **Why a provider ABC:** `CLAUDE.md` requires camera-specific logic isolated behind an adapter. It also makes the entire archiver testable without a camera, which matters because the one camera is a production doorbell.
 
-**Why subprocess over the gateway/MCP:** upstream states the CLI is the supported automation surface; the gateway's tokens expire over long pauses and add a second long-running process. One process per operation, with the CLI's own exit codes as the error taxonomy.
+**Why subprocess CLI, and why a supervised gateway (revised 2026-09-17):** the original plan believed the CLI could avoid the gateway entirely; verified upstream docs say otherwise — `vod search`, `vod download`, `storage status`, and `info` all route through a local `reolink-gateway` daemon that caches the device session. What we *do* still avoid is the gateway's **browser-facing** `POST /api` HTTP surface and the MCP server — neither is used; ReoVault only needs the daemon alive on loopback so the CLI's own subprocess invocations succeed. `ReolinkCliProvider` therefore owns a `GatewaySupervisor`: start `reolink-cli gateway start --addr 127.0.0.1:9000` once at daemon startup, restart it if `gateway status` reports `[DOWN]`, and treat "gateway not running" as a `local` failure class (abort the run, alarm) rather than a `network` one (retry) — it's our own process, not the camera, and retrying a command against a dead gateway would just fail identically eight times.
 
 ### Repository layout
 
@@ -368,6 +376,8 @@ Tooling: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy --strict` on `crypt
 
 `REOVAULT_MASTER_PASSPHRASE` via Docker secret or an env file outside the repo. Port `127.0.0.1:8080:8080`. `restart: unless-stopped`. Healthcheck hits `/healthz`. Structured JSON logs to stdout.
 
+**Gateway process (revised 2026-09-17).** The `reolink-gateway` daemon runs inside the same container, supervised by ReoVault (started on daemon startup, restarted on crash, health-checked via `reolink-cli gateway status` as part of `/healthz`) — not as a separate compose service, since it only ever needs to be reachable from the CLI subprocess calls ReoVault itself makes on loopback. No port is published for it.
+
 **Note:** `/mnt/storage` does not exist on this WSL dev machine, so all paths are configuration, never constants, and the dev default points at a local directory.
 
 ---
@@ -391,18 +401,21 @@ Each phase is independently reviewable and leaves the system working.
 
 All camera-touching steps run **on the homelab host**, where the doorbell is reachable on the LAN and `reolink-cli` is installed — this WSL dev machine has neither, and `reolink-cli` is LAN-only with no cloud relay. Phases 0 and 2–3 are fully testable anywhere; Phase 1 onward wants the homelab. Fixtures captured there are committed so the rest of the suite stays camera-free.
 
-**1. Pin reality first (before writing provider code).** Install the pinned CLI, register the doorbell, and capture ground truth:
+**1. Pin reality first (before writing provider code).** Install the pinned CLI, start the gateway, register the doorbell, and capture ground truth:
 
 ```bash
-reolink-cli --version                                   # must equal the pinned version
-reolink-cli vod --help && reolink-cli vod download --help   # resolves -o vs --file/--directory
+reolink-cli --version                                        # must equal the pinned version (0.19.0)
+reolink-cli gateway start --addr 127.0.0.1:9000 &             # required for everything below
 reolink-cli device add doorbell --host <ip> --user admin --password-stdin
-reolink-cli --camera doorbell device info   --output json | tee tests/fixtures/reolink_cli/device_info.json
-reolink-cli --camera doorbell storage status --output json | tee tests/fixtures/reolink_cli/storage.json
+reolink-cli --camera doorbell ping && reolink-cli --camera doorbell login
+reolink-cli --camera doorbell info            --output json | tee tests/fixtures/reolink_cli/device_info.json
+reolink-cli --camera doorbell storage status  --output json | tee tests/fixtures/reolink_cli/storage.json
 reolink-cli --camera doorbell vod search --from 2026-09-15T00:00:00 --to 2026-09-15T23:59:59 \
     --limit 0 --output json | tee tests/fixtures/reolink_cli/vod_search.json
+# By-name download syntax, confirmed against skills/reolink-cli/references/media.md:
+reolink-cli --camera doorbell vod download "<name-from-search-output>" -o /tmp/probe.mp4
 ```
-Confirm the real field names, that `truncated` is false, and the actual model string.
+Confirm the real field names, that `truncated` is false, the actual model string, and — since this is untested — whether a `users add reovault --level user` account can run `vod search`/`vod download`/`storage status`/`info`, or whether the admin account is required.
 
 **2. Crypto correctness.** `pytest tests/unit/test_envelope.py -v` — round-trip, all five tamper cases raise `InvalidTag`, Hypothesis range-read property holds.
 
