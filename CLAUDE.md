@@ -73,3 +73,7 @@ Before making significant implementation decisions:
 4. Prefer tests that reproduce device-specific behavior over assumptions.
 
 Keep changes focused, reviewable, and easy to remove or replace.
+
+## Git
+
+Never commit on your own initiative, no matter how complete or well-tested a change is. Implement, run the checks, and leave the result staged or as a visible diff. The user reviews and commits (or asks you to) explicitly. This applies to every commit, not just the first one in a session, finishing a task is not itself permission to commit it.
