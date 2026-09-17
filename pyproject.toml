@@ -51,6 +51,10 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer's documented CLI-argument pattern is `param: T = typer.Option(...)`.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_unused_ignores = true
