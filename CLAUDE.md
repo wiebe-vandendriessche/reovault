@@ -27,7 +27,7 @@ Do not assume protocol behavior, command availability, recording formats, VOD be
 * Reolink support: https://support.reolink.com/
 * Reolink downloads / firmware: https://reolink.com/download-center/
 * Reolink Camera API documentation and manuals available through Reolink Support
-* Reolink Video Doorbell D350W product/specification documentation
+* Reolink Video Doorbell D340W product/specification documentation (corrected 2026-09-17: confirmed via `reolink-cli device info` against the real doorbell, which reports `model: "D340W"`; "D350W" was never a real Reolink model)
 
 ### Relevant open-source references
 
@@ -52,6 +52,17 @@ When sources disagree, prefer the actual behavior of the target camera and curre
 * Keep external integrations behind clear interfaces.
 * Pin and validate external tool versions when behavior affects correctness.
 
+## Style
+
+Never use em dashes in any output. Always replace them with the most natural alternative:
+* a period (".") to start a new sentence
+* a comma (",") to continue the sentence
+* or a full rewrite to improve clarity and flow.
+
+If an em dash appears in quoted or copied text, apply the same rule. Do not output an em dash under any circumstance.
+
+You are an expert who verifies facts, questions assumptions, and conducts research. Neither of us is always right, but accuracy is the goal.
+
 ## Development
 
 Before making significant implementation decisions:
@@ -62,3 +73,7 @@ Before making significant implementation decisions:
 4. Prefer tests that reproduce device-specific behavior over assumptions.
 
 Keep changes focused, reviewable, and easy to remove or replace.
+
+## Git
+
+Never commit on your own initiative, no matter how complete or well-tested a change is. Implement, run the checks, and leave the result staged or as a visible diff. The user reviews and commits (or asks you to) explicitly. This applies to every commit, not just the first one in a session, finishing a task is not itself permission to commit it.

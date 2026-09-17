@@ -1,4 +1,4 @@
-# ReoVault — Implementation Plan
+# ReoVault: Implementation Plan
 
 > **This document lives in the repository** at `docs/IMPLEMENTATION_PLAN.md`, so it is cloned to the homelab alongside the code and can be revised there as implementation proceeds. Committing it is step 0 of Phase 0. Nothing else is implemented yet.
 
@@ -8,9 +8,9 @@ The repository is empty: `README.md`, `LICENSE`, `CLAUDE.md`, two logo images, a
 
 **Problem.** Reolink cameras record to a microSD card that loop-overwrites. Once the card wraps, footage is gone permanently. There is no local, durable, encrypted archive of what the camera saw.
 
-**Outcome.** A self-hosted daemon that periodically pulls recordings off the camera's SD card, verifies them, encrypts them at rest, and stores them durably — treating network failures, interrupted downloads, duplicate recordings, and restarts as normal conditions, never losing data already archived, and never re-downloading what it already has.
+**Outcome.** A self-hosted daemon that periodically pulls recordings off the camera's SD card, verifies them, encrypts them at rest, and stores them durably. It treats network failures, interrupted downloads, duplicate recordings, and restarts as normal conditions, never losing data already archived, and never re-downloading what it already has.
 
-**Scope boundary.** `/mnt/storage` is backed up and replicated by [Pluton](https://github.com/plutonhq/pluton) (self-hosted restic + rclone orchestration). ReoVault therefore implements **no retention policy and no backup destinations**. It does own at-rest encryption — Pluton encrypts its *restic repository*, not the live source directory.
+**Scope boundary.** `/mnt/storage` is backed up and replicated by [Pluton](https://github.com/plutonhq/pluton) (self-hosted restic + rclone orchestration). ReoVault therefore implements **no retention policy and no backup destinations**. It does own at-rest encryption. Pluton encrypts its *restic repository*, not the live source directory.
 
 ---
 
@@ -22,28 +22,37 @@ Checked against the real sources, not memory. Facts that shape the design:
 |---|---|---|
 | `reolink/reolink-cli` is official, LAN-only, **prebuilt proprietary binary**, latest **v0.19.0 (2026-09-08)** | repo + releases API | Pin the version; no source-level auditing possible |
 | Releases ship a per-asset `.sha256` (no combined SHA256SUMS) | releases API | Verify binary by its own `.sha256` at image build |
-| `vod download --file <name>` returns the device's **native MP4** and is explicitly unchanged across releases | CHANGELOG | Chosen download path |
-| `vod download --from/--to` returns **MPEG-TS** + separate `--audio .aac`, needs ffmpeg remux; format changed in 0.17.0, 0.18.0, 0.18.2, 0.19.0 | CHANGELOG | Rejected — unstable, extra dependency |
+| **CORRECTED 2026-09-17:** the by-name download syntax is `vod download NAME [-o FILE]` (a positional filename, `-o` not `--directory`), resolving open question 2 below in favor of `-o`, not `--file --directory` | `skills/reolink-cli/references/media.md` | Update `ReolinkCliProvider.fetch()` to build `vod download "<remote_name>" -o <staging_path>` |
+| That by-name download returns the device's **native MP4** and is explicitly unchanged across releases | CHANGELOG | Chosen download path |
+| `vod download --from/--to` returns **MPEG-TS** + separate `--audio .aac`, needs ffmpeg remux; format changed in 0.17.0, 0.18.0, 0.18.2, 0.19.0 | CHANGELOG | Rejected: unstable, extra dependency |
 | Class-based exit codes: `0` ok, `1` input, `2` network (**retryable**), `3` auth, `4` device, `5` protocol | `skills/reolink-cli/SKILL.md` | Drives retry/backoff classification |
-| Times are **naive local ISO** `YYYY-MM-DDTHH:MM:SS`, no timezone, no ms; `--since` only `<N>m\|h\|d` | SKILL.md, `references/media.md` | DST hazard — see Time handling |
+| Times are **naive local ISO** `YYYY-MM-DDTHH:MM:SS`, no timezone, no ms; `--since` only `<N>m\|h\|d` | SKILL.md, `references/media.md` | DST hazard, see Time handling |
 | `vod search --limit 0` = unlimited (ceiling 100000); response has `scanned` and `truncated` | CHANGELOG 0.12.4 | Always `--limit 0`, assert `truncated` is false |
-| Multi-file download uses `application/vnd.reolink.vod-batch` framing, per-file `requested`/`downloaded`/`skipped` | CHANGELOG 0.11.0, 0.19.0 | Not used in v1 — see below |
+| Multi-file download uses `application/vnd.reolink.vod-batch` framing, per-file `requested`/`downloaded`/`skipped` | CHANGELOG 0.11.0, 0.19.0 | Not used in v1, see below |
 | Batch download **silently dropped everything past ~the 210th recording** (fixed 0.13.1) | CHANGELOG | Reinforces one-file-per-invocation |
-| Historic VOD bugs: `--type` silently ignored, month-boundary searches returned empty, multi-day ranges empty | CHANGELOG | Never filter server-side on `--type`; pin schema with fixtures |
+| Historic VOD bugs: `--type` silently ignored, month-boundary searches returned empty, multi-day ranges empty. `vod search` now documents `--type T,...` as working (post-fix) | CHANGELOG, SKILL.md | Still never filter server-side on `--type`, enumerate everything and filter locally; pin schema with fixtures |
+| **CONFIRMED 2026-09-17 against a real D340W:** `vod search` item fields are `name`/`startTime`/`endTime`/`fileSize`/`recordType`/`streamType`/`channel`, under `data.items` (not `data.files`). `name` has no file extension (e.g. `"0120260916111127"`). `recordType` is a **comma-separated list** of simultaneously-true types (e.g. `"md,people,vehicle"`), never a single enum value | `tests/fixtures/reolink_cli/vod_search.json`, live doorbell capture | Resolves Unverified #1 below. `ReolinkCliProvider`'s field-name candidates now try these first; the plan's/SKILL.md's documented spellings (`fileName`, `type`, `stream`, `.mp4`-suffixed names) are kept only as an untested fallback |
+| **CONFIRMED 2026-09-17:** `storage status`'s fields are nested under `data.items[0]` (an array, presumably for NVR/multi-disk devices), not flat under `data` as originally assumed | live doorbell capture | Fixed `ReolinkCliProvider.storage_status()` to unwrap `items[0]`, with a flat-`data` fallback kept untested |
+| **CONFIRMED 2026-09-17:** `gateway-addr` has no automatic default; it must be passed explicitly (`--gateway-addr`, env, or an uncommented `config.toml` line) on every invocation, including `gateway status` itself. A fresh `config init` leaves it commented out (and the commented example there is `127.0.0.1:9100`, not `9000`) | live doorbell capture | `ReolinkCliProvider`/`GatewaySupervisor` already pass `--gateway-addr` explicitly on every call; this just confirms that was never optional |
+| **CORRECTED 2026-09-17:** `gateway status` defaults to **JSON**, shaped `{"ok": true, "data": {"listening": bool, "addr": ..., ...}}`. The `[LISTENING]`/`[DOWN]`/`[UNCONFIGURED]` bracketed text SKILL.md shows is `--output text` specifically, not the default. `GatewaySupervisor.is_listening()` originally checked for that bracketed text and always saw it missing, so it tried to start a second gateway on an already-bound port (real exit code 5) every single time, caught live against the doorbell | live doorbell capture | Fixed to parse `data.listening` from JSON; test fixtures updated to the real shape |
+| **CORRECTED 2026-09-17, a real bug caught by testing against the doorbell, not by mocks:** `ReolinkCliProvider._parse_recording` converted a recording's local timestamp to UTC via `.astimezone(tz=None)`, which converts to the **process's own system timezone**, not UTC. It only ever "worked" here because this dev machine happens to run with `TZ=UTC`; in a container configured with a different `TZ` it would silently store the wrong `start_utc`, violating "Store UTC only in the database" | live doorbell capture, regression test run under `TZ=America/New_York` | Fixed to `.astimezone(UTC)` explicitly; added a regression test asserting `start_utc.tzinfo is UTC` and the exact converted value, run under multiple system timezones |
 | Credentials: `~/.config/reolink-cli/aliases.toml` (0600), AES-256-GCM `RLENC1:` ciphertext, decrypted by `credentials.key` **beside it**; CLI refuses group/world-readable files | SECURITY.md, SKILL.md | Delegate credential storage; never store the camera password in ReoVault |
 | `--password` on argv is forbidden; use `--password-stdin`, `REOLINK_PASSWORD`, or `--camera <alias>` | SKILL.md | ReoVault only ever passes `--camera <alias>` |
-| "The CLI is the supported surface" for automation; gateway HTTP exists for UIs; gateway tokens expire on long pauses | `references/gateway-http.md`, troubleshooting | Use subprocess CLI, not the gateway or MCP |
+| **CORRECTED 2026-09-17, this was wrong in the original plan:** `reolink-cli` is a **thin client**. It routes almost every command, including `vod search`, `vod download`, `storage status`, `info`, `capabilities`, through a local `reolink-gateway` daemon on `127.0.0.1:9000` that caches the device session/token. Only `device add\|list\|update\|remove\|resolve\|show`, `config init`, `discover`, `features`, `doctor`, `cache status\|clean` work without it. The browser-facing `POST /api` HTTP surface is a *separate concern* served by the same daemon. ReoVault does not use that, but it **does** need the daemon itself running as a supervised sidecar process before any VOD/storage command will succeed | `skills/reolink-cli/SKILL.md` ("The gateway is mandatory for almost every control command") | ReoVault must start/supervise `reolink-cli gateway start --addr 127.0.0.1:9000` as a background process (own thread/subprocess, restarted on crash) before the archiver issues any command; preflight checks `gateway status` before a run |
 | CLI is **read-only** against the SD card (cannot format, cannot delete); loop-overwrite is normal | `references/troubleshooting.md`, `storage.md` | Archive-only is the only option; hence the lag alarm |
-| `storage` returns `number`, `totalGB`, `remainGB`, `formatted`, `mounted` | `references/storage.md` | Feed the dashboard and the coverage alarm |
+| `storage status` returns `totalGB`, `remainGB`, `formatted`, `mounted` per disk (field name is `storage status`, not bare `storage`; see the CONFIRMED row above for the real nesting) | `references/storage.md` | Feed the dashboard and the coverage alarm |
 | Large downloads may time out; use explicit `--timeout-secs` | troubleshooting | Per-command timeouts, generous for downloads |
+| Camera reached via `--host <ip>` (native Reolink/"Baichuan" protocol, camera-side TCP port **9000**, on by default), **not** ONVIF, **not** RTSP. ONVIF only feeds `discover`'s WS-Discovery metadata, which ReoVault doesn't use since it registers the camera by static IP | `skills/reolink-cli/references/setup.md` | No ONVIF/RTSP toggle needed on the doorbell for archiving; only LAN reachability on TCP 9000 matters |
 
 **Local environment:** `reolink-cli` is **not installed**; `ffmpeg`/`ffprobe` are **not installed**; Python 3.12.3 present; `/mnt/storage` does **not exist** on this WSL machine.
 
-### Unverified — must be confirmed against the real device early
+### Unverified: must be confirmed against the real device early
 
-1. The **exact JSON schema of `vod search`**. Public docs name the fields loosely ("file name, start/end time, size, type, stream") but publish no schema. Task 1.3 below is a probe that captures the real payload into a fixture.
-2. Whether `-o FILE` (SKILL.md) or `--file NAME --directory DIR` (CHANGELOG 0.14.1/0.16.1) is the current download syntax — the two docs disagree. Resolve with `reolink-cli vod download --help`.
-3. **"D350W"** as a model string is not confirmed by public Reolink sources (searches surface D340W and "Video Doorbell WiFi"). Confirm from the device itself via `reolink-cli device info`. Does not change the architecture.
+1. ~~The **exact JSON schema of `vod search`**~~. **Resolved 2026-09-17**: captured from a live D340W and committed to `tests/fixtures/reolink_cli/vod_search.json` (see that directory's README for what's real vs. trimmed/anonymized, and the CONFIRMED rows above for the field names).
+2. ~~Whether `-o FILE` or `--file NAME --directory DIR` is the current download syntax~~. **Resolved 2026-09-17**: `vod download NAME [-o FILE]`, confirmed in `skills/reolink-cli/references/media.md`, and against the real device (a real 14 MB clip downloaded with byte count matching `vod search`'s reported `fileSize` exactly).
+3. ~~**"D350W"** as a model string~~. **Resolved 2026-09-17**: the actual device reports `model: "D340W"`, confirming the plan's own doubt was right and CLAUDE.md's "D350W" was wrong. `item_no` is also `"D340W"`. No architectural impact, but CLAUDE.md should be corrected.
+4. **Still open: whether a non-admin (`users add NAME --level user`) device account can run `vod search`/`vod download`/`storage status`/`info`.** Not tested yet, everything above was verified against the admin account. Upstream docs only confirm admin-only ops for things like `users add`. Try least privilege first when this is next tested on the real doorbell; fall back to the admin account if a non-admin gets `auth`/permission errors on VOD/storage.
+5. **New: whether a `user`-level account is even necessary,** given the doorbell has exactly one consumer (ReoVault) and the admin account already works. Worth deciding alongside #4 rather than assuming least-privilege is worth the added complexity for a single-purpose archiver.
 
 ---
 
@@ -80,10 +89,15 @@ Four layers with one-way dependencies. Camera specifics exist only in the provid
         └───────────┬──────────┘                │
      ReolinkCliProvider / FakeProvider   EncryptedFsVault
                     │                           │
-            subprocess reolink-cli        /vault on /mnt/storage
+       subprocess reolink-cli (--output json)   │
+                    │                           │
+      reolink-gateway daemon, 127.0.0.1:9000    │
+       (supervised sidecar, ReoVault-managed)   │
+                    │                           │
+            LAN → doorbell (TCP 9000)     /vault on /mnt/storage
                     │                           │
         ┌───────────▼───────────────────────────▼──────────┐
-        │  Repository (SQLite, WAL)  — single source of truth│
+        │  Repository (SQLite, WAL), single source of truth  │
         └───────────────────────────────────────────────────┘
                               ▲
                   FastAPI dashboard (read + trigger)
@@ -91,7 +105,7 @@ Four layers with one-way dependencies. Camera specifics exist only in the provid
 
 **Why a provider ABC:** `CLAUDE.md` requires camera-specific logic isolated behind an adapter. It also makes the entire archiver testable without a camera, which matters because the one camera is a production doorbell.
 
-**Why subprocess over the gateway/MCP:** upstream states the CLI is the supported automation surface; the gateway's tokens expire over long pauses and add a second long-running process. One process per operation, with the CLI's own exit codes as the error taxonomy.
+**Why subprocess CLI, and why a supervised gateway (revised 2026-09-17):** the original plan believed the CLI could avoid the gateway entirely; verified upstream docs say otherwise. `vod search`, `vod download`, `storage status`, and `info` all route through a local `reolink-gateway` daemon that caches the device session. What we *do* still avoid is the gateway's **browser-facing** `POST /api` HTTP surface and the MCP server, neither is used; ReoVault only needs the daemon alive on loopback so the CLI's own subprocess invocations succeed. `ReolinkCliProvider` therefore owns a `GatewaySupervisor`: start `reolink-cli gateway start --addr 127.0.0.1:9000` once at daemon startup, restart it if `gateway status` reports `[DOWN]`, and treat "gateway not running" as a `local` failure class (abort the run, alarm) rather than a `network` one (retry). It's our own process, not the camera, and retrying a command against a dead gateway would just fail identically eight times.
 
 ### Repository layout
 
@@ -189,7 +203,7 @@ CREATE TABLE device_storage_samples (   -- feeds the coverage/lag alarm
 
 `raw_metadata` stores the provider's JSON verbatim. When the upstream schema shifts (and its history says it will), nothing is lost and a backfill can re-derive columns.
 
-**The unique index is the deduplication mechanism.** Overlapping scan windows are handled by `INSERT ... ON CONFLICT DO NOTHING` — the database, not application logic, guarantees a recording is never written twice. `plaintext_sha256` is the second line of defense, catching identical content re-appearing under a new name (e.g. after a card format resets the filename sequence).
+**The unique index is the deduplication mechanism.** Overlapping scan windows are handled by `INSERT ... ON CONFLICT DO NOTHING`. The database, not application logic, guarantees a recording is never written twice. `plaintext_sha256` is the second line of defense, catching identical content re-appearing under a new name (e.g. after a card format resets the filename sequence).
 
 ---
 
@@ -201,13 +215,13 @@ One recording moves through: `discovered → downloading → verifying → archi
 
 Ordering is chosen so that **no failure can lose an archived recording and no crash can mark an unfinished one as archived**:
 
-1. `INSERT OR IGNORE` the row as `discovered` — commit. Crash here: rediscovered next run, no duplicate (unique index).
-2. Transition to `downloading` — commit. Crash here: staging file orphaned, swept by reconciliation.
-3. `vod download --file <name> --directory <staging>` into a per-run staging dir **on the same filesystem as the vault** (required for atomic rename).
+1. `INSERT OR IGNORE` the row as `discovered`, commit. Crash here: rediscovered next run, no duplicate (unique index).
+2. Transition to `downloading`, commit. Crash here: staging file orphaned, swept by reconciliation.
+3. `vod download <name> -o <staging_path>` into a per-run staging dir **on the same filesystem as the vault** (required for atomic rename).
 4. Verify: downloaded size == `remote_size` from search; stream the file once computing SHA-256.
-5. Encrypt staged plaintext → `.tmp` in the vault, `fsync` the file, `fsync` the parent directory.
-6. `os.rename()` the `.tmp` into its final vault path — atomic on POSIX.
-7. Only now write `state='archived'`, `vault_path`, `plaintext_sha256`, `archived_at` — commit.
+5. Encrypt staged plaintext to `.tmp` in the vault, `fsync` the file, `fsync` the parent directory.
+6. `os.rename()` the `.tmp` into its final vault path, atomic on POSIX.
+7. Only now write `state='archived'`, `vault_path`, `plaintext_sha256`, `archived_at`, commit.
 8. Delete the staging plaintext.
 
 Crash between 6 and 7 leaves an unreferenced vault file; reconciliation finds it, matches it by hash, and either adopts or deletes it. The invariant holds: **a row is `archived` only if a fully-written, verified, fsynced file exists at `vault_path`.**
@@ -221,8 +235,8 @@ Map `reolink-cli` exit codes onto policy directly:
 | 2 | network | Retry: exponential backoff 1m → 2m → 4m … capped at 6h, ±25% jitter, max 8 attempts, then `failed` (still retried by the next scheduled run) |
 | 3 | auth | **Stop the run immediately**, alarm on the dashboard. Retrying a bad password can lock the device account. |
 | 4 | device | Retry twice slowly, then `quarantined` + alarm. Likely firmware/unsupported. |
-| 1, 5 | input / protocol | `quarantined` immediately + alarm. Indicates a ReoVault bug or an upstream schema change — never retry-loop on it. |
-| — | local (disk full, permissions, crypto) | Abort the run, alarm. Never mutate recording state on a storage failure. |
+| 1, 5 | input / protocol | `quarantined` immediately + alarm. Indicates a ReoVault bug or an upstream schema change, never retry-loop on it. |
+| n/a | local (disk full, permissions, crypto) | Abort the run, alarm. Never mutate recording state on a storage failure. |
 
 Additional guards, all grounded in documented upstream behavior:
 - **Per-command timeouts** via `--timeout-secs`, generous for downloads (default 300s, configurable), short for search/status (30s).
@@ -233,7 +247,9 @@ Additional guards, all grounded in documented upstream behavior:
 
 ### Coverage / lag alarm
 
-Each run records a `device_storage_samples` row (from `storage` plus the earliest recording seen in a full search). The dashboard alarms when the oldest **unarchived** recording is within a configurable margin (default 20%) of the oldest recording still on the card — i.e. the card is about to overwrite footage ReoVault has not yet saved. This is the real failure mode of an archive-only design, so it gets a first-class indicator rather than a log line.
+Each run records a `device_storage_samples` row (from `storage` plus the earliest recording seen in a full search). The dashboard alarms when the oldest **unarchived** recording is within a configurable margin (default 20%) of the oldest recording still on the card. That is, the card is about to overwrite footage ReoVault has not yet saved. This is the real failure mode of an archive-only design, so it gets a first-class indicator rather than a log line.
+
+**CLARIFIED 2026-09-17** (`health.py`, implemented in Phase 5): the exact formula, since the prose above names two timestamps but not how to combine them into one "margin". Let `A` = oldest recording still on the card (from the latest `device_storage_samples` row), `B` = oldest recording ReoVault hasn't archived yet, `now` = current time. `margin_fraction = (B − A) / (now − A)`: the fraction of the card's current retention window that's left before the loop-overwrite horizon (`A`, which only ever moves forward) catches up to the backlog (`B`). Alarms when `margin_fraction <= 0.20`. No alarm when there's nothing unarchived (`B` is `None`) or no sample yet (`A` is `None`), there's nothing to be behind on.
 
 ### Time handling (a genuine correctness hazard)
 
@@ -241,7 +257,7 @@ Each run records a `device_storage_samples` row (from `storage` plus the earlies
 
 - Store **UTC only** in the database.
 - Convert to camera-local naive ISO at the provider boundary using the device's configured IANA `timezone`.
-- Widen every search window by ±1 hour beyond what is strictly needed, so an ambiguous or skipped local hour can never carve a hole in coverage. Duplicates from widening cost nothing — the unique index absorbs them.
+- Widen every search window by ±1 hour beyond what is strictly needed, so an ambiguous or skipped local hour can never carve a hole in coverage. Duplicates from widening cost nothing, the unique index absorbs them.
 - Never pass `--since` for scheduled work (minute granularity, relative to the device clock); always use explicit `--from`/`--to`.
 - Log device clock skew (device time vs. host time) each run; large skew is an alarm.
 
@@ -251,7 +267,7 @@ Each run records a `device_storage_samples` row (from `storage` plus the earlies
 
 ### Format
 
-Per-file envelope, AES-256-GCM in fixed 1 MiB frames — chunked rather than one-shot so that (a) memory stays bounded for hour-long recordings and (b) the dashboard can seek without decrypting the whole file.
+Per-file envelope, AES-256-GCM in fixed 1 MiB frames, chunked rather than one-shot so that (a) memory stays bounded for hour-long recordings and (b) the dashboard can seek without decrypting the whole file.
 
 ```
 header (plaintext, versioned):
@@ -261,9 +277,9 @@ frames:
 ```
 
 - Random 32-byte **DEK per file**, wrapped by the master key with AES-256-GCM. Never reuse a DEK.
-- Each frame has its own random nonce, and **AAD = `file_uuid ‖ frame_index ‖ is_final`**. This is what makes truncation, frame reordering, and cross-file frame splicing detectable — a plain per-frame GCM tag alone does not.
+- Each frame has its own random nonce, and **AAD = `file_uuid ‖ frame_index ‖ is_final`**. This is what makes truncation, frame reordering, and cross-file frame splicing detectable. A plain per-frame GCM tag alone does not.
 - Header is authenticated as AAD of frame 0, so header tampering fails decryption.
-- Sidecar `.json` next to the ciphertext: plaintext SHA-256, plaintext size, ciphertext size, algorithm, format version, created-at. Redundant with the DB on purpose — the vault stays self-describing if the DB is ever lost, which is exactly the scenario Pluton restores into.
+- Sidecar `.json` next to the ciphertext: plaintext SHA-256, plaintext size, ciphertext size, algorithm, format version, created-at. Redundant with the DB on purpose, the vault stays self-describing if the DB is ever lost, which is exactly the scenario Pluton restores into.
 - Library: `cryptography` (AESGCM). No hand-rolled primitives.
 
 ### Key management
@@ -277,10 +293,10 @@ REOVAULT_MASTER_PASSPHRASE (env var or Docker secret)
         ▼  wraps each file's DEK
 ```
 
-- Refuse to start if `master.key` is group- or world-readable — the same guard `reolink-cli` applies to `credentials.key`.
+- Refuse to start if `master.key` is group- or world-readable, the same guard `reolink-cli` applies to `credentials.key`.
 - The key file must live **outside `/mnt/storage`**, or Pluton would replicate it to the same destinations as the ciphertext, collapsing the security boundary. Enforce this with a startup check and document it loudly.
-- `reovault key verify` — confirms the passphrase unwraps the key and decrypts a canary.
-- `reovault key backup` — emits the key file plus instructions; the README states plainly that losing both key file and passphrase makes the archive unrecoverable.
+- `reovault key verify` confirms the passphrase unwraps the key and decrypts a canary.
+- `reovault key backup` emits the key file plus instructions; the README states plainly that losing both key file and passphrase makes the archive unrecoverable.
 - Rotation is explicitly **out of scope for v1** (it means rewrapping every DEK); the format carries a version field so it can be added without a migration.
 
 ### Vault layout
@@ -301,30 +317,32 @@ ReoVault **never stores the camera password.** It only passes `--camera <alias>`
 
 ## Scheduling
 
-APScheduler inside the daemon — one dependency, and it lets the dashboard show and trigger jobs, which an external cron cannot.
+APScheduler inside the daemon: one dependency, and it lets the dashboard show and trigger jobs, which an external cron cannot.
 
 | Job | Default | Window | Purpose |
 |---|---|---|---|
 | `scheduled_archive` | daily 05:00 (cron expression, configurable) | last successful run start − **48h overlap**, to now | Normal operation; the overlap absorbs downtime, network outages, and DST ambiguity |
 | `deep_backfill` | weekly, Sunday 04:00 | trailing 30 days (configurable) | Catches anything a narrow window missed and anything the device published late |
-| `reconcile` | every 6h | — | Sweeps orphaned staging files, adopts/deletes unreferenced vault files, re-queues `failed` rows whose `next_attempt_at` has passed |
-| `integrity_scan` | weekly | — | Re-reads a rotating sample (default 5%) of archived files, re-verifying GCM tags and SHA-256, so bit rot surfaces while Pluton still holds a good copy |
-| `storage_sample` | each run | — | Records SD status and feeds the coverage alarm |
+| `reconcile` | every 6h | n/a | Sweeps orphaned staging files, adopts/deletes unreferenced vault files, re-queues `failed` rows whose `next_attempt_at` has passed |
+| `integrity_scan` | weekly | n/a | Re-reads a rotating sample (default 5%) of archived files, re-verifying GCM tags and SHA-256, so bit rot surfaces while Pluton still holds a good copy |
+| `storage_sample` | each run | n/a | Records SD status and feeds the coverage alarm |
 | manual | dashboard / `reovault run` | arbitrary | Same code path, `trigger='manual'` |
 
 All jobs are `max_instances=1`, `coalesce=True`, and take the process-wide lock. A missed run due to downtime is *not* fired repeatedly on startup; the overlap window makes catch-up automatic on the next fire.
+
+**CLARIFIED 2026-09-17** (`scheduler.py`, implemented in Phase 5): cron times are evaluated in **UTC**. The plan never specified which timezone "daily 05:00" means; UTC keeps it unambiguous rather than guessing at device-local intent, consistent with the CLI's own `--from`/`--to`. `storage_sample` isn't its own APScheduler job (nothing to schedule independently), it's a plain function call made right after every `scheduled_archive`/`deep_backfill`/manual run finishes, matching "each run" literally. `integrity_scan`'s "rotating sample" is implemented statelessly: archived rows are split into `round(100 / sample_pct)` buckets by `id % bucket_count`, and the bucket checked each week is `day_of_year % bucket_count`, so repeated weekly scans cycle through every archived recording over time without a persisted cursor.
 
 ---
 
 ## Dashboard
 
-FastAPI + Jinja2 + HTMX, server-rendered. No SPA, no build step, no Node in the image — appropriate for a handful of pages and consistent with "avoid unnecessary infrastructure."
+FastAPI + Jinja2 + HTMX, server-rendered. No SPA, no build step, no Node in the image: appropriate for a handful of pages and consistent with "avoid unnecessary infrastructure."
 
 **Pages**
-- **Overview** — last run outcome, next run time, coverage/lag alarm, SD status (`totalGB`/`remainGB`/`mounted`), archived count and bytes, failure count.
-- **Recordings** — filter by date/type/state; per-row state, size, hash prefix; inline HTML5 `<video>` playback.
-- **Runs** — history with per-run counters and errors.
-- **Problems** — `failed` and `quarantined` rows with the error class and message, and a retry action.
+- **Overview**: last run outcome, next run time, coverage/lag alarm, SD status (`totalGB`/`remainGB`/`mounted`), archived count and bytes, failure count.
+- **Recordings**: filter by date/type/state; per-row state, size, hash prefix; inline HTML5 `<video>` playback.
+- **Runs**: history with per-run counters and errors.
+- **Problems**: `failed` and `quarantined` rows with the error class and message, and a retry action.
 
 **Controls (v1, deliberately small):** trigger archive run, trigger backfill for a date range, retry one recording, re-verify one recording's hash.
 
@@ -340,14 +358,14 @@ Explicitly **not** in v1 (Pluton's domain or later): retention rules, pruning, b
 
 The single camera is a live doorbell, so almost everything must be testable without it.
 
-1. **`FakeProvider`** — in-memory `CameraProvider` that can be scripted to fail: timeouts, truncated downloads, size mismatches, duplicate names, clock skew, empty results. Every reliability behavior is tested through it.
-2. **Fixture-pinned CLI parsing** — `tests/fixtures/reolink_cli/*.json` holds **real captured payloads** from the device (see Verification step 1). `ReolinkCliProvider` parsing tests run against these. If a CLI upgrade changes the schema, these tests fail loudly — the intended alarm, given the VOD surface's history.
-3. **Crash-injection integration tests** — drive the archiver with a fault injector that raises at each state-machine boundary, then assert the invariant after recovery: *no row is `archived` without a complete, hash-matching file, and no recording is ever stored twice.* This is the most valuable test in the suite.
-4. **Dedup tests** — overlapping windows, re-runs, restarts mid-download, same content under a different `remote_name`. Assert exactly one vault file and one row.
-5. **Crypto tests** — round-trip of empty/1-byte/multi-GiB-simulated files; tamper tests (flip a ciphertext byte, truncate the last frame, reorder two frames, swap a frame between files, corrupt the header) must each raise `InvalidTag`, not return plaintext. Property-based (Hypothesis) test: for random offsets/lengths, a range read equals the same slice of the plaintext.
-6. **Key management tests** — wrong passphrase, missing key file, 0644 key file (must refuse to start), key file inside the vault (must refuse to start).
-7. **Web tests** — auth required on every route, CSRF enforced, `Range` requests return correct bytes and `206`, no plaintext path ever leaks.
-8. **Contract tests** (`-m contract`, opt-in, excluded from CI) — run read-only commands against the real doorbell to confirm the fixtures still reflect reality; refresh fixtures from their output.
+1. **`FakeProvider`**: in-memory `CameraProvider` that can be scripted to fail: timeouts, truncated downloads, size mismatches, duplicate names, clock skew, empty results. Every reliability behavior is tested through it.
+2. **Fixture-pinned CLI parsing**: `tests/fixtures/reolink_cli/*.json` holds **real captured payloads** from the device (see Verification step 1). `ReolinkCliProvider` parsing tests run against these. If a CLI upgrade changes the schema, these tests fail loudly, the intended alarm, given the VOD surface's history.
+3. **Crash-injection integration tests**: drive the archiver with a fault injector that raises at each state-machine boundary, then assert the invariant after recovery: *no row is `archived` without a complete, hash-matching file, and no recording is ever stored twice.* This is the most valuable test in the suite.
+4. **Dedup tests**: overlapping windows, re-runs, restarts mid-download, same content under a different `remote_name`. Assert exactly one vault file and one row.
+5. **Crypto tests**: round-trip of empty/1-byte/multi-GiB-simulated files; tamper tests (flip a ciphertext byte, truncate the last frame, reorder two frames, swap a frame between files, corrupt the header) must each raise `InvalidTag`, not return plaintext. Property-based (Hypothesis) test: for random offsets/lengths, a range read equals the same slice of the plaintext.
+6. **Key management tests**: wrong passphrase, missing key file, 0644 key file (must refuse to start), key file inside the vault (must refuse to start).
+7. **Web tests**: auth required on every route, CSRF enforced, `Range` requests return correct bytes and `206`, no plaintext path ever leaks.
+8. **Contract tests** (`-m contract`, opt-in, excluded from CI): run read-only commands against the real doorbell to confirm the fixtures still reflect reality; refresh fixtures from their output.
 
 Tooling: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy --strict` on `crypto/` and `providers/`. GitHub Actions runs lint + type + unit + integration; contract tests are manual.
 
@@ -361,12 +379,14 @@ Tooling: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy --strict` on `crypt
 
 | Mount | Mode | Notes |
 |---|---|---|
-| `/config` | rw | `reovault.toml`, SQLite DB, `master.key` — **not** under `/mnt/storage` |
+| `/config` | rw | `reovault.toml`, SQLite DB, `master.key`, **not** under `/mnt/storage` |
 | `/mnt/storage/reovault/vault` | rw | ciphertext + sidecars; Pluton's backup source |
 | `/mnt/storage/reovault/staging` | rw | **must share a filesystem with the vault** (atomic rename); asserted at startup |
 | `~/.config/reolink-cli` | ro | `aliases.toml` + `credentials.key` pair |
 
 `REOVAULT_MASTER_PASSPHRASE` via Docker secret or an env file outside the repo. Port `127.0.0.1:8080:8080`. `restart: unless-stopped`. Healthcheck hits `/healthz`. Structured JSON logs to stdout.
+
+**Gateway process (revised 2026-09-17).** The `reolink-gateway` daemon runs inside the same container, supervised by ReoVault (started on daemon startup, restarted on crash, health-checked via `reolink-cli gateway status` as part of `/healthz`), not as a separate compose service, since it only ever needs to be reachable from the CLI subprocess calls ReoVault itself makes on loopback. No port is published for it.
 
 **Note:** `/mnt/storage` does not exist on this WSL dev machine, so all paths are configuration, never constants, and the dev default points at a local directory.
 
@@ -376,37 +396,40 @@ Tooling: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy --strict` on `crypt
 
 Each phase is independently reviewable and leaves the system working.
 
-- **Phase 0 — Skeleton.** Commit this plan as `docs/IMPLEMENTATION_PLAN.md`. Then `pyproject.toml` (uv), package layout, config loading, structured logging, `pytest`/`ruff`/`mypy` wired, CI. *Done when:* the plan is in the repo, `reovault --help` runs, and CI is green.
-- **Phase 1 — Provider.** `CameraProvider` ABC, `ReolinkCliProvider` (subprocess, `--output json`, `--camera`, `--timeout-secs`, exit-code mapping), `FakeProvider`. **Capture real fixtures from the doorbell here** and resolve the two open syntax questions. *Done when:* `reovault probe` prints real recordings and fixtures are committed.
-- **Phase 2 — Database.** Schema, migration runner, `Repository` with the unique index and state transitions. *Done when:* dedup and state-machine unit tests pass.
-- **Phase 3 — Crypto + vault.** Frame format, keyring, `EncryptedFsVault` with staging→verify→atomic finalize, `reovault key` commands. *Done when:* tamper and range-read property tests pass.
-- **Phase 4 — Archiver.** The state machine, retry/backoff classification, reconciliation, single-instance lock, `reovault run` / `backfill` / `verify` / `export`. *Done when:* crash-injection tests pass and a real archive run completes end to end.
-- **Phase 5 — Scheduler + health.** APScheduler jobs, coverage/lag alarm, integrity scan, `/healthz`. *Done when:* the daemon runs unattended across a full day including a simulated outage.
-- **Phase 6 — Dashboard.** Auth, four pages, range-streaming playback, manual controls. *Done when:* a clip plays and seeks in the browser straight from ciphertext.
-- **Phase 7 — Packaging.** Dockerfile with checksum-verified CLI, compose, README with the key-backup procedure and the Pluton boundary.
+- **Phase 0: Skeleton.** Commit this plan as `docs/IMPLEMENTATION_PLAN.md`. Then `pyproject.toml` (uv), package layout, config loading, structured logging, `pytest`/`ruff`/`mypy` wired, CI. *Done when:* the plan is in the repo, `reovault --help` runs, and CI is green.
+- **Phase 1: Provider.** `CameraProvider` ABC, `ReolinkCliProvider` (subprocess, `--output json`, `--camera`, `--timeout-secs`, exit-code mapping), `FakeProvider`. **Capture real fixtures from the doorbell here** and resolve the two open syntax questions. *Done when:* `reovault probe` prints real recordings and fixtures are committed.
+- **Phase 2: Database.** Schema, migration runner, `Repository` with the unique index and state transitions. *Done when:* dedup and state-machine unit tests pass.
+- **Phase 3: Crypto + vault.** Frame format, keyring, `EncryptedFsVault` with staging to verify to atomic finalize, `reovault key` commands. *Done when:* tamper and range-read property tests pass.
+- **Phase 4: Archiver. Done 2026-09-17.** The state machine, retry/backoff classification, reconciliation, single-instance lock, `reovault run` / `backfill` / `verify` / `export`. *Done when:* crash-injection tests pass and a real archive run completes end to end. Both true: 7 crash-injection tests pass (kill between every state-machine boundary, then reconcile, then re-run; the invariant holds every time), and a real run against the doorbell archived 43 recordings (847 MB) with 0 failures, all 43 re-verified, and one exported back to a playable MP4.
+- **Phase 5: Scheduler + health. Implemented 2026-09-17.** APScheduler jobs (`scheduled_archive`, `deep_backfill`, `reconcile`, `integrity_scan`; `storage_sample` runs inline after each, per plan), coverage/lag alarm, integrity scan, `/healthz`, plus a new `reovault daemon` command that runs them continuously and `reovault reconcile` for manual use ahead of that. *Done when:* the daemon runs unattended across a full day including a simulated outage. Not literally exercised yet, that needs a real multi-day soak on the homelab, not a single session; what's verified so far: a real (unmocked) `reovault daemon` run against the doorbell registers all 4 jobs, serves `/healthz` correctly (including a live gateway-status check), and shuts down cleanly on SIGTERM. Also found and fixed a real concurrency bug along the way: sqlite3 connections are thread-affine by default, and the scheduler's background thread plus the web app's threadpool thread now share one `Repository`, which raised `ProgrammingError` immediately when tested for real. Fixed with `check_same_thread=False` plus an internal lock serializing all access; verified with 8 threads concurrently hammering `discover_recording`, no corruption, no lost or duplicated rows.
+- **Phase 6: Dashboard.** Auth, four pages, range-streaming playback, manual controls. *Done when:* a clip plays and seeks in the browser straight from ciphertext.
+- **Phase 7: Packaging.** Dockerfile with checksum-verified CLI, compose, README with the key-backup procedure and the Pluton boundary.
 
 ---
 
 ## Verification
 
-All camera-touching steps run **on the homelab host**, where the doorbell is reachable on the LAN and `reolink-cli` is installed — this WSL dev machine has neither, and `reolink-cli` is LAN-only with no cloud relay. Phases 0 and 2–3 are fully testable anywhere; Phase 1 onward wants the homelab. Fixtures captured there are committed so the rest of the suite stays camera-free.
+All camera-touching steps run **on the homelab host**, where the doorbell is reachable on the LAN and `reolink-cli` is installed. This WSL dev machine has neither, and `reolink-cli` is LAN-only with no cloud relay. Phases 0 and 2–3 are fully testable anywhere; Phase 1 onward wants the homelab. Fixtures captured there are committed so the rest of the suite stays camera-free.
 
-**1. Pin reality first (before writing provider code).** Install the pinned CLI, register the doorbell, and capture ground truth:
+**1. Pin reality first (before writing provider code).** Install the pinned CLI, start the gateway, register the doorbell, and capture ground truth:
 
 ```bash
-reolink-cli --version                                   # must equal the pinned version
-reolink-cli vod --help && reolink-cli vod download --help   # resolves -o vs --file/--directory
+reolink-cli --version                                        # must equal the pinned version (0.19.0)
+reolink-cli gateway start --addr 127.0.0.1:9000 &             # required for everything below
 reolink-cli device add doorbell --host <ip> --user admin --password-stdin
-reolink-cli --camera doorbell device info   --output json | tee tests/fixtures/reolink_cli/device_info.json
-reolink-cli --camera doorbell storage status --output json | tee tests/fixtures/reolink_cli/storage.json
+reolink-cli --camera doorbell ping && reolink-cli --camera doorbell login
+reolink-cli --camera doorbell info            --output json | tee tests/fixtures/reolink_cli/device_info.json
+reolink-cli --camera doorbell storage status  --output json | tee tests/fixtures/reolink_cli/storage.json
 reolink-cli --camera doorbell vod search --from 2026-09-15T00:00:00 --to 2026-09-15T23:59:59 \
     --limit 0 --output json | tee tests/fixtures/reolink_cli/vod_search.json
+# By-name download syntax, confirmed against skills/reolink-cli/references/media.md:
+reolink-cli --camera doorbell vod download "<name-from-search-output>" -o /tmp/probe.mp4
 ```
-Confirm the real field names, that `truncated` is false, and the actual model string.
+Confirm the real field names, that `truncated` is false, the actual model string, and, since this is untested, whether a `users add reovault --level user` account can run `vod search`/`vod download`/`storage status`/`info`, or whether the admin account is required.
 
-**2. Crypto correctness.** `pytest tests/unit/test_envelope.py -v` — round-trip, all five tamper cases raise `InvalidTag`, Hypothesis range-read property holds.
+**2. Crypto correctness.** `pytest tests/unit/test_envelope.py -v`: round-trip, all five tamper cases raise `InvalidTag`, Hypothesis range-read property holds.
 
-**3. Reliability under failure.** `pytest tests/integration/test_crash_recovery.py -v` — kill at each boundary; after recovery assert no `archived` row lacks a verified file and no recording is stored twice.
+**3. Reliability under failure.** `pytest tests/integration/test_crash_recovery.py -v`: kill at each boundary; after recovery assert no `archived` row lacks a verified file and no recording is stored twice.
 
 **4. Dedup under overlap.** Run `reovault run` three times over overlapping windows; assert row count, vault file count, and `skipped_dup` counters, and that mtimes of existing vault files are unchanged (nothing rewritten).
 

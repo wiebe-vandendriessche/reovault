@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ReoVault local dev state. Vault/staging/DB/master key never belong in git.
+/data/
+reovault.toml
+*.db
+*.db-wal
+*.db-shm
