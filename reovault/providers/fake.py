@@ -1,6 +1,6 @@
 """In-memory `CameraProvider` for tests. Every reliability behavior in the
 archiver (retry/backoff, dedup, crash recovery) is exercised through this, not
-the real camera — see plan: Testing #1. Scriptable to fail in the specific ways
+the real camera. See plan: Testing #1. Scriptable to fail in the specific ways
 `reolink-cli` is documented to fail: timeouts, size mismatches, truncated
 downloads, duplicate names, empty results.
 """

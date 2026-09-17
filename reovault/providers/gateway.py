@@ -1,16 +1,16 @@
 """Supervises the local `reolink-gateway` sidecar.
 
 Corrected 2026-09-17 (see docs/IMPLEMENTATION_PLAN.md): `reolink-cli` is a thin
-client. Nearly every command that actually talks to a camera — `vod search`,
-`vod download`, `storage status`, `info` — is proxied through a `reolink-gateway`
+client. Nearly every command that actually talks to a camera (`vod search`,
+`vod download`, `storage status`, `info`) is proxied through a `reolink-gateway`
 daemon on loopback that caches the device session. That daemon is *not* started
 by `reolink-cli` on its own; something has to run `reolink-cli gateway start`
-once and keep it alive. In ReoVault that's us, not the operator — the daemon is
+once and keep it alive. In ReoVault that's us, not the operator. The daemon is
 purely a local implementation detail of talking to `reolink-cli`, and nothing
 outside this process should ever need to know it exists.
 
 We deliberately never use the gateway's browser-facing `POST /api` HTTP surface
-or the MCP server — those are separate, unused concerns served by the same
+or the MCP server. Those are separate, unused concerns served by the same
 binary.
 """
 
@@ -54,7 +54,7 @@ class GatewaySupervisor:
 
     def ensure_running(self) -> None:
         """Idempotent: no-op if already listening (including a gateway started
-        by something else — e.g. a previous ReoVault process we don't share
+        by something else, e.g. a previous ReoVault process we don't share
         state with). Otherwise spawns our own and waits for it to come up."""
         if self.is_listening():
             return
@@ -83,7 +83,7 @@ class GatewaySupervisor:
         raise LocalError(f"gateway did not report [LISTENING] within {self.start_timeout_secs}s")
 
     def stop(self) -> None:
-        """Only stops a gateway we ourselves spawned — never a pre-existing one,
+        """Only stops a gateway we ourselves spawned, never a pre-existing one,
         since that might be shared with another tool on the host."""
         if self._process is not None and self._process.poll() is None:
             self._process.terminate()

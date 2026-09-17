@@ -1,4 +1,4 @@
-"""All SQL lives here — the only module that touches `sqlite3` directly (see
+"""All SQL lives here, the only module that touches `sqlite3` directly (see
 plan: Repository layout). Implements the dedup contract and the archive state
 machine's transitions (see plan: Reliability).
 """
@@ -43,7 +43,7 @@ class RecordingRow:
 
 class Repository:
     """One instance per SQLite database file. Opens with WAL journaling (single
-    writer, embedded, no infra — see plan: Data model) and enforces foreign
+    writer, embedded, no infra, see plan: Data model) and enforces foreign
     keys, which SQLite otherwise leaves off by default."""
 
     def __init__(self, db_path: str | Path):
@@ -103,7 +103,7 @@ class Repository:
     ) -> tuple[int, bool]:
         """The dedup mechanism: `INSERT OR IGNORE` on the unique
         `(device_id, channel, remote_name, start_utc)` key. Overlapping scan
-        windows are absorbed here, not by application-level checking — see
+        windows are absorbed here, not by application-level checking. See
         plan: "the database, not application logic, guarantees a recording is
         never written twice." Returns `(recording_id, created)`."""
         start_utc = _iso(recording.start_utc)
@@ -186,7 +186,7 @@ class Repository:
         ciphertext_size: int,
     ) -> None:
         """Only ever called after the vault file is fully written, fsynced,
-        and atomically renamed into place — see plan step 6→7. A row is
+        and atomically renamed into place, see plan step 6 to 7. A row is
         `archived` only if that already happened; this call never itself
         writes the file."""
         with self.transaction() as conn:

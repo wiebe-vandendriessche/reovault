@@ -49,7 +49,7 @@ def test_discover_recording_dedups_on_unique_key(repo):
 
 def test_discover_recording_absorbs_overlapping_windows(repo):
     """Simulates the archiver re-discovering the same recording from two
-    overlapping scan windows — the exact scenario the unique index exists
+    overlapping scan windows, the exact scenario the unique index exists
     for (see plan: Reliability)."""
     device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="Europe/Brussels")
     rec = _rec()

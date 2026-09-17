@@ -1,5 +1,5 @@
 """The `CameraProvider` boundary. Camera-specific logic (Reolink or otherwise)
-must never leak past this interface — see CLAUDE.md: "Keep camera-specific
+must never leak past this interface. See CLAUDE.md: "Keep camera-specific
 functionality isolated behind a provider/adapter boundary." The archiver only
 ever talks to this ABC, which is what makes it testable without a camera
 (`FakeProvider`) and swappable for a different vendor later.
@@ -48,7 +48,7 @@ class DeviceError(ProviderError):
 
 class ProtocolError(ProviderError):
     """The device answered, but not in a shape we understand. Per plan: never
-    retry-loop on this — it means a ReoVault bug or an upstream schema change,
+    retry-loop on this, it means a ReoVault bug or an upstream schema change,
     so it goes straight to quarantine."""
 
     def __init__(self, message: str):
@@ -56,8 +56,8 @@ class ProtocolError(ProviderError):
 
 
 class LocalError(ProviderError):
-    """Ours, not the camera's: disk full, permissions, or — for
-    `ReolinkCliProvider` — the local gateway sidecar being unreachable. Never
+    """Ours, not the camera's: disk full, permissions, or, for
+    `ReolinkCliProvider`, the local gateway sidecar being unreachable. Never
     mutates recording state; aborts the run."""
 
     def __init__(self, message: str):
@@ -66,7 +66,7 @@ class LocalError(ProviderError):
 
 class CameraProvider(ABC):
     """One instance per registered device. `device_alias` never carries a
-    password — see plan: Camera credentials."""
+    password. See plan: Camera credentials."""
 
     @abstractmethod
     def list_recordings(
@@ -76,14 +76,14 @@ class CameraProvider(ABC):
         to_utc: datetime,
     ) -> list[RemoteRecording]:
         """Enumerate recordings in `[from_utc, to_utc]`. Callers are expected to
-        widen the window per plan: Time handling — this method does not widen
+        widen the window per plan: Time handling. This method does not widen
         it itself, so DST safety is the caller's responsibility, not baked in
         silently here where it would be easy to widen twice."""
 
     @abstractmethod
     def fetch(self, recording: RemoteRecording, dest_path: str) -> FetchResult:
         """Download `recording` to `dest_path` (a path already on the staging
-        filesystem, same device as the vault — see plan: atomic rename). Must
+        filesystem, same device as the vault, see plan: atomic rename). Must
         not overwrite an existing completed download of the same content;
         callers are responsible for staging-path uniqueness per attempt."""
 

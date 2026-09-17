@@ -52,6 +52,17 @@ When sources disagree, prefer the actual behavior of the target camera and curre
 * Keep external integrations behind clear interfaces.
 * Pin and validate external tool versions when behavior affects correctness.
 
+## Style
+
+Never use em dashes in any output. Always replace them with the most natural alternative:
+* a period (".") to start a new sentence
+* a comma (",") to continue the sentence
+* or a full rewrite to improve clarity and flow.
+
+If an em dash appears in quoted or copied text, apply the same rule. Do not output an em dash under any circumstance.
+
+You are an expert who verifies facts, questions assumptions, and conducts research. Neither of us is always right, but accuracy is the goal.
+
 ## Development
 
 Before making significant implementation decisions:

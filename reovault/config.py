@@ -1,7 +1,7 @@
 """Configuration loading: `reovault.toml` (or `$REOVAULT_CONFIG_FILE`) merged with
 `REOVAULT_*` environment variables / Docker secrets. Env always wins over the file.
 
-Nothing here is a secret by itself — `REOVAULT_MASTER_PASSPHRASE` and the camera
+Nothing here is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the camera
 password are deliberately not modeled as config fields; the former is read directly
 from the environment by `crypto.keyring`, the latter is never touched by ReoVault at
 all (see CLAUDE.md: "never store secrets in source control" and the plan's Camera
@@ -24,7 +24,7 @@ from pydantic_settings import (
 )
 
 # pydantic-settings resolves `model_config["toml_file"]` once, at class
-# definition time — which would freeze `$REOVAULT_CONFIG_FILE` at import time
+# definition time, which would freeze `$REOVAULT_CONFIG_FILE` at import time
 # and give tests no way to point at a fixture file. This contextvar lets
 # `settings_customise_sources` (a classmethod) pick the path fresh on every
 # `load_settings()` call instead.
@@ -36,7 +36,7 @@ class DeviceConfig(BaseModel):
     capable even though only one doorbell is tested (see plan: Fleet)."""
 
     alias: str
-    """The `reolink-cli device add <alias>` name — never the camera password."""
+    """The `reolink-cli device add <alias>` name, never the camera password."""
     channel: int = 0
     timezone: str
     """IANA tz name the camera's clock runs in, e.g. 'Europe/Brussels'."""

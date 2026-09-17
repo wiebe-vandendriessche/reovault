@@ -1,5 +1,5 @@
 """`reovault` console script. Commands beyond `doctor`/`config-check` land in
-later phases (see docs/IMPLEMENTATION_PLAN.md: Build order) — they're stubbed
+later phases (see docs/IMPLEMENTATION_PLAN.md: Build order). They're stubbed
 here so `--help` documents the eventual surface without pretending it works
 today.
 """
@@ -14,7 +14,7 @@ from reovault import __version__
 from reovault.config import load_settings
 from reovault.logging import configure_logging, get_logger
 
-app = typer.Typer(add_completion=False, help="ReoVault — archive Reolink recordings locally.")
+app = typer.Typer(add_completion=False, help="ReoVault: archive Reolink recordings locally.")
 logger = get_logger(__name__)
 
 
@@ -31,7 +31,7 @@ def version() -> None:
 
 @app.command()
 def doctor() -> None:
-    """Sanity-check config, storage paths, and DB migration — no camera contact.
+    """Sanity-check config, storage paths, and DB migration. No camera contact.
 
     Mirrors `reolink-cli doctor`'s spirit (offline checks first) but is
     ReoVault's own preflight, not a passthrough to the CLI's.
@@ -74,7 +74,7 @@ def doctor() -> None:
 
 
 def _not_yet_implemented(command: str, phase: str) -> None:
-    typer.echo(f"'{command}' lands in {phase} — see docs/IMPLEMENTATION_PLAN.md", err=True)
+    typer.echo(f"'{command}' lands in {phase}, see docs/IMPLEMENTATION_PLAN.md", err=True)
     raise typer.Exit(code=2)
 
 

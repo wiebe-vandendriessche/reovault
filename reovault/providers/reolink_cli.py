@@ -4,7 +4,7 @@ Everything here that is NOT explicitly cited as verified against
 `skills/reolink-cli/` upstream docs (2026-09-17) should be treated as
 best-effort pending real fixture capture on the homelab (see plan: Phase 1,
 "Capture real fixtures from the doorbell here"). The `vod search` payload shape
-in particular is UNVERIFIED — see plan's Risks section — so this parser is
+in particular is UNVERIFIED, see plan's Risks section, so this parser is
 deliberately tolerant and raises `ProtocolError` (quarantine, never a retry
 loop) rather than guessing when a recording's shape doesn't match any known
 key, exactly as CLAUDE.md requires: distinguish verified behavior from
@@ -148,7 +148,7 @@ class ReolinkCliProvider(CameraProvider):
                     return [i for i in value if isinstance(i, dict)]
         raise ProtocolError(
             f"vod search response for {self.alias!r} has no recognizable recording list; "
-            "upstream schema may have changed — see plan's Unverified section"
+            "upstream schema may have changed, see plan's Unverified section"
         )
 
     def _parse_recording(self, item: dict[str, object]) -> RemoteRecording:

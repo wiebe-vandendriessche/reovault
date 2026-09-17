@@ -18,5 +18,5 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy reovault
 ```
 
 Camera-touching work (`reovault probe`, real fixtures, contract tests) needs
-`reolink-cli` installed and a doorbell on the LAN — see the plan's
+`reolink-cli` installed and a doorbell on the LAN. See the plan's
 Verification section.

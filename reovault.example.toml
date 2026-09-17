@@ -1,5 +1,5 @@
 # Copy to reovault.toml and adjust. Never commit the real file if it ever
-# grows a secret — as of Phase 0 it shouldn't (see CLAUDE.md: never store
+# grows a secret, as of Phase 0 it shouldn't (see CLAUDE.md: never store
 # secrets in source control). The camera password lives in reolink-cli's own
 # encrypted aliases.toml, never here.
 
