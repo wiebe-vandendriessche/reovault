@@ -16,6 +16,7 @@ binary.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 from dataclasses import dataclass
@@ -36,11 +37,14 @@ class GatewaySupervisor:
     _process: subprocess.Popen[bytes] | None = None
 
     def is_listening(self) -> bool:
-        """Best-effort probe. `gateway status` is documented to print
-        `[LISTENING]` / `[DOWN]` / `[UNCONFIGURED]` in its text output; the
-        exact JSON shape for this specific subcommand is unverified against
-        the real binary (see plan: Unverified #4-adjacent), so we check the
-        text form, which the skill docs show explicitly."""
+        """Verified 2026-09-17 against the real binary: `gateway status`
+        defaults to JSON (not the `[LISTENING]`/`[DOWN]` bracketed text the
+        skill docs show, that's `--output text` specifically), shaped
+        `{"ok": true, "data": {"listening": bool, ...}}`. Any parsing
+        failure (including the CLI genuinely not being on PATH) is treated
+        as "not listening" rather than raised, since this is a best-effort
+        probe used to decide whether to spawn a gateway, not a command whose
+        own failure should propagate."""
         try:
             result = subprocess.run(
                 [self.binary, "--gateway-addr", self.addr, "gateway", "status"],
@@ -48,9 +52,10 @@ class GatewaySupervisor:
                 text=True,
                 timeout=5,
             )
-        except (OSError, subprocess.TimeoutExpired):
+            envelope = json.loads(result.stdout)
+            return bool(envelope.get("data", {}).get("listening", False))
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
             return False
-        return "[LISTENING]" in result.stdout
 
     def ensure_running(self) -> None:
         """Idempotent: no-op if already listening (including a gateway started
@@ -80,7 +85,7 @@ class GatewaySupervisor:
                 )
             time.sleep(self.poll_interval_secs)
 
-        raise LocalError(f"gateway did not report [LISTENING] within {self.start_timeout_secs}s")
+        raise LocalError(f"gateway did not report listening within {self.start_timeout_secs}s")
 
     def stop(self) -> None:
         """Only stops a gateway we ourselves spawned, never a pre-existing one,

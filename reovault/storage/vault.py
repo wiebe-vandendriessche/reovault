@@ -98,6 +98,19 @@ class VaultStore(ABC):
         """Decrypt only the plaintext bytes `[offset, offset + length)`. Used
         by the dashboard's `Range` playback (Phase 6)."""
 
+    @abstractmethod
+    def list_vault_paths(self) -> list[str]:
+        """Every vault_path currently stored. Reconciliation diffs this
+        against the DB's `archived` rows to find orphans (see plan:
+        Reliability, crash between rename and the `finalize_archived`
+        commit)."""
+
+    @abstractmethod
+    def describe(self, vault_path: str) -> PutResult:
+        """The sidecar's recorded hash/sizes, without decrypting. Lets
+        reconciliation adopt an orphan (an already-verified, already-correct
+        file) without re-deriving what `put()` already computed once."""
+
 
 class _HashingReader:
     """Wraps a binary file so `encrypt_stream`'s sequential `.read()` calls
@@ -194,6 +207,23 @@ class EncryptedFsVault(VaultStore):
         final_path = self.vault_dir / vault_path
         with final_path.open("rb") as src:
             return read_range(src, self.master_key, offset, length)
+
+    def list_vault_paths(self) -> list[str]:
+        if not self.vault_dir.exists():
+            return []
+        return [
+            str(p.relative_to(self.vault_dir).as_posix()) for p in self.vault_dir.rglob("*.enc")
+        ]
+
+    def describe(self, vault_path: str) -> PutResult:
+        final_path = self.vault_dir / vault_path
+        sidecar = self._read_sidecar(final_path)
+        return PutResult(
+            vault_path=vault_path,
+            plaintext_sha256=sidecar["plaintext_sha256"],
+            plaintext_size=sidecar["plaintext_size"],
+            ciphertext_size=sidecar["ciphertext_size"],
+        )
 
     # -- internals --------------------------------------------------------
 

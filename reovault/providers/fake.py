@@ -37,11 +37,18 @@ class FakeProvider(CameraProvider):
             total_gb=64.0, remain_gb=32.0, formatted=True, mounted=True
         )
     )
+    # Raised by list_recordings() instead of returning, once, to simulate a
+    # `vod search` failure (auth expired, network drop, ...). Cleared after
+    # being raised so a second call in the same test can succeed.
+    list_error: Exception | None = None
     fetch_calls: int = 0
     list_calls: int = 0
 
     def list_recordings(self, *, from_utc: datetime, to_utc: datetime) -> list[RemoteRecording]:
         self.list_calls += 1
+        if self.list_error is not None:
+            error, self.list_error = self.list_error, None
+            raise error
         return [
             sr.recording for sr in self.recordings if from_utc <= sr.recording.start_utc <= to_utc
         ]

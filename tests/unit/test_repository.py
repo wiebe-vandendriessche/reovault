@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -92,14 +93,14 @@ def test_mark_failed_then_due_for_retry(repo):
         rec_id, error="network drop", error_class=ErrorClass.NETWORK, next_attempt_at=past
     )
 
-    due = repo.due_for_retry(now=datetime(2026, 1, 1, tzinfo=UTC))
+    due = repo.due_for_retry(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
     assert [r.id for r in due] == [rec_id]
 
     future = datetime(2099, 1, 1, tzinfo=UTC)
     repo.mark_failed(
         rec_id, error="network drop", error_class=ErrorClass.NETWORK, next_attempt_at=future
     )
-    due = repo.due_for_retry(now=datetime(2026, 1, 1, tzinfo=UTC))
+    due = repo.due_for_retry(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
     assert due == []
 
 
@@ -162,3 +163,59 @@ def test_record_storage_sample(repo):
     )
     row = repo.conn.execute("SELECT * FROM device_storage_samples").fetchone()
     assert row["total_gb"] == 64.0
+
+
+def test_repository_is_usable_from_a_different_thread(tmp_path):
+    """Phase 5 puts the scheduler (its own thread) and the `/healthz` web
+    app (its own threadpool thread) in the same process, sharing one
+    Repository. sqlite3 connections are thread-affine by default and raise
+    ProgrammingError on cross-thread use; this must not."""
+    repo = Repository(tmp_path / "reovault.db")
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="UTC")
+            repo.get_device_id(alias="doorbell", channel=0)
+            repo.conn.execute("SELECT 1").fetchone()
+            assert device_id is not None
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert errors == []
+    repo.close()
+
+
+def test_repository_serializes_concurrent_writers(tmp_path):
+    """Many threads hammering discover_recording concurrently must never
+    corrupt state or raise: the lock serializes them, SQLite's own unique
+    index still does the deduping."""
+    repo = Repository(tmp_path / "reovault.db")
+    device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="UTC")
+    errors: list[BaseException] = []
+
+    def worker(i: int) -> None:
+        try:
+            for j in range(10):
+                rec = _rec(
+                    name=f"clip-{i}-{j}",
+                    start=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=j),
+                )
+                repo.discover_recording(device_id=device_id, channel=0, recording=rec)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert errors == []
+    count = repo.conn.execute("SELECT COUNT(*) AS n FROM recordings").fetchone()["n"]
+    assert count == 80  # 8 threads * 10 distinct recordings each, none lost, none duplicated
+    repo.close()

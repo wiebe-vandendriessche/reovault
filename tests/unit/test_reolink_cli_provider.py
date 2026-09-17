@@ -146,6 +146,15 @@ def test_list_recordings_parses_real_field_names(provider):
     assert rec.rec_type == "md,people"
     assert rec.stream == "mainStream"
     assert rec.raw_metadata["name"] == "0120260916111127"
+    # start_utc must be genuinely UTC, not just numerically coincidental with
+    # it: astimezone(tz=None) (a real bug fixed here) converts to whatever
+    # timezone the *process* happens to be running under, not the device's
+    # configured tz, and would only "look right" when the two happen to
+    # match, e.g. on a dev box that happens to run with TZ=UTC.
+    assert rec.start_utc.tzinfo is UTC
+    assert rec.start_utc == datetime(
+        2026, 9, 16, 9, 11, 27, tzinfo=UTC
+    )  # 11:11:27 Brussels (UTC+2)
 
 
 def test_list_recordings_parses_fallback_field_names(provider):

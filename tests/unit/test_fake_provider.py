@@ -65,3 +65,18 @@ def test_storage_status_default():
     status = provider.storage_status()
     assert status.mounted is True
     assert status.formatted is True
+
+
+def test_list_error_raises_once_then_clears():
+    provider = FakeProvider(list_error=RuntimeError("boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        provider.list_recordings(
+            from_utc=datetime(2026, 1, 1, tzinfo=UTC), to_utc=datetime(2026, 1, 2, tzinfo=UTC)
+        )
+    # cleared: a second call succeeds
+    assert (
+        provider.list_recordings(
+            from_utc=datetime(2026, 1, 1, tzinfo=UTC), to_utc=datetime(2026, 1, 2, tzinfo=UTC)
+        )
+        == []
+    )

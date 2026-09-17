@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -172,13 +172,15 @@ class ReolinkCliProvider(CameraProvider):
         end_raw = _first(item, _END_KEYS)
         end_utc = None
         if isinstance(end_raw, str):
-            end_utc = (
-                datetime.strptime(end_raw, _LOCAL_ISO).replace(tzinfo=self.tz).astimezone(tz=None)
-            )
+            # Explicit UTC, not astimezone(tz=None): that converts to the
+            # *process's* system timezone, not UTC, and would silently
+            # produce wrong values anywhere this doesn't happen to run with
+            # TZ=UTC (see plan: Time handling, "store UTC only").
+            end_utc = datetime.strptime(end_raw, _LOCAL_ISO).replace(tzinfo=self.tz).astimezone(UTC)
         size = _first(item, _SIZE_KEYS)
         return RemoteRecording(
             remote_name=name,
-            start_utc=start_local.astimezone(tz=None),
+            start_utc=start_local.astimezone(UTC),
             end_utc=end_utc,
             duration_s=None,
             rec_type=_first_str(item, _TYPE_KEYS),

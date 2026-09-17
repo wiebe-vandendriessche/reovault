@@ -27,6 +27,7 @@ dev = [
     "hypothesis>=6.112",
     "ruff>=0.6",
     "mypy>=1.11",
+    "httpx2>=0.28",  # required by starlette.testclient (FastAPI's TestClient)
 ]
 
 [build-system]
@@ -63,3 +64,8 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = ["reovault.crypto.*", "reovault.providers.*"]
 strict = true
+
+[[tool.mypy.overrides]]
+# No type stubs / py.typed marker shipped.
+module = ["apscheduler.*"]
+ignore_missing_imports = true

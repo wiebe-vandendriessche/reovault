@@ -1,3 +1,4 @@
+import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -11,23 +12,42 @@ def _completed(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
 
 
-def test_is_listening_true_when_marker_present():
+def _status_json(listening: bool) -> str:
+    """Real shape, verified 2026-09-17 against the live binary (JSON is the
+    default output; `[LISTENING]`/`[DOWN]` bracketed text is `--output text`
+    specifically, not what a bare `gateway status` call returns)."""
+    return json.dumps(
+        {
+            "ok": True,
+            "command": "gateway.status",
+            "protocol": None,
+            "data": {"addr": "127.0.0.1:9000", "listening": listening},
+            "error": None,
+        }
+    )
+
+
+def test_is_listening_true_when_listening():
     gw = GatewaySupervisor(binary="reolink-cli")
-    with patch("subprocess.run", return_value=_completed("[LISTENING] 127.0.0.1:9000\n")):
+    with patch("subprocess.run", return_value=_completed(_status_json(True))):
         assert gw.is_listening() is True
 
 
 def test_is_listening_false_when_down():
     gw = GatewaySupervisor(binary="reolink-cli")
-    with patch(
-        "subprocess.run", return_value=_completed("[DOWN] run: reolink-cli gateway start\n")
-    ):
+    with patch("subprocess.run", return_value=_completed(_status_json(False))):
         assert gw.is_listening() is False
 
 
 def test_is_listening_false_on_missing_binary():
     gw = GatewaySupervisor(binary="reolink-cli")
     with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert gw.is_listening() is False
+
+
+def test_is_listening_false_on_non_json_output():
+    gw = GatewaySupervisor(binary="reolink-cli")
+    with patch("subprocess.run", return_value=_completed("not json")):
         assert gw.is_listening() is False
 
 
