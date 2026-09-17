@@ -27,7 +27,7 @@ Do not assume protocol behavior, command availability, recording formats, VOD be
 * Reolink support: https://support.reolink.com/
 * Reolink downloads / firmware: https://reolink.com/download-center/
 * Reolink Camera API documentation and manuals available through Reolink Support
-* Reolink Video Doorbell D350W product/specification documentation
+* Reolink Video Doorbell D340W product/specification documentation (corrected 2026-09-17: confirmed via `reolink-cli device info` against the real doorbell, which reports `model: "D340W"`; "D350W" was never a real Reolink model)
 
 ### Relevant open-source references
 

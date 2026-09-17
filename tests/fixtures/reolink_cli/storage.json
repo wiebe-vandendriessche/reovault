@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "command": "storage",
+  "protocol": "v20",
+  "data": {
+    "items": [
+      {
+        "formatted": true,
+        "mounted": true,
+        "number": 0,
+        "remainGB": 191.3505859375,
+        "totalGB": 238.7177734375
+      }
+    ]
+  },
+  "error": null
+}

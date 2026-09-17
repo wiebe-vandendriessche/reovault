@@ -54,14 +54,17 @@ _EXIT_CODE_ERRORS: dict[int, type[Exception]] = {
     5: ProtocolError,
 }
 
-# `vod search` field names are unverified (see module docstring). Try the
-# documented-sounding candidates in order; first present key wins.
-_NAME_KEYS = ("fileName", "name", "remoteName")
+# `vod search` field names: verified 2026-09-17 against a real D340W doorbell
+# (v3.0.0.6460, protocol v20). Real keys are name/startTime/endTime/fileSize/
+# recordType/streamType; the other candidates are kept as fallbacks in case a
+# different protocol version or model uses different names (never observed,
+# but cheaper to keep tolerant than to assume one device generalizes to all).
+_NAME_KEYS = ("name", "fileName", "remoteName")
 _START_KEYS = ("startTime", "start", "beginTime")
 _END_KEYS = ("endTime", "end")
-_SIZE_KEYS = ("size", "fileSize")
-_TYPE_KEYS = ("type", "recType")
-_STREAM_KEYS = ("stream", "streamType")
+_SIZE_KEYS = ("fileSize", "size")
+_TYPE_KEYS = ("recordType", "type", "recType")
+_STREAM_KEYS = ("streamType", "stream")
 
 
 def _first(d: dict[str, object], keys: tuple[str, ...]) -> object | None:
@@ -129,11 +132,18 @@ class ReolinkCliProvider(CameraProvider):
     def storage_status(self) -> StorageStatus:
         envelope = self._run(["storage", "status"], timeout=self.search_timeout_secs)
         data = envelope.get("data", {})
+        # Verified 2026-09-17 against a real D340W: fields are nested one
+        # level deeper than the plan originally assumed, under `data.items[0]`
+        # (an array, presumably to support NVR/multi-disk devices), not flat
+        # under `data`. Fall back to flat `data` if `items` is absent, in
+        # case a different model/protocol version really does return it flat.
+        items = data.get("items")
+        disk = items[0] if isinstance(items, list) and items else data
         return StorageStatus(
-            total_gb=data.get("totalGB"),
-            remain_gb=data.get("remainGB"),
-            formatted=data.get("formatted"),
-            mounted=data.get("mounted"),
+            total_gb=disk.get("totalGB"),
+            remain_gb=disk.get("remainGB"),
+            formatted=disk.get("formatted"),
+            mounted=disk.get("mounted"),
         )
 
     # -- internals -------------------------------------------------------

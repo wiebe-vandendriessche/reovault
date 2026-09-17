@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "command": "info",
+  "protocol": "v20",
+  "data": {
+    "build_day": "build 2605271708",
+    "cfg_version": "v3.0.0.0",
+    "detail": "S36E1W7T4C0E010A",
+    "firmware": "v3.0.0.6460_2605271708",
+    "hardware_version": "DB_566128M5MP_W",
+    "item_no": "D340W",
+    "model": "D340W",
+    "name": "Front door",
+    "serial": "REDACTED"
+  },
+  "error": null
+}
