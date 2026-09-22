@@ -10,7 +10,7 @@
 
 ARG REOLINK_CLI_VERSION=0.19.0
 
-FROM python:3.12-slim AS reolink-cli-download
+FROM python:3.14-slim AS reolink-cli-download
 ARG REOLINK_CLI_VERSION
 ARG TARGETARCH
 WORKDIR /dl
@@ -34,7 +34,7 @@ RUN set -eu; \
     chmod +x /out/reolink-cli /out/reolink-gateway; \
     /out/reolink-cli --version | grep -qF "$REOLINK_CLI_VERSION"
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 ARG REOLINK_CLI_VERSION
 ENV REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \
     PYTHONUNBUFFERED=1 \
