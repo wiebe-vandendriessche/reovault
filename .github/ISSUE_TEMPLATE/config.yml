@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & discussion
+    url: https://github.com/wiebe-vandendriessche/reovault/discussions
+    about: General questions, ideas, or help with your setup, not a bug or a concrete feature request.
+  - name: Report a vulnerability
+    url: https://github.com/wiebe-vandendriessche/reovault/security/advisories/new
+    about: Please don't open a public issue for security vulnerabilities.

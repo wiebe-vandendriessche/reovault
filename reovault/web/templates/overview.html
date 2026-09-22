@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}ReoVault Health{% endblock %}
+{% block content %}
+<h1 class="visually-hidden">Health</h1>
+<div id="health-status" class="stack section-gap"
+     hx-get="{{ durl('/fragments/health') }}" hx-trigger="load, every 15s" hx-swap="innerHTML">
+  <div class="skeleton skeleton-row"></div>
+  <div class="skeleton skeleton-row"></div>
+</div>
+
+<div class="grid-cards grid-2">
+  <div id="growth" hx-get="{{ durl('/fragments/growth') }}" hx-trigger="load, every 60s" hx-swap="innerHTML">
+    <div class="card stack">
+      <div class="skeleton skeleton-row"></div>
+      <div class="skeleton skeleton-growth"></div>
+    </div>
+  </div>
+
+  <a class="card row-between" href="{{ durl('/recordings?date_=' ~ today) }}">
+    <span>
+      <span class="card-label">{% if today_count %}Today{% else %}Latest footage{% endif %}</span><br>
+      <span class="card-value inline-facts"><span>{{ today_count }} clips</span> <span class="muted">{{ today_bytes | human_bytes }}</span></span>
+    </span>
+    {{ icon('arrow-right', label='Go to footage') }}
+  </a>
+</div>
+{% endblock %}

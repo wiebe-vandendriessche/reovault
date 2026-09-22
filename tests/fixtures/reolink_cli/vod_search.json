@@ -1,0 +1,139 @@
+{
+  "ok": true,
+  "command": "vod",
+  "protocol": "v20",
+  "data": {
+    "items": [
+      {
+        "channel": 0,
+        "name": "0120260417095327",
+        "startTime": "2026-04-17T09:53:27",
+        "endTime": "2026-04-17T09:58:26",
+        "fileSize": 160336581,
+        "recordType": "md,people",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417104448",
+        "startTime": "2026-04-17T10:44:48",
+        "endTime": "2026-04-17T10:46:34",
+        "fileSize": 56650874,
+        "recordType": "md",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417175610",
+        "startTime": "2026-04-17T17:56:10",
+        "endTime": "2026-04-17T17:59:21",
+        "fileSize": 102076778,
+        "recordType": "md,people,visitor",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417164548",
+        "startTime": "2026-04-17T16:45:48",
+        "endTime": "2026-04-17T16:46:19",
+        "fileSize": 17146318,
+        "recordType": "vehicle",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417171222",
+        "startTime": "2026-04-17T17:12:22",
+        "endTime": "2026-04-17T17:13:19",
+        "fileSize": 31363109,
+        "recordType": "md,people,vehicle",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417170617",
+        "startTime": "2026-04-17T17:06:17",
+        "endTime": "2026-04-17T17:07:59",
+        "fileSize": 55310738,
+        "recordType": "md,vehicle",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417195532",
+        "startTime": "2026-04-17T19:55:32",
+        "endTime": "2026-04-17T19:56:12",
+        "fileSize": 21975617,
+        "recordType": "people",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417190909",
+        "startTime": "2026-04-17T19:09:09",
+        "endTime": "2026-04-17T19:09:45",
+        "fileSize": 20361890,
+        "recordType": "md,vehicle,dog_cat",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417045848",
+        "startTime": "2026-04-17T04:58:48",
+        "endTime": "2026-04-17T04:59:25",
+        "fileSize": 21195396,
+        "recordType": "md,people,dog_cat",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417075508",
+        "startTime": "2026-04-17T07:55:08",
+        "endTime": "2026-04-17T07:55:42",
+        "fileSize": 19144399,
+        "recordType": "md,people,vehicle,dog_cat",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417110927",
+        "startTime": "2026-04-17T11:09:27",
+        "endTime": "2026-04-17T11:10:20",
+        "fileSize": 28786393,
+        "recordType": "people,vehicle",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417120757",
+        "startTime": "2026-04-17T12:07:57",
+        "endTime": "2026-04-17T12:08:26",
+        "fileSize": 16085131,
+        "recordType": "dog_cat",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417141722",
+        "startTime": "2026-04-17T14:17:22",
+        "endTime": "2026-04-17T14:22:22",
+        "fileSize": 159517863,
+        "recordType": "md,people,vehicle,visitor",
+        "streamType": "mainStream"
+      },
+      {
+        "channel": 0,
+        "name": "0120260417180920",
+        "startTime": "2026-04-17T18:09:20",
+        "endTime": "2026-04-17T18:09:30",
+        "fileSize": 6031141,
+        "recordType": "none",
+        "streamType": "mainStream"
+      }
+    ],
+    "scanned": 14,
+    "total": 14,
+    "truncated": false
+  },
+  "error": null
+}

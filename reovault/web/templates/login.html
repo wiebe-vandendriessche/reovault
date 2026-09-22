@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ReoVault Sign in</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#000814" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="/static/icons/icon.svg?v={{ asset_version }}" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+</head>
+<body>
+  <main class="auth-shell">
+    <div class="stack">
+      <h1 class="visually-hidden">ReoVault</h1>
+      <p class="auth-logo">
+        <img class="only-dark" src="/static/icons/wordmark-dark.png?v={{ asset_version }}" alt="ReoVault">
+        <img class="only-light" src="/static/icons/wordmark-light.png?v={{ asset_version }}" alt="" aria-hidden="true">
+      </p>
+      {% if error %}
+      <p class="field-error" role="alert">{{ error }}</p>
+      {% endif %}
+      <form method="post" action="/login" class="stack card">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="username" autofocus required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn primary full-width" type="submit">{{ icon('key-round') }} Sign in</button>
+      </form>
+    </div>
+  </main>
+  <script src="/static/app.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

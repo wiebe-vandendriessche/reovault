@@ -1,0 +1,10 @@
+# Accepted-risk / no-fix-available CVE exceptions for the release vulnerability
+# gate (.github/workflows/release.yml, Grype scan). Empty by default: add an
+# entry only when a CVE has no available fix and has been reviewed as
+# acceptable, e.g.:
+#
+# ignore:
+#   - vulnerability: CVE-2024-NNNNN
+#     reason: "No fix available upstream as of <date>; not reachable in ReoVault's usage. Re-check on next release."
+
+ignore: []

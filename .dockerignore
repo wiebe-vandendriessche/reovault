@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+data/
+docs/
+dev-notes/
+img/
+tests/
+*.md
+!README.md
+reovault.toml
+.ruff_cache
+.mypy_cache
+.pytest_cache
+__pycache__
+*.pyc

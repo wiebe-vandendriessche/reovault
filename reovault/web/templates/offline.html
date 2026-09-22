@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Offline - ReoVault</title>
+  <meta name="theme-color" content="#000814" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="/static/icons/icon.svg?v={{ asset_version }}" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+</head>
+<body>
+  <main class="offline-shell">
+    <p class="verdict">ReoVault is unreachable</p>
+    <p class="muted offline-note">
+      It runs on your own server, so you need to be on the same network (or your VPN) to reach it.
+      This page will keep working offline; the dashboard needs a connection.
+    </p>
+  </main>
+  <script src="/static/app.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

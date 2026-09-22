@@ -1,0 +1,44 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, config, or commands that trigger it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ReoVault version
+      description: Output of `reovault version` (or the image tag if using Docker).
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker / Docker Compose
+        - Bare metal (uv/pip)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Structured JSON logs from `reovault daemon`, if available. Redact hostnames/IPs/credentials before pasting.
+      render: shell
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else

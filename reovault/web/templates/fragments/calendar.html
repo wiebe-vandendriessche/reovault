@@ -1,0 +1,26 @@
+<div id="calendar">
+  <div class="row-between">
+    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ prev_month) }}" hx-target="#calendar" hx-swap="outerHTML" aria-label="Previous month">{{ icon('chevron-left') }}</a>
+    <strong>{{ month_label }}</strong>
+    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ next_month) }}" hx-target="#calendar" hx-swap="outerHTML" aria-label="Next month">{{ icon('chevron-right') }}</a>
+  </div>
+  <div class="calendar">
+    {% for week in weeks %}
+      {% for day in week %}
+        {% if day %}
+          <a class="calendar-day" data-density="{{ day.density }}"
+             href="{{ durl('/recordings?date_=' ~ day.iso) }}"
+             hx-get="{{ durl('/fragments/day?date_=' ~ day.iso) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ day.iso) }}"
+             {% if day.is_today %}aria-current="date"{% endif %}
+             {% if day.in_future %}aria-disabled="true" tabindex="-1"{% endif %}
+             aria-label="{{ day.day }}, {{ day.count }} recordings">
+            {{ day.day }}
+            {% if day.problems > 0 %}<span class="problem-dot"></span>{% endif %}
+          </a>
+        {% else %}
+          <span class="calendar-day calendar-day-spacer" aria-hidden="true"></span>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+</div>

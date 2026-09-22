@@ -1,0 +1,7 @@
+<article class="rec-row" id="rec-{{ rec.id }}"
+         hx-get="/fragments/recordings/{{ rec.id }}/player" hx-target="this" hx-swap="outerHTML" hx-trigger="click">
+  <span class="dot {{ 'ok' if rec.state == 'archived' else ('bad' if rec.state in ('failed', 'quarantined') else 'idle') }}"></span>
+  <span class="rec-time tabular" title="{{ rec.local_datetime }}">{{ rec.local_time }}</span>
+  {% for t in rec.type_list[:2] %}<span class="pill">{{ t }}</span>{% endfor %}
+  <span class="rec-size">{{ rec.plaintext_size | human_bytes }}</span>
+</article>

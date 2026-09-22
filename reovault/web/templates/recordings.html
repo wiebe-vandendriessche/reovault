@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}ReoVault Footage{% endblock %}
+{% block content %}
+<h1 class="visually-hidden">Footage</h1>
+<details class="only-narrow section-gap-sm">
+  <summary class="row">{{ date }} {{ icon('chevron-right', cls='chevron') }}</summary>
+  <div id="calendar-mobile" hx-get="{{ durl('/fragments/calendar?month=' ~ month) }}" hx-trigger="load" hx-swap="innerHTML">
+    <div class="skeleton skeleton-calendar-mobile"></div>
+  </div>
+</details>
+
+<div class="recordings-layout">
+  <div class="only-wide" id="calendar-desktop" hx-get="{{ durl('/fragments/calendar?month=' ~ month) }}" hx-trigger="load" hx-swap="innerHTML">
+    <div class="skeleton skeleton-calendar-desktop"></div>
+  </div>
+
+  <div id="day" hx-get="{{ durl('/fragments/day?date_=' ~ date ~ '&types=' ~ types) }}" hx-trigger="load" hx-swap="innerHTML">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
+</div>
+{% endblock %}

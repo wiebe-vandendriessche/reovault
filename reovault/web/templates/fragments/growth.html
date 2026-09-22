@@ -1,0 +1,12 @@
+<div class="card stack">
+  <span class="card-label">Vault</span>
+  <span class="card-value inline-facts"><span>{{ archived_count }} clips</span><span>{{ archived_bytes | human_bytes }}</span></span>
+  <svg class="bars-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    {% for b in bars %}<rect class="bar" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}" rx="1"/>{% endfor %}
+  </svg>
+  <p class="meta">
+    {{ (avg_per_day) | human_bytes }}/day average.
+    About {{ (yearly_projection) | human_bytes }} a year.
+    {% if vault_free_str %}The vault disk has {{ vault_free_str }}{% if days_headroom %}, roughly {{ days_headroom }} days at this rate{% endif %}.{% endif %}
+  </p>
+</div>

@@ -1,0 +1,75 @@
+# Copy to reovault.toml and adjust. Never commit the real file if it ever
+# grows a secret, as of Phase 0 it shouldn't (see CLAUDE.md: never store
+# secrets in source control). The camera password lives in reolink-cli's own
+# encrypted aliases.toml, never here.
+#
+# Devices are seeded from here on every startup (never deleted or disabled
+# by a reseed, see cli.py's `_seed_devices_from_toml`), but the dashboard's
+# Devices tab can add, rename, enable/disable and schedule cameras too --
+# TOML is a convenience for a scripted deploy, not the only way in. Two
+# entries below to show the fleet shape; a single-camera setup just deletes
+# the second one.
+
+[[devices]]
+alias = "front-door"     # must match `reolink-cli device add <alias> ...`
+channel = 0
+timezone = "America/New_York"
+name = "Front door"      # optional: shown in the dashboard instead of the
+                          # alias until the camera's own `device_info` name
+                          # backfills it anyway; set it here to skip that wait
+
+[[devices]]
+alias = "back-yard"
+channel = 0
+timezone = "America/New_York"
+name = "Back yard"
+
+[reolink_cli]
+binary = "reolink-cli"
+pinned_version = "0.19.0"
+gateway_addr = "127.0.0.1:9000"
+search_timeout_secs = 30
+download_timeout_secs = 300
+# registry_dir = "/home/reovault/.config/reolink-cli"  # default: $HOME/.config/reolink-cli.
+                                 # Where reolink-cli's own aliases.toml/credentials.key live;
+                                 # `doctor` checks it's writable. Must match reolink-cli's
+                                 # actual default (i.e. the container's $HOME), never
+                                 # `--config-file`'d, or the Devices tab and the archiver
+                                 # would read two different registries.
+
+[storage]
+config_dir = "./data/config"
+vault_dir = "./data/vault"
+staging_dir = "./data/staging"
+db_path = "./data/config/reovault.db"
+master_key_path = "./data/config/master.key"
+
+# Seeds the dashboard's per-camera schedule on first boot only (see
+# reovault/scheduler.py's `load_effective_schedule`): once a camera's
+# schedule has been saved from the Schedule tab, that camera's own saved
+# schedule wins from then on, and this table is never consulted again for
+# it. Setting any REOVAULT_SCHEDULE__* env var instead pins this schedule
+# for every camera and takes the dashboard's Schedule tab out of the loop
+# entirely (see `is_schedule_env_pinned`).
+[schedule]
+archive_cron = "0 5 * * *"
+archive_enabled = true
+archive_overlap_hours = 48
+backfill_cron = "0 4 * * 0"
+backfill_enabled = true
+backfill_days = 30
+reconcile_interval_hours = 6
+reconcile_enabled = true
+integrity_scan_sample_pct = 5.0
+integrity_scan_enabled = true
+# timezone = "Europe/Brussels"  # uncomment to force every camera onto one
+                                 # zone instead of each camera's own
+
+[web]
+host = "127.0.0.1"
+port = 8080
+# email = "you@example.com"     # optional: autofill hint for a password manager
+cookie_secure = true
+cookie_samesite = "lax"
+session_max_age_days = 30
+page_size = 100

@@ -1,0 +1,70 @@
+<div id="devices-page">
+
+{% if not registry_available %}
+<div class="banner warn section-gap" role="status">
+  {{ icon('triangle-alert') }}
+  <span>Camera discovery and adding a camera aren't available on this server.</span>
+</div>
+{% endif %}
+
+{% if add_error %}<p class="field-error section-gap">{{ add_error }}</p>{% endif %}
+
+{% if devices %}
+<div class="grid-cards section-gap-lg">
+  {% for d in devices %}
+  <div class="card stack">
+    <div class="row-between">
+      <span class="row">
+        <span class="dot {{ 'idle' if not d.enabled else ('bad' if d.gateway_down else 'ok') }}"></span>
+        <span class="card-value">{{ d.name or 'Unnamed camera' }}</span>
+      </span>
+      <label class="switch" title="{{ 'Disable' if d.enabled else 'Enable' }} archiving for this camera">
+        <input
+          type="checkbox"
+          {% if d.enabled %}checked{% endif %}
+          aria-label="Archiving enabled for {{ d.name or 'Unnamed camera' }}"
+          hx-post="/devices/{{ d.id }}/toggle"
+          hx-trigger="change"
+          hx-target="#devices-page"
+          hx-swap="outerHTML"
+        >
+        <span class="switch-track"></span>
+      </label>
+    </div>
+    <p class="meta">
+      <span class="inline-facts"><span>{{ d.model or 'Unknown model' }}</span><span>{{ d.host or 'no host on file' }}</span></span>
+    </p>
+    <p class="meta">{{ d.timezone }}</p>
+    <p class="tabular inline-facts"><span>{{ d.archived_count }} clips archived</span><span>{{ d.archived_bytes | human_bytes }}</span></p>
+
+    <div class="panel sd-panel">
+      {% with sd = d.sd, sample = d.sample, sd_uid = d.id %}
+        {% include "fragments/sd_card.html" %}
+      {% endwith %}
+    </div>
+
+    {% if d.last_run %}
+    <p class="meta">Last run: {{ d.last_run.outcome or 'unknown' }}, {{ (d.last_run.finished_at or d.last_run.started_at) | local_dt(d.timezone) }}</p>
+    {% else %}
+    <p class="meta">No run yet.</p>
+    {% endif %}
+    {% if d.gateway_down %}<p class="pill bad">{{ icon('wifi-off') }} Gateway unreachable</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state section-gap-lg">No cameras yet. Find one on your network below.</div>
+{% endif %}
+
+{% if registry_available %}
+<div class="card stack">
+  <span class="card-label">Find cameras on my network</span>
+  <p class="field-hint">Where the password goes: typed once here, sent straight to reolink-cli's own encrypted camera registry. ReoVault never stores it, logs it, or shows it again.</p>
+  <button class="btn primary" type="button" hx-post="/devices/discover" hx-target="#discover-results" hx-swap="innerHTML" hx-indicator="#discover-spinner">
+    {{ icon('radar') }} Find cameras
+  </button>
+  <span id="discover-spinner" class="htmx-indicator row">{{ icon('loader-circle', cls='spin') }} Searching</span>
+  <div id="discover-results"></div>
+</div>
+{% endif %}
+</div>

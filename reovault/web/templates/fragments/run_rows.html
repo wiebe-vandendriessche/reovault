@@ -1,0 +1,15 @@
+{% for run in runs %}
+<a class="rec-row" href="/runs/{{ run.id }}">
+  <span class="dot {{ 'ok' if run.outcome == 'success' else ('warn' if run.outcome == 'partial' else 'bad') }}"></span>
+  <span class="tabular">{{ run.started_at | local_dt(tz) }}</span>
+  <span class="pill {{ 'ok' if run.outcome == 'success' else ('warn' if run.outcome == 'partial' else 'bad') }}">
+    {{ icon('circle-check') if run.outcome == 'success' else (icon('triangle-alert') if run.outcome == 'partial' else icon('circle-alert')) }}
+    {{ run.outcome or 'running' }}
+  </span>
+  <span class="meta inline-facts"><span>{{ run.downloaded }} ok</span><span>{{ run.skipped_dup }} dup</span><span>{{ run.failed }} failed</span></span>
+  <span class="rec-size">{{ run.bytes_archived | human_bytes }}</span>
+</a>
+{% endfor %}
+{% if has_more and runs %}
+<button class="btn full-width" type="button" hx-get="{{ durl('/fragments/runs?before_id=' ~ runs[-1].id) }}" hx-target="this" hx-swap="outerHTML">Load more</button>
+{% endif %}

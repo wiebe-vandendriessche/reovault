@@ -1,0 +1,58 @@
+{% if discover_error %}
+<p class="field-error">{{ discover_error }}</p>
+{% elif not discover_results %}
+<div class="empty-state">
+  No cameras answered. A sleeping battery camera won't respond until it wakes (the app, its button,
+  or motion); a camera paired to a Home Hub or NVR has no address of its own and needs to be added
+  through its parent instead.
+</div>
+{% else %}
+<div class="stack discover-list">
+  {% for dev in discover_results %}
+  <div class="panel discover-item stack">
+    <div class="row-between">
+      <span>
+        <strong>{{ dev.name or dev.host }}</strong>
+        <span class="meta inline-facts"><span>{{ dev.model or 'Unknown model' }}</span><span>{{ dev.host }}</span></span>
+      </span>
+      {% if dev.already_registered %}
+      <span class="pill ok">{{ icon('circle-check') }} Already added</span>
+      {% endif %}
+    </div>
+
+    {% if not dev.already_registered %}
+    <details>
+      <summary class="btn">{{ icon('plus') }} Add this camera</summary>
+      <form class="stack form-gap" hx-post="/devices" hx-target="#devices-page" hx-swap="outerHTML">
+        <div class="field">
+          <label for="name-{{ loop.index }}">Name</label>
+          <input id="name-{{ loop.index }}" name="name" value="{{ dev.name or '' }}" placeholder="e.g. Front door">
+          <span class="field-hint">Shown throughout the dashboard. Defaults to this camera's own configured name.</span>
+        </div>
+        <div class="field">
+          <label for="alias-{{ loop.index }}">Alias</label>
+          <input id="alias-{{ loop.index }}" name="alias" required>
+          <span class="field-hint">A short internal identifier for reolink-cli, e.g. "front-door". Letters, digits and hyphens only.</span>
+        </div>
+        <input type="hidden" name="host" value="{{ dev.host }}">
+        <div class="field">
+          <label for="user-{{ loop.index }}">Username</label>
+          <input id="user-{{ loop.index }}" name="user" value="admin" required>
+        </div>
+        <div class="field">
+          <label for="password-{{ loop.index }}">Password</label>
+          <input id="password-{{ loop.index }}" name="password" type="password" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label for="timezone-{{ loop.index }}">Timezone</label>
+          <input id="timezone-{{ loop.index }}" name="timezone" placeholder="e.g. Europe/Brussels" required>
+          <span class="field-hint">Required: a wrong timezone silently shifts every timestamp for this camera by hours.</span>
+        </div>
+        <button class="btn primary" type="submit">Add camera</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

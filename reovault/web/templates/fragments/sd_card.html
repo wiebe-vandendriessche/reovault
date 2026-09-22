@@ -1,0 +1,34 @@
+{# Shared SD-card content: label, value, stacked bar, legend, mounted/
+   formatted status. Included by both fragments/health.html and
+   fragments/devices_body.html so the two never diverge -- the wrapper
+   (.card on Health, .panel.sd-panel on Devices) is the caller's own, since
+   a .card must never contain a .card.
+   Params: `sd` (the _sd_bar_context() dict, or None), `sample` (the raw
+   StorageSampleRow, for mounted/formatted), `sd_uid` (unique per include,
+   for the SVG clipPath id). #}
+<span class="card-label">SD card</span>
+{% if sd %}
+  <span class="card-value">{{ "%.1f"|format(sd.used_gb) }} GB of {{ "%.1f"|format(sd.total_gb) }} GB used</span>
+  <svg class="meter-svg is-stacked" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <clipPath id="sd-clip-{{ sd_uid }}"><rect width="100" height="8" rx="4"/></clipPath>
+    </defs>
+    <rect class="meter-track" width="100" height="8" rx="4"/>
+    <g clip-path="url(#sd-clip-{{ sd_uid }})">
+      <rect class="is-archived" x="0" width="{{ sd.archived_pct }}" height="8"/>
+      <rect class="is-other" x="{{ sd.archived_pct }}" width="{{ sd.other_pct }}" height="8"/>
+    </g>
+  </svg>
+  <p class="meta">{{ "%.1f"|format(sd.free_gb) }} GB free</p>
+  <p class="meter-legend">
+    <span><span class="meter-legend-swatch is-archived"></span>{{ "%.1f"|format(sd.archived_gb) }} GB archived</span>
+    {% if sd.other_gb > 0.1 %}
+    <span><span class="meter-legend-swatch is-other"></span>{{ "%.1f"|format(sd.other_gb) }} GB used</span>
+    {% endif %}
+  </p>
+  <p class="meta inline-facts">
+    <span>{{ "Mounted" if sample.mounted else "Not mounted" }}</span><span>{{ "Formatted" if sample.formatted else "Not formatted" }}</span>
+  </p>
+{% else %}
+  <p class="muted">No storage sample yet.</p>
+{% endif %}

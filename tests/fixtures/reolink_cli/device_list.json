@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "command": "device",
+  "protocol": null,
+  "data": [
+    {
+      "camera": "doorbell",
+      "host": "192.0.2.10:9000",
+      "uid": null,
+      "user": "admin",
+      "hasPassword": true,
+      "channel": null,
+      "description": null,
+      "tags": [],
+      "disabled": false,
+      "protocol": null
+    }
+  ],
+  "error": null
+}

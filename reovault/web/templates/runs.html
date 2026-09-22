@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}ReoVault Runs{% endblock %}
+{% block content %}
+<h1 class="verdict section-gap">Runs</h1>
+
+<h2 class="card-label section-gap-sm">Scheduled runs</h2>
+<div class="card stack section-gap-lg">
+  <ul class="stack text-sm">
+    {% for s in scheduled_runs %}
+    <li class="muted">{{ s.label }}:
+      {% if s.next_run %}{{ s.next_run | local_dt(tz) }}{% else %}off{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<h2 class="card-label section-gap-sm">Past runs</h2>
+{% if not runs %}
+<div class="empty-state">No runs yet.</div>
+{% else %}
+<div class="card stack" id="run-list">
+  {% include "fragments/run_rows.html" %}
+</div>
+{% endif %}
+{% endblock %}

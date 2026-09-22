@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}ReoVault Run {{ run.id }}{% endblock %}
+{% block content %}
+<h1 class="verdict section-gap">Run {{ run.id }}</h1>
+<div class="card stack">
+  <p class="row inline-facts">
+    <span class="pill {{ 'ok' if run.outcome == 'success' else ('warn' if run.outcome == 'partial' else 'bad') }}">
+      {{ icon('circle-check') if run.outcome == 'success' else (icon('triangle-alert') if run.outcome == 'partial' else icon('circle-alert')) }}
+      {{ run.outcome or 'running' }}
+    </span>
+    <span>{{ run.trigger }}</span>
+  </p>
+  <p class="tabular">Started {{ run.started_at | local_dt(tz) }}{% if run.finished_at %}, finished {{ run.finished_at | local_dt(tz) }}{% endif %}</p>
+  <p>{{ run.discovered }} discovered, {{ run.downloaded }} downloaded, {{ run.skipped_dup }} duplicate, {{ run.failed }} failed.</p>
+  <p>{{ run.bytes_archived | human_bytes }} archived.</p>
+  {% if run.error %}<p class="field-error">{{ run.error | redact }}</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+<div class="card stack" hx-get="{{ durl('/fragments/activity') }}" hx-trigger="every {{ poll_secs }}s" hx-swap="innerHTML" hx-target="this">
+  <span class="card-label">Run things manually</span>
+
+  {% if scheduler_down %}
+    <p class="field-error">The scheduler isn't running. Actions are unavailable.</p>
+  {% elif running %}
+    <p>Run in progress ({{ running.trigger }}), started {{ running.started_at | local_dt(tz) }}.</p>
+    <div class="row">
+      <button class="btn primary" type="button" disabled aria-disabled="true">{{ icon('loader-circle', cls='spin') }} Running</button>
+      <button class="btn" type="button" title="Stop this run" hx-post="{{ durl('/actions/stop') }}" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="this">Stop</button>
+    </div>
+    <p class="field-hint">Stopping finishes whatever clip is mid-download, then leaves the rest for next time. Nothing already archived is affected.</p>
+  {% else %}
+    <div class="stack">
+      <div>
+        <button class="btn primary" type="button" title="Check for new clips" hx-post="{{ durl('/actions/run') }}" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="this">
+          {{ icon('refresh-cw') }} Check for new clips
+        </button>
+        <p class="field-hint">Looks at the last 48 hours on the camera and downloads anything the vault is missing.</p>
+      </div>
+
+      <div>
+        <details class="panel">
+          <summary class="row">{{ icon('calendar-range') }} Fetch an older date range {{ icon('chevron-right', cls='chevron') }}</summary>
+          <p class="field-hint">Downloads clips from days further back that never made it into the vault, up to 90 days. Clips older than the camera's own SD card retention may already be gone.</p>
+          <form class="stack form-gap" hx-post="{{ durl('/actions/backfill') }}" hx-target="closest .card" hx-swap="outerHTML" hx-confirm="Fetch this range? This can take a while.">
+            <div class="field">
+              <label for="backfill-from">From</label>
+              <input id="backfill-from" type="date" name="from" required>
+            </div>
+            <div class="field">
+              <label for="backfill-to">To</label>
+              <input id="backfill-to" type="date" name="to" required>
+            </div>
+            <button class="btn" type="submit">Start fetching</button>
+          </form>
+        </details>
+      </div>
+
+      <div>
+        <button class="btn" type="button" title="Re-check the vault" hx-post="{{ durl('/actions/reconcile') }}" hx-target="closest .card" hx-swap="outerHTML">
+          {{ icon('shield-check') }} Re-check the vault
+        </button>
+        <p class="field-hint">Compares the database with the files on disk and fixes mismatches. Never contacts the camera, never deletes footage.</p>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if backfill_error %}<p class="field-error">{{ backfill_error }}</p>{% endif %}
+
+  {% if events %}
+  <details>
+    <summary class="row meta">Recent activity {{ icon('chevron-right', cls='chevron') }}</summary>
+    <ul class="stack text-sm">
+      {% for e in events %}<li class="muted inline-facts"><span>{{ e.kind }}</span><span>{{ e.job_id }}</span>{% if e.detail %}<span>{{ e.detail | redact }}</span>{% endif %}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>

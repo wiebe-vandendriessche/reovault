@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}ReoVault{% endblock %}
+{% block content %}
+<h1 class="visually-hidden">No camera selected</h1>
+{% if reason == "none" %}
+<div class="empty-state section-gap-lg">
+  <p>No cameras yet. Every page needs at least one to show anything.</p>
+  <a class="btn primary" href="/devices">{{ icon('cctv') }} Go to Devices</a>
+</div>
+{% else %}
+<div class="empty-state section-gap-lg">
+  {% if reason == "unknown" %}
+  <p>That camera isn't available anymore. Pick another.</p>
+  {% else %}
+  <p>More than one camera is set up. Pick one to continue.</p>
+  {% endif %}
+</div>
+<div class="grid-cards">
+  {% for d in devices %}
+  <a class="card row-between" href="{{ device_links[d.id] if device_links else '/?device=' ~ d.id }}">
+    <span class="card-value">{{ d.name or 'Unnamed camera' }}</span>
+    {{ icon('arrow-right', label='Go to ' + (d.name or 'Unnamed camera')) }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

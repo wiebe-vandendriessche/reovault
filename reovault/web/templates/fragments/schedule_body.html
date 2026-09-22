@@ -1,0 +1,113 @@
+<div id="schedule-page">
+
+{% if env_pinned %}
+<div class="banner warn section-gap" role="status">
+  {{ icon('key-round') }}
+  <span>The schedule is set by environment variables on the server and can't be edited here.</span>
+</div>
+{% else %}
+<p class="muted section-gap">
+  Times below are in
+  {% if schedule.timezone %}the fixed timezone <strong>{{ schedule.timezone }}</strong> for every camera.
+  {% else %}each camera's own timezone.{% endif %}
+</p>
+{% endif %}
+
+{% if error %}<p class="field-error section-gap">{{ error }}</p>{% endif %}
+{% if saved %}<p class="pill ok section-gap">{{ icon('circle-check') }} Saved.</p>{% endif %}
+
+<div id="activity" class="section-gap" hx-get="{{ durl('/fragments/activity') }}" hx-trigger="load" hx-swap="innerHTML">
+  <div class="card skeleton skeleton-activity"></div>
+</div>
+
+<form class="stack" hx-post="{{ durl('/schedule') }}" hx-target="#schedule-page" hx-swap="outerHTML">
+<div class="grid-cards">
+
+  <div class="card stack">
+    <div class="row-between">
+      <span class="card-label">{{ job_labels.scheduled_archive }}</span>
+      <label class="switch">
+        <input type="checkbox" name="archive_enabled" {% if schedule.archive_enabled %}checked{% endif %} {% if env_pinned %}disabled{% endif %}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>On</span>
+      </label>
+    </div>
+    <p class="field-hint">Checks the camera for new clips and downloads anything not yet in the vault. A device only looks back the overlap window below, so a late or failed run is never missed.</p>
+    <div class="field">
+      <label for="archive_time">Time</label>
+      <input id="archive_time" type="time" name="archive_time" value="{{ archive_time }}" {% if env_pinned %}disabled{% endif %}>
+    </div>
+    <div class="field">
+      <label for="archive_overlap_hours">Overlap (hours)</label>
+      <input id="archive_overlap_hours" type="number" min="1" max="168" name="archive_overlap_hours" value="{{ schedule.archive_overlap_hours }}" {% if env_pinned %}disabled{% endif %}>
+      <span class="field-hint">How far back each run re-checks, in case the last one was late or failed.</span>
+    </div>
+  </div>
+
+  <div class="card stack">
+    <div class="row-between">
+      <span class="card-label">{{ job_labels.deep_backfill }}</span>
+      <label class="switch">
+        <input type="checkbox" name="backfill_enabled" {% if schedule.backfill_enabled %}checked{% endif %} {% if env_pinned %}disabled{% endif %}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>On</span>
+      </label>
+    </div>
+    <p class="field-hint">A wider weekly sweep over the days below, in case an outage kept a clip from the daily check.</p>
+    <div class="field">
+      <label for="backfill_dow">Day</label>
+      <select id="backfill_dow" name="backfill_dow" {% if env_pinned %}disabled{% endif %}>
+        {% for i, name in weekday_names %}
+        <option value="{{ i }}" {% if i == backfill_dow %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="backfill_time">Time</label>
+      <input id="backfill_time" type="time" name="backfill_time" value="{{ backfill_time }}" {% if env_pinned %}disabled{% endif %}>
+    </div>
+    <div class="field">
+      <label for="backfill_days">Days to look back</label>
+      <input id="backfill_days" type="number" min="1" max="365" name="backfill_days" value="{{ schedule.backfill_days }}" {% if env_pinned %}disabled{% endif %}>
+    </div>
+  </div>
+
+  <div class="card stack">
+    <div class="row-between">
+      <span class="card-label">{{ job_labels.reconcile }}</span>
+      <label class="switch">
+        <input type="checkbox" name="reconcile_enabled" {% if schedule.reconcile_enabled %}checked{% endif %} {% if env_pinned %}disabled{% endif %}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>On</span>
+      </label>
+    </div>
+    <p class="field-hint">Never contacts the camera and never deletes footage; fixes bookkeeping left by an interrupted run.</p>
+    <div class="field">
+      <label for="reconcile_interval_hours">Every (hours)</label>
+      <input id="reconcile_interval_hours" type="number" min="1" max="168" name="reconcile_interval_hours" value="{{ schedule.reconcile_interval_hours }}" {% if env_pinned %}disabled{% endif %}>
+    </div>
+  </div>
+
+  <div class="card stack">
+    <div class="row-between">
+      <span class="card-label">{{ job_labels.integrity_scan }}</span>
+      <label class="switch">
+        <input type="checkbox" name="integrity_scan_enabled" {% if schedule.integrity_scan_enabled %}checked{% endif %} {% if env_pinned %}disabled{% endif %}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>On</span>
+      </label>
+    </div>
+    <p class="field-hint">Once a week, re-decrypts a rotating sample of archived clips to check nothing has bit-rotted.</p>
+    <div class="field">
+      <label for="integrity_scan_sample_pct">Sample size (%)</label>
+      <input id="integrity_scan_sample_pct" type="number" min="1" max="100" step="1" name="integrity_scan_sample_pct" value="{{ schedule.integrity_scan_sample_pct }}" {% if env_pinned %}disabled{% endif %}>
+    </div>
+  </div>
+
+</div>
+
+{% if not env_pinned %}
+<button class="btn primary" type="submit">{{ icon('shield-check') }} Save schedule</button>
+{% endif %}
+</form>
+</div>

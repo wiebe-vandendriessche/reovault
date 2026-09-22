@@ -1,0 +1,77 @@
+# Two equally-supported ways to reach the dashboard; pick one. Whichever you
+# pick, leave REOVAULT_WEB__HOST unset/0.0.0.0 (the image's default). Inside
+# a container, binding 127.0.0.1 makes the app unreachable from both a
+# published port and a reverse proxy, since neither connects over loopback.
+#
+# Mode A: publish the port directly (LAN/VPN access, no reverse proxy).
+#   Uncomment `ports:` below AND the two REOVAULT_WEB__* lines under it.
+#   Plain HTTP has no certificate, so the session cookie must not require
+#   TLS (cookie_secure=false) or login will silently fail: the browser
+#   accepts the login redirect but discards a Secure cookie sent over HTTP,
+#   which just bounces you back to /login. Restricting exposure (firewall,
+#   VPN, trusted LAN only) is then on you, same as any other self-hosted app
+#   you publish a port for.
+#
+# Mode B: put it behind a reverse proxy (Traefik, Nginx Proxy Manager,
+#   Caddy, ...) on a shared Docker network, proxy handles TLS. This is the
+#   active default below. Uncomment `networks:` at the bottom of the service
+#   and the top-level `networks:` block, and set REOVAULT_WEB__FORWARDED_ALLOW_IPS
+#   to your proxy's actual container IP/subnet (never "*": uvicorn trusts the
+#   rightmost X-Forwarded-For hop not in this list, and "*" makes it trust
+#   the leftmost instead, which any client can spoof).
+
+services:
+  reovault:
+    build:
+      context: .
+      args:
+        REOLINK_CLI_VERSION: "0.19.0"
+    image: reovault:latest
+    restart: unless-stopped
+    # Mode A: direct port publish:
+    # ports:
+    #   - "8080:8080"
+    environment:
+      REOVAULT_MASTER_PASSPHRASE_FILE: /run/secrets/reovault_master_passphrase
+      # Mode B (active default): reverse proxy's own container IP/subnet:
+      REOVAULT_WEB__FORWARDED_ALLOW_IPS: "172.16.0.0/12"
+      # Mode A: uncomment these two instead, comment out the line above:
+      # REOVAULT_WEB__FORWARDED_ALLOW_IPS: "127.0.0.1"
+      # REOVAULT_WEB__COOKIE_SECURE: "false"
+    secrets:
+      - reovault_master_passphrase
+    volumes:
+      # config/DB/master.key: kept outside the vault tree so a backup tool
+      # watching the vault never replicates the key alongside it.
+      - ./data/config:/config
+      - ./data/vault:/vault
+      # Must share a filesystem with /vault: archiving finalizes with an
+      # atomic rename, asserted at startup.
+      - ./data/staging:/staging
+      # reolink-cli's own credential registry, isolated from any host
+      # ~/.config/reolink-cli.
+      - ./data/reolink-cli:/home/reovault/.config/reolink-cli
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status == 200 else sys.exit(1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Uncomment to join a reverse proxy's network instead of publishing a
+    # port (see the file header):
+    # networks:
+    #   - proxy_network
+
+secrets:
+  reovault_master_passphrase:
+    file: ./secrets/reovault_master_passphrase.txt
+
+# networks:
+#   proxy_network:
+#     external: true

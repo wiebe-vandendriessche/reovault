@@ -1,0 +1,43 @@
+site_name: ReoVault
+site_description: Local-first, self-hosted archiving of Reolink camera recordings.
+repo_url: https://github.com/wiebe-vandendriessche/reovault
+repo_name: wiebe-vandendriessche/reovault
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - content.action.edit
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Compatible devices: compatibility.md
+  - Configuration: configuration.md
+  - CLI reference: cli-reference.md
+  - Architecture: architecture.md
+  - Security: security.md
+  - Contributing: contributing.md

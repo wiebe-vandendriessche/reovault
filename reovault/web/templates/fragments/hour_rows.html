@@ -1,0 +1,8 @@
+{% for rec in rows %}
+{% include "fragments/rec_row.html" %}
+{% endfor %}
+{% if has_more %}
+<button class="btn full-width" type="button"
+        hx-get="{{ durl('/fragments/day/hour?date_=' ~ date ~ '&hour=' ~ hour ~ '&types=' ~ types ~ '&after=' ~ next_after) }}"
+        hx-target="closest .rows" hx-swap="beforeend" hx-disabled-elt="this">Show more</button>
+{% endif %}

@@ -1,0 +1,30 @@
+{% set queued = queued|default(false) %}
+<div id="rec-{{ rec.id }}">
+  <article class="rec-row">
+    <span class="dot bad"></span>
+    <span class="tabular truncate">{{ rec.remote_name }}</span>
+    <span class="meta">{{ rec.local_datetime }}{% if rec.remote_size %}, {{ rec.remote_size | human_bytes }}{% endif %}</span>
+    <span class="pill bad">{{ icon('circle-alert') }} {{ rec.last_error_class or 'unknown' }}</span>
+    {% if queued %}
+    <span class="pill ok">{{ icon('circle-check') }} Queued for the next run</span>
+    {% else %}
+    <button class="btn" type="button" hx-post="/recordings/{{ rec.id }}/retry?context=problem" hx-target="#rec-{{ rec.id }}" hx-swap="outerHTML">{{ icon('rotate-ccw') }} Retry</button>
+    {% endif %}
+  </article>
+  <p class="meta problem-error-detail">
+    {{ rec.last_error_class_text or 'Something went wrong archiving this clip.' }}
+    {% if rec.state == 'quarantined' %}
+      Stopped retrying automatically; needs a manual retry.
+    {% elif rec.next_attempt_local %}
+      Retrying automatically around {{ rec.next_attempt_local }}.
+    {% endif %}
+    ({{ rec.attempts }} attempt{{ 's' if rec.attempts != 1 else '' }} so far.)
+  </p>
+  {% if rec.last_error %}
+  <details class="problem-error-detail">
+    <summary class="row meta">Error details {{ icon('chevron-right', cls='chevron') }}</summary>
+    <p class="meta">{{ rec.last_error | redact }}</p>
+    {% if rec.last_error_detail %}<p class="meta">{{ rec.last_error_detail | redact }}</p>{% endif %}
+  </details>
+  {% endif %}
+</div>

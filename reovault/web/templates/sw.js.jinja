@@ -1,0 +1,82 @@
+// ReoVault service worker: app-shell only. The rule is a whitelist, not a
+// blacklist: respondWith() is called for exactly two things (same-origin
+// GETs under /static/ plus the manifest and /offline, and top-level
+// navigations).
+// Everything else is left completely untouched, so it never enters the
+// Cache API and never gets an SW-synthesized response.
+//
+// Authenticated HTML is NEVER cached: the navigate branch below has no
+// cache.put call anywhere in it. That is the property that keeps this
+// service worker from ever serving one user's page to anyone else, or a
+// stale page after logout: there is no code path that could.
+const VERSION = "{{ asset_version }}";
+const SHELL = "reovault-shell-" + VERSION;
+const SHELL_URLS = [
+  "/offline",
+  "/static/app.css?v=" + VERSION,
+  "/static/app.js?v=" + VERSION,
+  "/static/htmx.min.js?v=" + VERSION,
+  "/static/icons.svg?v=" + VERSION,
+  "/static/fonts/montserrat-latin-var.woff2",
+  "/static/icons/icon.svg?v=" + VERSION,
+  "/static/icons/icon-192.png?v=" + VERSION,
+  "/static/icons/wordmark-dark.png?v=" + VERSION,
+  "/static/icons/wordmark-light.png?v=" + VERSION,
+  "/manifest.webmanifest",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(SHELL)
+      .then((cache) => cache.addAll(SHELL_URLS))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return; // never touch mutations
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // never touch cross-origin
+
+  // 1. Shell assets: cache-first, version-busted by the ?v= query string.
+  if (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest") {
+    event.respondWith(
+      caches.match(req).then(
+        (hit) =>
+          hit ||
+          fetch(req).then((res) => {
+            if (res.ok && res.type === "basic") {
+              const copy = res.clone();
+              caches.open(SHELL).then((cache) => cache.put(req, copy));
+            }
+            return res;
+          }),
+      ),
+    );
+    return;
+  }
+
+  // 2. Navigations: network-only. The response is NEVER cached (it is
+  //    authenticated HTML); the offline page is the failure answer, and a
+  //    401 or a redirect to /login falls through untouched, since .catch()
+  //    only fires on a network failure, not on an HTTP error status.
+  if (req.mode === "navigate") {
+    event.respondWith(fetch(req).catch(() => caches.match("/offline")));
+    return;
+  }
+
+  // 3. Everything else (HTMX fragments under /fragments/, the video
+  //    stream, downloads, /healthz) falls through to the network,
+  //    untouched.
+});

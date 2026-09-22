@@ -1,0 +1,42 @@
+<div>
+  <p class="verdict"><span class="dot {{ state_class }}"></span>{{ verdict }}</p>
+  <p class="verdict-sub">{{ verdict_sub }}</p>
+</div>
+
+{% if banner %}
+<div class="banner {{ banner.level }}" role="status">
+  <span>{{ banner.text }}</span>
+  {% if banner.href %}<a href="{{ durl(banner.href) }}">Review {{ icon('arrow-right') }}</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid-cards grid-2 health-cards">
+  <div class="card stack">
+    <span class="card-label">Coverage margin</span>
+    {% if coverage_pct is not none %}
+      <span class="card-value">{{ coverage_pct }}%</span>
+      <svg class="meter-svg" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+        <rect class="meter-track" width="100" height="4" rx="2"/>
+        <rect class="meter-fill" width="{{ coverage_pct }}" height="4" rx="2"/>
+        <rect class="meter-tick" x="20" width="1" height="4"/>
+      </svg>
+      <p class="meta">
+        The card holds footage back to {{ coverage.oldest_on_card_utc.strftime('%d %b') if coverage.oldest_on_card_utc else '?' }}.
+        The oldest unarchived clip is from {{ coverage.oldest_unarchived_utc.strftime('%d %b') if coverage.oldest_unarchived_utc else '?' }}.
+      </p>
+    {% elif coverage.oldest_unarchived_utc is none %}
+      <p class="muted">Nothing unarchived. Fully caught up.</p>
+    {% else %}
+      <p class="muted">No storage sample yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card stack">
+    <div class="panel sd-panel">
+      {% with sd_uid = "health" %}
+        {% include "fragments/sd_card.html" %}
+      {% endwith %}
+    </div>
+    {% if gateway_down %}<p class="pill bad">Gateway unreachable</p>{% endif %}
+  </div>
+</div>

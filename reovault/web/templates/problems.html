@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}ReoVault Problems{% endblock %}
+{% block content %}
+<h1 class="verdict section-gap">Problems</h1>
+{% if not rows %}
+<div class="empty-state">No problems. Nothing failed or quarantined.</div>
+{% else %}
+<div class="card stack" id="problem-list">
+  {% include "fragments/problem_rows.html" %}
+</div>
+{% endif %}
+{% endblock %}

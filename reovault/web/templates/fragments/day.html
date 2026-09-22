@@ -1,0 +1,57 @@
+<div id="day">
+  <div class="day-header">
+    <a class="btn-icon" hx-get="{{ durl('/fragments/day?date_=' ~ prev_date ~ '&types=' ~ types_raw) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ prev_date ~ '&types=' ~ types_raw) }}" aria-label="Previous day">{{ icon('chevron-left') }}</a>
+    <strong>{{ date_label }}</strong>
+    <a class="btn-icon {{ 'muted' if next_disabled else '' }}" {% if not next_disabled %}hx-get="{{ durl('/fragments/day?date_=' ~ next_date ~ '&types=' ~ types_raw) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ next_date ~ '&types=' ~ types_raw) }}"{% endif %} aria-label="Next day" {% if next_disabled %}aria-disabled="true"{% endif %}>{{ icon('chevron-right') }}</a>
+    <span class="muted inline-facts"><span>{{ total }} clips</span><span>{{ total_bytes | human_bytes }}</span></span>
+  </div>
+
+  <div class="chips">
+    <a class="chip {{ 'is-on' if not types_raw else '' }}" href="{{ durl('/recordings?date_=' ~ date) }}"
+       hx-get="{{ durl('/fragments/day?date_=' ~ date) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ date) }}">All</a>
+    {% for t in available_types %}
+      <a class="chip {{ 'is-on' if t in selected_types else '' }}" href="{{ durl('/recordings?date_=' ~ date ~ '&types=' ~ t) }}"
+         hx-get="{{ durl('/fragments/day?date_=' ~ date ~ '&types=' ~ t) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ date ~ '&types=' ~ t) }}">
+        {{ t }}
+      </a>
+    {% endfor %}
+    <a class="chip {{ 'is-on' if types_raw == '__problems__' else '' }}" href="{{ durl('/recordings?date_=' ~ date ~ '&types=__problems__') }}"
+       hx-get="{{ durl('/fragments/day?date_=' ~ date ~ '&types=__problems__') }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ date ~ '&types=__problems__') }}">
+      Problems
+    </a>
+  </div>
+
+  {% if is_future %}
+    <div class="empty-state">That day has not happened yet.</div>
+  {% elif is_empty_day and types_raw %}
+    <div class="empty-state">
+      No clips match this filter on {{ date_label }}.
+      <a class="btn" href="{{ durl('/recordings?date_=' ~ date) }}" hx-get="{{ durl('/fragments/day?date_=' ~ date) }}" hx-target="#day" hx-swap="outerHTML" hx-push-url="{{ durl('/recordings?date_=' ~ date) }}">Clear filters</a>
+    </div>
+  {% elif is_empty_day %}
+    <div class="empty-state">No recordings on this day. The camera records on motion, so quiet days are normal.</div>
+  {% else %}
+    {% for h in hours %}
+      <details class="hour" id="h-{{ h.hour }}" {% if h.open %}open{% endif %}>
+        <summary>
+          {{ icon('chevron-right', cls='chevron') }}
+          <span class="hour-label tabular">{{ h.label }}</span>
+          <span class="hour-count">{{ h.total }} clips</span>
+          <span class="hour-bytes">{{ h.bytes | human_bytes }}</span>
+        </summary>
+        <div class="rows"
+             hx-get="{{ durl('/fragments/day/hour?date_=' ~ date ~ '&hour=' ~ h.hour ~ '&types=' ~ types_raw) }}"
+             hx-trigger="{{ 'load' if h.open else 'toggle once from:closest details' }}"
+             hx-swap="innerHTML">
+          <div class="skeleton skeleton-row"></div>
+          <div class="skeleton skeleton-row"></div>
+        </div>
+      </details>
+    {% endfor %}
+    {% if hidden_hours %}
+    <p class="muted text-sm hidden-hours-note">
+      {{ hidden_hours }} hour{{ 's' if hidden_hours != 1 else '' }} with no recordings {{ 'are' if hidden_hours != 1 else 'is' }} not shown.
+    </p>
+    {% endif %}
+  {% endif %}
+</div>

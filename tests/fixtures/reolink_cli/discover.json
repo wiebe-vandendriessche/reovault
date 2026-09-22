@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "command": "discover",
+  "protocol": null,
+  "data": {
+    "source": "lan+remoteUid+lanUdp+v30Lan",
+    "timeoutSecs": 2,
+    "count": 1,
+    "counts": { "lan": 1, "lanUdp": 0, "remoteUid": 0, "v30Lan": 0 },
+    "devices": [
+      {
+        "discovery": "lan",
+        "transport": "tcp",
+        "host": "192.0.2.10:9000",
+        "uid": "REDACTED",
+        "mac": "REDACTED",
+        "protocol": "v20",
+        "endpoint": "urn:uuid:11000601-0514-0003-0000-440fb4b1bf0f",
+        "xaddrs": ["http://192.0.2.10:8000/onvif/device_service"],
+        "scopes": [
+          "onvif://www.onvif.org/Profile/Streaming",
+          "onvif://www.onvif.org/Profile/T",
+          "onvif://www.onvif.org/hardware/D340W",
+          "onvif://www.onvif.org/location/country/china",
+          "onvif://www.onvif.org/name/IPC",
+          "onvif://www.onvif.org/name/IPC-BO",
+          "onvif://www.onvif.org/type/network_video_transmitter",
+          "onvif://www.onvif.org/type/video_encoder",
+          "reolink-lan://name/Front door"
+        ],
+        "types": ["tdn:NetworkVideoTransmitter", "tds:Device", "smart_bell"]
+      }
+    ]
+  },
+  "error": null
+}

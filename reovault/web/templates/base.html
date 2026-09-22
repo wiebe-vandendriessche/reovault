@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}ReoVault{% endblock %}</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#000814" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ReoVault">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
+  <link rel="icon" href="/static/icons/icon.svg?v={{ asset_version }}" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preload" as="image" href="/static/icons.svg?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+  <script src="/static/htmx.min.js?v={{ asset_version }}" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+  <div id="offline-banner" role="status">Cannot reach ReoVault. You may need to be on the same network as the server (or your VPN).</div>
+  <div class="app-shell">
+    <nav class="topbar">
+      <a class="topbar-brand" href="{{ durl('/') }}" aria-label="ReoVault, go to Health">
+        <img class="only-dark" src="/static/icons/wordmark-dark.png?v={{ asset_version }}" alt="ReoVault">
+        <img class="only-light" src="/static/icons/wordmark-light.png?v={{ asset_version }}" alt="" aria-hidden="true">
+      </a>
+
+      <span class="topbar-nav">
+        {% for item in nav_items %}
+        <a href="{{ durl(item.href) }}" {% if active_nav == item.id %}aria-current="page"{% endif %}>
+          {{ icon(item.icon) }}
+          {{ item.label }}
+          {% if item.id == 'problems' %}
+          <span id="problem-badge-topbar" hx-get="{{ durl('/fragments/problems/badge') }}" hx-trigger="load, every 60s, problems-changed from:body" hx-swap="innerHTML"></span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </span>
+
+      {% if nav_devices %}
+      <span class="device-switch-wrap">
+        {% if nav_devices|length > 1 %}
+        <details class="device-switch">
+          <summary class="btn device-switch-summary">
+            {% for d in nav_devices %}{% if d.current %}
+            <span class="device-switch-label">
+              <span class="dot ok"></span> {{ d.label }}
+            </span>
+            {% endif %}{% endfor %}
+            {{ icon('chevron-right', cls='chevron') }}
+          </summary>
+          <div class="nav-menu-panel device-switch-panel">
+            {% for d in nav_devices %}
+            <a class="nav-menu-item" href="{{ d.url }}" {% if d.current %}aria-current="page"{% endif %}>
+              <span class="dot ok"></span>
+              <span class="nav-menu-item-label">
+                <span>{{ d.label }}{% if d.problems %} <span class="badge">{{ "9+" if d.problems > 9 else d.problems }}</span>{% endif %}</span>
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+        </details>
+        {% else %}
+        <span class="device-switch-label muted">
+          <span class="dot ok"></span> {{ nav_devices[0].label }}
+        </span>
+        {% endif %}
+      </span>
+      {% endif %}
+
+      <span class="topbar-status">
+        <a class="btn-icon devices-link" href="/devices" aria-label="Devices" title="Devices" {% if active_nav == 'devices' %}aria-current="page"{% endif %}>
+          {{ icon(devices_nav_item.icon) }}
+        </a>
+        <details class="nav-menu">
+          <summary class="btn-icon" aria-label="Menu">{{ icon('menu') }}</summary>
+          <div class="nav-menu-panel">
+            {% for d in nav_devices %}
+            <a class="nav-menu-item" href="{{ d.url }}" {% if d.current %}aria-current="page"{% endif %}>
+              <span class="dot ok"></span>
+              <span class="nav-menu-item-label">
+                <span>{{ d.label }}{% if d.problems %} <span class="badge">{{ "9+" if d.problems > 9 else d.problems }}</span>{% endif %}</span>
+                <span class="nav-menu-item-desc">Switch to this camera</span>
+              </span>
+            </a>
+            {% endfor %}
+            {% for item in nav_items %}
+            <a class="nav-menu-item" href="{{ durl(item.href) }}" {% if active_nav == item.id %}aria-current="page"{% endif %}>
+              {{ icon(item.icon) }}
+              <span class="nav-menu-item-label">
+                <span>{{ item.label }}{% if item.id == 'problems' %} <span id="problem-badge-menu" hx-get="{{ durl('/fragments/problems/badge') }}" hx-trigger="load, every 60s, problems-changed from:body" hx-swap="innerHTML"></span>{% endif %}</span>
+                <span class="nav-menu-item-desc">{{ item.desc }}</span>
+              </span>
+            </a>
+            {% endfor %}
+            <a class="nav-menu-item" href="/devices" {% if active_nav == 'devices' %}aria-current="page"{% endif %}>
+              {{ icon(devices_nav_item.icon) }}
+              <span class="nav-menu-item-label">
+                <span>{{ devices_nav_item.label }}</span>
+                <span class="nav-menu-item-desc">{{ devices_nav_item.desc }}</span>
+              </span>
+            </a>
+          </div>
+        </details>
+        <button class="btn-icon theme-toggle" type="button" id="theme-toggle" aria-label="Toggle color theme">
+          {{ icon('sun', cls='theme-icon only-dark') }}
+          {{ icon('moon', cls='theme-icon only-light') }}
+        </button>
+        <button class="btn sign-out" type="button" hx-post="/logout" aria-label="Sign out">{{ icon('log-out') }} <span class="sign-out-label">Sign out</span></button>
+      </span>
+    </nav>
+
+    <main id="main">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+      <p class="muted tabular text-sm inline-facts">
+        <span>ReoVault {{ reovault_version }}</span>
+        <span>reolink-cli {{ pinned_cli_version }}</span>
+      </p>
+    </footer>
+  </div>
+  <script src="/static/app.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

@@ -1,0 +1,1640 @@
+/* ReoVault dashboard: brand design system. Hand-written, one file, no build
+   step. Every visual decision routes through a token in the `tokens`
+   layer; a literal color/px value outside it is a defect. */
+
+@layer tokens, base, layout, components, utilities;
+
+@layer tokens {
+  :root {
+    color-scheme: dark light;
+
+    /* Brand palette: #0050E2 / #000814 / #FFFFFF. Dark is the base theme,
+       light is an override below; both share the same token names so
+       components never branch on theme. */
+    --surface-0: #000814;
+    --surface-1: #051023;
+    --surface-2: #0a1830;
+    --line: #16233d;
+    --line-soft: #0e1a30;
+
+    --text-1: #f2f6fc; /* 18:1 on --surface-0 */
+    --text-2: #9fb2cc; /* 8.5:1 */
+    --text-3: #7c8fac; /* 4.6:1, clears AA body text against --surface-2 */
+
+    /* --brand is #0050E2 itself: a fill/border/ring/chart color, NEVER a
+       `color:` on dark. Measured 3.11:1 as text on --surface-0, which fails
+       WCAG AA's 4.5:1 for body text (it clears the 3:1 non-text minimum,
+       which is what fills/borders/rings need). --brand-text is the
+       brightened variant that exists specifically so text never reaches
+       for --brand directly. */
+    --brand: #0050e2;
+    --brand-text: #0080ff; /* 5.29:1 on --surface-0 */
+    --brand-dim: #0a1e42;
+    /* Text/icon color placed *on top of* a --brand fill (e.g. the primary
+       button's label). White clears 6.47:1 against #0050E2 in both themes,
+       so this one is a fixed value, not a per-theme override. */
+    --on-brand: #ffffff;
+
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --idle: #6b7a94;
+    /* Text placed *on top of* a --warn fill (e.g. #offline-banner). Same
+       shape as --on-brand: dark mode's --warn is a bright fill needing dark
+       text, light mode's --warn is a dark fill (darkened so it also works
+       as body text elsewhere) needing light text -- no single fixed color
+       clears 4.5:1 against both. */
+    --on-warn: #221a05;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    --radius-1: 6px; /* .panel: the one inner-surface radius */
+    --radius-2: 8px; /* controls: buttons, inputs, banners */
+    --radius-3: 12px; /* .card: the one outer-surface radius */
+
+    /* Montserrat, always -- a real fallback stack matters during
+       font-display: swap, not because it's ever meant to show. */
+    --font-ui:
+      "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    --step--1: 0.75rem;
+    --step-0: 0.875rem;
+    --step-1: 1rem;
+    --step-2: 1.25rem;
+    --step-3: 1.5rem;
+    --step-4: 2rem;
+
+    --dur-fast: 120ms;
+    --dur-base: 180ms;
+    --ease: cubic-bezier(0.2, 0.6, 0.3, 1);
+
+    --content-max: 1180px;
+    --topbar-h: 64px;
+  }
+
+  /* Light mode inverts the brand-text relationship: #0050E2 on white is
+     6.47:1 and passes as text directly, so --brand and --brand-text are the
+     same value here -- which is exactly why the distinction has to live in
+     a token, not a habit. ok/warn/bad are separately darkened (not the dark
+     values reused): a color that clears AA on near-black can fail on
+     near-white. Values below are measured to clear 4.5:1 against all three
+     light surfaces. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --surface-0: #ffffff;
+      --surface-1: #ffffff;
+      --surface-2: #f1f5fa;
+      --line: #d9e1ec;
+      --line-soft: #e6ecf4;
+      --text-1: #000814; /* 19.7:1 */
+      --text-2: #4a5568; /* 8:1 */
+      --text-3: #5b6472; /* 4.5:1+ against --surface-2 */
+      --brand: #0050e2;
+      --brand-text: #0050e2; /* 6.47:1 on white */
+      --brand-dim: #dce8ff;
+      --on-brand: #ffffff;
+      --ok: #047857;
+      --warn: #92400e;
+      --on-warn: #ffffff; /* 7.09:1 on --warn */
+      --bad: #b91c1c;
+      --idle: #7a8698;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --surface-0: #ffffff;
+    --surface-1: #ffffff;
+    --surface-2: #f1f5fa;
+    --line: #d9e1ec;
+    --line-soft: #e6ecf4;
+    --text-1: #000814;
+    --text-2: #4a5568;
+    --text-3: #5b6472;
+    --brand: #0050e2;
+    --brand-text: #0050e2;
+    --brand-dim: #dce8ff;
+    --on-brand: #ffffff;
+    --ok: #047857;
+    --warn: #92400e;
+    --on-warn: #ffffff;
+    --bad: #b91c1c;
+    --idle: #7a8698;
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Self-hosted: the CSP is `default-src 'self'` with no
+     `font-src`, so a Google Fonts <link> would be blocked outright, not
+     just slow. `format("woff2-variations")` is a legacy hint browsers no
+     longer recognize; an unrecognized format makes the whole `src` get
+     skipped and the stack falls through to Arial. `format("woff2")` is
+     the current spec value and works for a variable font too. Weight
+     range matches the file's real `wght` axis (100-900, verified with
+     fonttools), not a narrowed guess -- a declared range narrower than
+     the axis clamps every requested weight to its nearest edge. */
+  @font-face {
+    font-family: "Montserrat";
+    src: url("/static/fonts/montserrat-latin-var.woff2?v=1") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  body {
+    margin: 0;
+    background: var(--surface-0);
+    color: var(--text-1);
+    font-family: var(--font-ui);
+    font-size: var(--step-1);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  /* One shared base for every disclosure in the app: the
+     mobile calendar toggle, the hour rows, the discovery "add" form, and
+     the per-row error detail all get a hand-hidden marker and a pointer
+     cursor for free. A component with its own layout needs (details.hour,
+     .nav-menu) adds only what differs; it never repeats this. */
+  details > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding-block: var(--space-1);
+    border-radius: var(--radius-1);
+    transition: background var(--dur-fast) var(--ease);
+  }
+
+  details > summary:hover {
+    background: var(--surface-2);
+  }
+
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand-text);
+    outline-offset: 2px;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer layout {
+  .app-shell {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Top navbar at every viewport: no bottom tab bar, no
+     display:none media-query swap between two separate nav markups. */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: var(--topbar-h);
+    padding-inline: clamp(16px, 4vw, 32px);
+    padding-block: var(--space-2);
+    border-bottom: 1px solid var(--line);
+    /* --surface-0, not --surface-1: the dark wordmark PNG has a baked-in
+       #000814 background (it's not transparent), which is --surface-0
+       exactly. --surface-1 (#051023) would show as a visible seam around
+       it. In light mode the two tokens are identical anyway. */
+    background: var(--surface-0);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .topbar-brand img {
+    height: 30px;
+    width: auto;
+    display: block;
+  }
+
+  /* login.html's own logo: same theme-swapped wordmark as the navbar's,
+     just standalone (login.html has no .topbar) and larger, since it's the
+     page's one hero element rather than a corner mark. */
+  .auth-logo {
+    display: flex;
+    justify-content: center;
+  }
+
+  .auth-logo img {
+    height: 40px;
+    width: auto;
+    display: block;
+  }
+
+  /* Dark is the base theme (see the tokens layer above): the dark
+     wordmark shows by default, the light one only once something says
+     otherwise. Mirrors how the color tokens themselves switch --
+     `@media (prefers-color-scheme: light)` for the OS-level default, plus
+     an unconditional `:root[data-theme="light"]` override for the manual
+     theme toggle (app.js). No `:root[data-theme="dark"]` block is needed
+     symmetrically: dark is already the unconditional default, and an
+     explicit "dark" override only needs to be *excluded* from the
+     light-media-query block above, which it already is. Gating on
+     `data-theme` alone with no `prefers-color-scheme` query would show a
+     light-OS visitor the dark wordmark -- baked-in black background and
+     all -- on a white topbar.
+
+     The theme toggle button's own icon pair (see base.html and
+     `.theme-toggle .theme-icon` below) uses the same `only-dark`/
+     `only-light` naming but cross-fades via opacity/transform instead of
+     this display swap, since a button showing both icons stacked needs a
+     transition, not a hard cut. */
+  .topbar-brand img.only-dark,
+  .auth-logo img.only-dark {
+    display: block;
+  }
+
+  .topbar-brand img.only-light,
+  .auth-logo img.only-light {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .topbar-brand img.only-dark,
+    :root:not([data-theme="dark"]) .auth-logo img.only-dark {
+      display: none;
+    }
+
+    :root:not([data-theme="dark"]) .topbar-brand img.only-light,
+    :root:not([data-theme="dark"]) .auth-logo img.only-light {
+      display: block;
+    }
+  }
+
+  :root[data-theme="light"] .topbar-brand img.only-dark,
+  :root[data-theme="light"] .auth-logo img.only-dark {
+    display: none;
+  }
+
+  :root[data-theme="light"] .topbar-brand img.only-light,
+  :root[data-theme="light"] .auth-logo img.only-light {
+    display: block;
+  }
+
+  .topbar-nav {
+    display: none;
+    gap: var(--space-4);
+    flex: 1;
+  }
+
+  .topbar-nav a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    text-decoration: none;
+    color: var(--text-2);
+    font-size: var(--step-0);
+    padding-block: var(--space-2);
+    border-bottom: 2px solid transparent;
+    position: relative;
+  }
+
+  .topbar-nav a .icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .topbar-nav a[aria-current="page"] {
+    color: var(--text-1);
+    border-bottom-color: var(--brand);
+  }
+
+  .topbar-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+    flex-shrink: 0;
+    /* .nav-menu-panel below anchors to this, not to .nav-menu itself: see
+       its own comment for why. */
+    position: relative;
+  }
+
+  /* The device selector (base.html): own positioning context, separate
+     from .topbar-status's -- .nav-menu-panel already anchors `right: 0`
+     there, so a second dropdown sharing that anchor would overlap it. */
+  .device-switch-wrap {
+    position: relative;
+    display: none;
+  }
+
+  .device-switch-summary {
+    list-style: none;
+    gap: var(--space-2);
+  }
+
+  .device-switch-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .device-switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--step-0);
+    font-weight: 600;
+    padding-inline: var(--space-2);
+  }
+
+  /* Nested inside `.device-switch-summary` (a `.btn`, which already has its
+     own padding): the standalone padding above is only for the single-
+     device fallback label, which sits directly in `.device-switch-wrap`
+     with nothing else supplying it. */
+  .device-switch-summary .device-switch-label {
+    padding-inline: 0;
+  }
+
+  .device-switch-panel {
+    left: 0;
+    right: auto;
+    width: max(220px, min(320px, calc(100vw - 2 * var(--space-4))));
+  }
+
+  /* `.nav-menu-item` defaults to `align-items: flex-start` for its usual
+     two-line shape (a label plus a `.nav-menu-item-desc` line underneath,
+     see below) -- the icon aligns to the *top* of that block on purpose.
+     This dropdown's rows are single-line (device name only, no
+     description), so flex-start left the dot sitting at the top of the
+     row instead of centered against the text. The mobile burger menu's
+     own device rows keep flex-start: those do carry a description line
+     ("Switch to this camera"). */
+  .device-switch-panel .nav-menu-item {
+    align-items: center;
+  }
+
+  /* Icon-only Devices link, right-aligned next to the theme toggle (see
+     .btn-icon): active-state styling mirrors .topbar-nav a[aria-current]
+     since it's a sibling nav destination, just fleet-wide rather than
+     device-scoped. */
+  .devices-link[aria-current="page"] {
+    background: var(--surface-2);
+    color: var(--text-1);
+  }
+
+  /* Logo + burger + theme toggle + a full "Sign out" button don't fit side
+     by side under ~360px, the narrowest common phone width. The icon
+     alone, matching the burger and theme toggle's own 44x44 footprint, is
+     enough -- `aria-label` on the button keeps it named for assistive
+     tech. */
+  @media (max-width: 400px) {
+    .sign-out-label {
+      display: none;
+    }
+
+    .sign-out {
+      padding-inline: var(--space-3);
+    }
+  }
+
+  /* Mobile nav: a native <details> disclosure, zero JS. */
+  /* Anchored to .topbar-status (position:relative, above), not .nav-menu:
+     the panel's `right: 0` resolves against whichever ancestor is
+     positioned, and .topbar-status -- pushed flush to the topbar's own
+     right edge by its own `margin-left: auto` -- is the one actually
+     flush with the viewport's right edge. Anchoring to .nav-menu instead
+     would align the panel's `right: 0` with .nav-menu's own right edge --
+     well short of the true edge, since the Sign out button sits to its
+     right -- running a 260px-wide panel off the left edge of the screen on
+     a narrow phone. */
+  .nav-menu-panel {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    /* Caps at the viewport width minus its side gutters, so it can never
+       overflow even on the narrowest common phone (320px). */
+    width: min(260px, calc(100vw - 2 * var(--space-4)));
+    /* A long device list (see the device-switch rows now merged into this
+       panel below 768px) plus the five nav items and Devices can run
+       taller than a short phone screen, running the bottom of the panel
+       off-screen with no way to reach it. Capped to what's actually left
+       below the sticky topbar, and scrollable once it doesn't fit. */
+    max-height: calc(100dvh - var(--topbar-h) - var(--space-4));
+    overflow-y: auto;
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-2);
+    padding: var(--space-2);
+    z-index: 20;
+  }
+
+  .nav-menu-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-1);
+    text-decoration: none;
+    color: var(--text-1);
+    min-height: 44px;
+  }
+
+  .nav-menu-item:hover,
+  .nav-menu-item[aria-current="page"] {
+    background: var(--surface-2);
+  }
+
+  .nav-menu-item .icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--text-2);
+  }
+
+  .nav-menu-item-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .nav-menu-item-desc {
+    color: var(--text-3);
+    font-size: var(--step--1);
+  }
+
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-4);
+  }
+
+  /* Sticky to the viewport bottom on a short page, pushed down the normal
+     document flow on a tall one -- plain flexbox, not `position:fixed`:
+     .app-shell is a `min-height:100dvh` flex column and `main` above
+     already takes `flex:1`, so this sits right after it either way. Every
+     page gets it (moved out of overview.html, which only ever rendered it
+     on Health), not just Health. */
+  .app-footer {
+    text-align: center;
+    padding: var(--space-4);
+    border-top: 1px solid var(--line);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding-inline: 3px;
+    border-radius: 999px;
+    background: var(--bad);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  @media (min-width: 768px) {
+    .topbar-nav {
+      display: flex;
+    }
+
+    .device-switch-wrap {
+      display: block;
+    }
+
+    .nav-menu {
+      display: none;
+    }
+
+    main {
+      padding: var(--space-6);
+    }
+
+    .recordings-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: var(--space-4);
+      align-items: start;
+    }
+  }
+
+  /* Unconditional at every width: scoping this to the >=768px media query
+     alone leaves .grid-cards a plain block below it, with cards touching
+     and doubled borders. */
+  .grid-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  @media (min-width: 768px) {
+    .grid-cards {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+  }
+
+  .span-full {
+    grid-column: 1 / -1;
+  }
+
+  /* A row that only ever holds exactly two cards (Health's coverage/SD
+     pair, and its growth/latest-footage pair): `auto-fit` sizes its track
+     count from the *viewport*, not the item count, so on a wide enough
+     screen a 2-item row gets 3+ tracks and the cards end up bunched to one
+     side with empty column(s) beside them. Two explicit tracks, not
+     auto-fit, are correct precisely because the item count here is fixed,
+     unlike
+     `.grid-cards` on its own (a device list, a calendar grid) where it
+     genuinely isn't. */
+  .grid-cards.grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .grid-cards.grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .health-cards {
+    margin-top: var(--space-4);
+  }
+
+  .only-wide {
+    display: none;
+  }
+
+  .only-narrow {
+    display: initial;
+  }
+
+  @media (min-width: 768px) {
+    .only-wide {
+      display: initial;
+    }
+
+    .only-narrow {
+      display: none;
+    }
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .row-between {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+}
+
+@layer components {
+  /* login.html's standalone shell: not the app-shell/topbar/main layout,
+     since a signed-out visitor never sees those. */
+  .auth-shell {
+    max-width: 360px;
+    margin: 15vh auto 0;
+    padding: 0 var(--space-4);
+  }
+
+  /* offline.html's standalone shell: cached by the service worker, so it
+     must render correctly with zero network access. */
+  .offline-shell {
+    max-width: 400px;
+    margin: 20vh auto 0;
+    padding: 0 var(--space-4);
+    text-align: center;
+  }
+
+  .offline-note {
+    margin-top: var(--space-3);
+  }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-3);
+    padding: var(--space-4);
+    /* The Health page's "Latest footage" card is an <a>, the only .card
+       that is; a plain container was never meant to render as underlined
+       link text. */
+    text-decoration: none;
+    transition: border-color var(--dur-fast) var(--ease);
+  }
+
+  a.card:hover {
+    border-color: var(--brand-text);
+  }
+
+  /* Second nesting level: a smaller radius, no border, and a different
+     surface, so it never gets mistaken for another .card. A .card must
+     never contain a .card. */
+  .panel {
+    background: var(--surface-2);
+    border-radius: var(--radius-1);
+    padding: var(--space-3);
+  }
+
+  /* A discovered-device result (see fragments/discover_results.html): the
+     same second-level surface as .panel, but bordered. .panel itself stays
+     borderless by design, which is exactly why two adjacent unbordered
+     panels on the same surface-2 background read as one shape with no gap
+     between them, even with real spacing. A list of distinct candidates
+     needs a visible edge each. */
+  .discover-item {
+    border: 1px solid var(--line);
+  }
+
+  .discover-list {
+    margin-top: var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .form-gap {
+    margin-top: var(--space-3);
+  }
+
+  /* A .panel used specifically for the SD-card block on a device card: the
+     same vertical stack as .stack, but the tighter --space-2, since a
+     meter bar and its own label/legend sit closer together than a normal
+     card's top-level sections. */
+  .sd-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .verdict {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-size: var(--step-3);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .verdict-sub {
+    color: var(--text-3);
+    font-size: var(--step-0);
+    margin-top: var(--space-1);
+  }
+
+  /* Every line carrying a dot is display:flex with align-items:center
+     (see .verdict above and .rec-row/.row below): the dot is a plain flex
+     child, spaced by `gap` on the parent rather than its own margin, so it
+     centers against the text instead of aligning to a margin edge. */
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--idle);
+    flex-shrink: 0;
+  }
+
+  .dot.ok {
+    background: var(--ok);
+  }
+
+  .dot.warn {
+    background: var(--warn);
+  }
+
+  .dot.bad {
+    background: var(--bad);
+  }
+
+  .banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    font-size: var(--step-0);
+  }
+
+  .banner.warn {
+    border-color: var(--warn);
+  }
+
+  .banner.bad {
+    border-color: var(--bad);
+  }
+
+  .banner a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--brand-text);
+    text-decoration: underline;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .banner .icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  /* Every proportional bar in the app (coverage margin, SD card, both
+     single- and multi-segment) renders as inline SVG with plain `width`/
+     `x` attributes, computed server-side, never as a `style="width:...%"`
+     div. The CSP this app ships (`style-src 'self'`, no `unsafe-inline`)
+     makes any inline `style` attribute a silent no-op in a real browser.
+     SVG presentation attributes are a completely different mechanism from
+     the CSS `style` property and are not covered by `style-src` at all,
+     which is exactly why this, and not `calc(var(--x))` custom properties
+     (also `style`-attribute-only), is the fix. `viewBox="0 0 100 H"` lets
+     every width/x be handed a plain 0-100 number that IS the percentage,
+     with no unit conversion. */
+  .meter-svg {
+    display: block;
+    width: 100%;
+    height: 4px;
+  }
+
+  .meter-svg .meter-track {
+    fill: var(--surface-2);
+  }
+
+  .meter-svg .meter-fill {
+    fill: var(--brand);
+  }
+
+  .meter-svg .meter-tick {
+    fill: var(--warn);
+  }
+
+  /* The device card's SD usage bar: archived / not yet archived / other
+     card data. Track is --surface-1, one step *darker* than the
+     --surface-2 .panel it sits in (a recessed groove), not the same
+     value -- using the same surface for both would make the track and
+     its container indistinguishable. */
+  .meter-svg.is-stacked {
+    height: 8px;
+  }
+
+  .meter-svg.is-stacked .meter-track {
+    fill: var(--surface-1);
+  }
+
+  .meter-svg .is-archived {
+    fill: var(--brand);
+  }
+
+  /* --idle, not --line: this segment is "used, but not archived" -- once a
+     third "not yet archived" bucket existed here too, but it needs a
+     precise card-retention boundary to mean anything exact (rarely
+     available, see _devices_context's `since`) and is trivially derivable
+     from archived-vs-used anyway, so it was dropped rather than shown
+     unreliably. --idle needs to read as a real fill against the track, not
+     as a hairline border color. */
+  .meter-svg .is-other {
+    fill: var(--idle);
+  }
+
+  .meter-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    font-size: var(--step--1);
+    color: var(--text-3);
+  }
+
+  .meter-legend-swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: var(--space-1);
+    vertical-align: middle;
+  }
+
+  .meter-legend-swatch.is-archived {
+    background: var(--brand);
+  }
+
+  .meter-legend-swatch.is-other {
+    background: var(--idle);
+  }
+
+  .card-label {
+    color: var(--text-2);
+    font-size: var(--step--1);
+    font-weight: 600;
+  }
+
+  .card-value {
+    font-size: var(--step-2);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The vault-growth sparkline: inline SVG with a plain 0-100 viewBox, x/
+     y/width/height computed server-side in _growth_context (percent of
+     the viewBox, so it scales to any width/bar count), not a
+     `style="--v:...` custom property -- see the .meter-svg comment for
+     why (style-src CSP). */
+  .bars-svg {
+    display: block;
+    width: 100%;
+    height: 40px;
+  }
+
+  .bars-svg .bar {
+    fill: var(--brand);
+    opacity: 0.85;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-2);
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--step-0);
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 44px;
+    text-decoration: none;
+    transition:
+      transform var(--dur-fast) var(--ease),
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .btn:hover {
+    background: var(--surface-1);
+    border-color: var(--brand-text);
+  }
+
+  .btn.primary:hover {
+    background: var(--brand-text);
+    border-color: var(--brand-text);
+  }
+
+  .btn .icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .btn:active {
+    transform: scale(0.98);
+  }
+
+  .btn.primary {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--on-brand);
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Icon-only control: 44x44 touch target around a 1em
+     glyph, used by the nav-menu summary, the calendar/day chevrons, and
+     the explain() question-mark trigger. */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-2);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      background var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+
+  .btn-icon:hover {
+    background: var(--surface-2);
+    color: var(--text-1);
+  }
+
+  .btn-icon .icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* The theme toggle: both icons stacked in the same cell (grid, not
+     absolute positioning -- keeps the button's own intrinsic size from
+     the icons rather than needing a fixed height), cross-fading via the
+     existing only-dark/only-light + data-theme selectors above (see the
+     .topbar-brand img comment) instead of `display` -- opacity/transform
+     can transition, `display` can't. */
+  .theme-toggle {
+    display: grid;
+  }
+
+  .theme-toggle .theme-icon {
+    grid-area: 1 / 1;
+    transition:
+      opacity var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
+  }
+
+  .theme-toggle .theme-icon.only-dark {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+
+  .theme-toggle .theme-icon.only-light {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.5);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .theme-toggle .theme-icon.only-dark {
+      opacity: 0;
+      transform: rotate(90deg) scale(0.5);
+    }
+
+    :root:not([data-theme="dark"]) .theme-toggle .theme-icon.only-light {
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+  }
+
+  :root[data-theme="light"] .theme-toggle .theme-icon.only-dark {
+    opacity: 0;
+    transform: rotate(90deg) scale(0.5);
+  }
+
+  :root[data-theme="light"] .theme-toggle .theme-icon.only-light {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .theme-toggle .theme-icon {
+      transition: none;
+    }
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .field label {
+    font-size: var(--step--1);
+    color: var(--text-2);
+  }
+
+  .field input,
+  .field select {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-2);
+    padding: var(--space-3);
+    min-height: 44px;
+  }
+
+  .field-hint {
+    color: var(--text-3);
+    font-size: var(--step--1);
+  }
+
+  .field-error {
+    color: var(--bad);
+    font-size: var(--step--1);
+  }
+
+  /* An On/Off switch built on a real checkbox, never a styled div: the
+     input stays in the tab order, keeps its name/value for the form post,
+     and answers `:checked`/`:focus-visible`/`:disabled` for free. Visually
+     hidden rather than display:none, so it's still focusable. */
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    min-height: 44px;
+  }
+
+  .switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .switch-track {
+    position: relative;
+    flex-shrink: 0;
+    width: 40px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .switch-track::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--text-2);
+    transition: transform var(--dur-fast) var(--ease);
+  }
+
+  .switch input:checked + .switch-track {
+    background: var(--brand);
+    border-color: var(--brand);
+  }
+
+  .switch input:checked + .switch-track::before {
+    background: var(--on-brand);
+    transform: translateX(16px);
+  }
+
+  .switch input:focus-visible + .switch-track {
+    outline: 2px solid var(--brand-text);
+    outline-offset: 2px;
+  }
+
+  .switch input:disabled + .switch-track {
+    opacity: 0.4;
+  }
+
+  .switch input:disabled ~ * {
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .switch-track,
+    .switch-track::before {
+      transition: none;
+    }
+  }
+
+  .chips {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    scrollbar-width: thin;
+  }
+
+  .chip {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    min-height: 44px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+    color: var(--text-2);
+    font-size: var(--step--1);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease);
+  }
+
+  a.chip:hover,
+  .chip:not(.is-on):hover {
+    background: var(--surface-2);
+  }
+
+  .chip.is-on {
+    background: var(--brand-dim);
+    /* --brand-text, not --brand: raw --brand measures under 3:1 against
+       every elevated surface (surface-1/2, brand-dim itself) in dark mode,
+       clearing only against surface-0. A border on an elevated chip needs
+       the brighter variant. */
+    border-color: var(--brand-text);
+    color: var(--text-1);
+  }
+
+  .chip[aria-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .chip-n {
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
+    border-radius: 999px;
+    font-size: var(--step--1);
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-2);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .pill.ok {
+    color: var(--ok);
+  }
+
+  .pill.bad {
+    color: var(--bad);
+  }
+
+  .pill.warn {
+    color: var(--warn);
+  }
+
+  .calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+
+  a.calendar-day:hover {
+    background: var(--surface-2);
+  }
+
+  .calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: var(--space-1);
+    border-radius: var(--radius-1);
+    background: var(--surface-1);
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: var(--step--1);
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    transition: background var(--dur-fast) var(--ease);
+  }
+
+  .calendar-day[aria-current="date"] {
+    /* Same fix as .chip.is-on above: this outline sits on --surface-1. */
+    outline: 1px solid var(--brand-text);
+  }
+
+  .calendar-day[aria-disabled="true"] {
+    color: var(--text-3);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* The day-density heat bar. `data-density` (a plain HTML attribute, set
+     server-side, see fragments/calendar.html) is a discrete 0-4 int, not a
+     `style="--d:...` custom property: CSS attribute selectors are outside
+     `style-src` entirely, where a `style` attribute is not (see the
+     .meter-svg comment above for why that distinction matters here). */
+  .calendar-day::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: var(--brand);
+    opacity: 0;
+    border-radius: 0 0 var(--radius-1) var(--radius-1);
+  }
+
+  .calendar-day[data-density="1"]::after {
+    opacity: 0.25;
+  }
+
+  .calendar-day[data-density="2"]::after {
+    opacity: 0.5;
+  }
+
+  .calendar-day[data-density="3"]::after {
+    opacity: 0.75;
+  }
+
+  .calendar-day[data-density="4"]::after {
+    opacity: 1;
+  }
+
+  .calendar-day-spacer {
+    visibility: hidden;
+  }
+
+  .calendar-day .problem-dot {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--bad);
+  }
+
+  .day-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  details.hour {
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  details.hour > summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  /* Every `<details>` disclosure in the app uses this one shared chevron
+     rule, including the device switcher: a cascade layer always outranks
+     specificity, regardless of which selector is "more specific", so a
+     more-specific override placed in an earlier layer (e.g. `layout`)
+     never wins against a less-specific rule in a later layer
+     (`components`). One shared rule here, not a per-component override,
+     keeps every chevron consistent. */
+  details > summary .icon.chevron {
+    color: var(--text-3);
+    transition: transform var(--dur-base) var(--ease);
+  }
+
+  details[open] > summary .icon.chevron {
+    transform: rotate(90deg);
+  }
+
+  .hour-label {
+    font-weight: 600;
+  }
+
+  .hour-count,
+  .hour-bytes {
+    color: var(--text-3);
+    font-size: var(--step--1);
+  }
+
+  /* The expanded body of details.hour: its rows and the opened video
+     player both land here (see hour_rows.html/rec_player.html). Without
+     this the last row/player ran straight into the next hour's summary
+     or the details' own border-bottom, with no breathing room at either
+     edge. */
+  .rows {
+    padding-block: var(--space-2) var(--space-3);
+  }
+
+  .rec-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    min-height: 44px;
+    box-sizing: border-box;
+    border-top: 1px solid var(--line-soft);
+    text-decoration: none;
+    color: var(--text-1);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+  }
+
+  .rec-row:hover {
+    background: var(--surface-1);
+  }
+
+  .rec-row:first-child {
+    border-top: none;
+  }
+
+  /* The Problems page's per-row error explanation: indented under the
+     row's own text (roughly past its leading .dot), a bit of breathing
+     room before the next row. */
+  .problem-error-detail {
+    margin-left: var(--space-5);
+    margin-bottom: var(--space-2);
+    overflow-wrap: break-word;
+  }
+
+  @media (max-width: 400px) {
+    .problem-error-detail {
+      margin-left: var(--space-2);
+    }
+  }
+
+  .rec-time {
+    color: var(--text-2);
+    width: 3.5em;
+    flex-shrink: 0;
+  }
+
+  .rec-size {
+    color: var(--text-3);
+    font-size: var(--step--1);
+    margin-left: auto;
+  }
+
+  .rec-hash {
+    color: var(--text-3);
+    font-size: var(--step--1);
+  }
+
+  .player-shell {
+    aspect-ratio: 16 / 9;
+    background: var(--surface-2);
+    border-radius: var(--radius-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .player-shell video {
+    width: 100%;
+    height: 100%;
+  }
+
+  .codec-fallback {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--text-2);
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--surface-2) 25%,
+      var(--surface-1) 37%,
+      var(--surface-2) 63%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+    border-radius: var(--radius-1);
+  }
+
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 100% 50%;
+    }
+
+    100% {
+      background-position: 0 50%;
+    }
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .skeleton-row {
+    height: 20px;
+    margin-block: var(--space-2);
+  }
+
+  .skeleton-calendar-mobile {
+    height: 200px;
+  }
+
+  .skeleton-calendar-desktop {
+    height: 280px;
+  }
+
+  .skeleton-growth {
+    height: 40px;
+  }
+
+  .skeleton-activity {
+    height: 80px;
+  }
+
+  .empty-state {
+    padding: var(--space-6) var(--space-4);
+    text-align: center;
+    color: var(--text-3);
+  }
+
+  .empty-state .btn {
+    margin-top: var(--space-4);
+  }
+
+  #offline-banner {
+    display: none;
+    background: var(--warn);
+    color: var(--on-warn);
+    text-align: center;
+    font-size: var(--step--1);
+    padding: var(--space-2);
+  }
+
+  html.is-offline #offline-banner {
+    display: block;
+  }
+}
+
+@layer utilities {
+  /* Lucide draws every glyph at stroke-width:2 with round caps/joins --
+     including the lower "dot" on circle-help/triangle-alert/circle-alert,
+     which is a zero-length h.01 segment that only becomes a visible dot
+     under a round cap. scripts/build_icon_sprite.py strips those
+     presentation attributes when it builds the symbol sprite (so color
+     stays under CSS control), which left every glyph rendering at the
+     SVG default stroke-width:1 with a butt cap -- half-weight lines and
+     invisible dots. Restored here instead of re-adding to the sprite,
+     since the sprite is sha256-pinned by tests/unit/test_web_static.py. */
+  .icon {
+    width: 1.125em;
+    height: 1.125em;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    flex-shrink: 0;
+  }
+
+  .muted {
+    color: var(--text-3);
+  }
+
+  /* Two spacing utilities standing in for the ad-hoc `style="margin-bottom:
+     var(--space-N)"` / `style="font-size:var(--step--1)"` pairs repeated
+     across the fragments (a literal value outside this layer is a
+     defect). `.meta` is a secondary line under a heading or value. */
+  .section-gap {
+    margin-bottom: var(--space-4);
+  }
+
+  .section-gap-sm {
+    margin-bottom: var(--space-3);
+  }
+
+  .section-gap-lg {
+    margin-bottom: var(--space-6);
+  }
+
+  .meta {
+    color: var(--text-3);
+    font-size: var(--step--1);
+  }
+
+  .text-sm {
+    font-size: var(--step--1);
+  }
+
+  .text-center {
+    text-align: center;
+  }
+
+  .hidden-hours-note {
+    padding-block: var(--space-2);
+  }
+
+  /* Short metadata fragments (e.g. "5 clips, 240 MB") as a wrapping flex
+     row with `gap`, no separator glyph at all: the comma/line-break
+     already carries it, and this survives narrow widths without forcing a
+     mid-phrase wrap around a lone dot. */
+  .inline-facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .text-2 {
+    color: var(--text-2);
+  }
+
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .full-width {
+    width: 100%;
+  }
+
+  .htmx-request.htmx-indicator,
+  .htmx-request .htmx-indicator {
+    opacity: 1;
+  }
+
+  .htmx-indicator {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+}

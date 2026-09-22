@@ -1,0 +1,6 @@
+{% for rec in rows %}
+{% include "fragments/problem_row.html" %}
+{% endfor %}
+{% if has_more and rows %}
+<button class="btn full-width" type="button" hx-get="{{ durl('/fragments/problems?after=' ~ rows[-1].start_utc ~ ',' ~ rows[-1].id) }}" hx-target="this" hx-swap="outerHTML">Load more</button>
+{% endif %}

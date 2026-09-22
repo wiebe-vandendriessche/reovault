@@ -1,0 +1,29 @@
+<article class="stack" id="rec-{{ rec.id }}">
+  <div class="player-shell">
+    {% if rec.state == 'archived' %}
+    <!-- No poster: thumbnails would need ffmpeg, which this project
+         deliberately avoids as a dependency. The surrounding shell
+         reserves a 16:9 box so nothing jumps when metadata loads. -->
+    <video src="/recordings/{{ rec.id }}/stream" controls playsinline preload="metadata"
+           controlslist="nodownload" data-download-href="/recordings/{{ rec.id }}/stream?download=1"></video>
+    {% else %}
+    <div class="codec-fallback">Clip is not archived yet.</div>
+    {% endif %}
+  </div>
+  <div class="row-between text-sm">
+    <span class="tabular">{{ rec.local_datetime }}</span>
+    <span class="rec-hash tabular">{{ (rec.plaintext_sha256 or '')[:8] }}</span>
+    <span class="tabular">{{ rec.plaintext_size | human_bytes }}</span>
+  </div>
+  <div class="row">
+    {% if rec.state == 'archived' %}
+    <a class="btn primary" href="/recordings/{{ rec.id }}/stream?download=1">Download {{ rec.plaintext_size | human_bytes }}</a>
+    <button class="btn" type="button" hx-post="/recordings/{{ rec.id }}/verify" hx-target="next .verify-result" hx-swap="innerHTML" hx-indicator="this">Re-verify hash</button>
+    <span class="verify-result"></span>
+    {% endif %}
+    {% if rec.state in ('failed', 'quarantined') %}
+    <button class="btn" type="button" hx-post="/recordings/{{ rec.id }}/retry" hx-target="#rec-{{ rec.id }}" hx-swap="outerHTML">Retry</button>
+    {% endif %}
+    <button class="btn" type="button" hx-get="/fragments/recordings/{{ rec.id }}/row" hx-target="#rec-{{ rec.id }}" hx-swap="outerHTML">Close</button>
+  </div>
+</article>
