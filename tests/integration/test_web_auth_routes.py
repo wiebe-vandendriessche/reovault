@@ -143,11 +143,21 @@ def test_six_failed_attempts_are_rate_limited(app_and_client):
 
 
 def test_tampered_cookie_is_unauthenticated(app_and_client):
+    """Flips a character in the middle of the token, not the last one: the
+    signature is base64url of a 32-byte HMAC, whose final encoded
+    character carries two bits base64 doesn't validate, so some values of
+    that last character decode to the same bytes and wouldn't actually
+    tamper anything. A real, if narrow, base64 property, not a signature
+    weakness."""
     _app, client = app_and_client
     csrf = _extract_hidden_csrf(client.get("/login").text)
     client.post("/login", data={"password": WEB_TEST_PASSWORD, "csrf_token": csrf, "next": "/"})
     good_cookie = client.cookies["rv_session"]
-    client.cookies.set("rv_session", good_cookie[:-1] + ("A" if good_cookie[-1] != "A" else "B"))
+    mid = len(good_cookie) // 2
+    tampered = (
+        good_cookie[:mid] + ("A" if good_cookie[mid] != "A" else "B") + good_cookie[mid + 1 :]
+    )
+    client.cookies.set("rv_session", tampered)
 
     response = client.get("/")
 
