@@ -2,13 +2,29 @@
 
 ## Docker (recommended)
 
+ReoVault is published as a signed image for `linux/amd64` and `linux/arm64`
+at `ghcr.io/wiebe-vandendriessche/reovault`. You don't need to clone the
+repository, two files are enough:
+
 ```bash
-cp reovault.example.toml reovault.toml   # edit [[devices]] etc.
-mkdir -p secrets && echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
+mkdir reovault && cd reovault
+curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
+# edit reovault.toml: your [[devices]], and set [web] email (set-password needs it)
+
+mkdir -p data/config data/vault data/staging data/reolink-cli secrets
+echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
+
 docker compose run --rm reovault key init
 docker compose up -d
 docker compose exec reovault reovault web set-password
 ```
+
+Create `reovault.toml` and the `data/` folders yourself before the first
+`docker compose` command, as above. If Docker has to create a missing bind
+mount itself, it makes a root-owned folder, which the container (running as
+uid 1000) can't write to, and for `reovault.toml` a folder instead of a file.
+If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
 
 `compose.yaml` supports two deployment modes. Pick one, both are first-class:
 
@@ -25,16 +41,52 @@ docker compose exec reovault reovault web set-password
   `REOVAULT_WEB__FORWARDED_ALLOW_IPS` to the proxy's own address (never
   `"*"`, see [Security](security.md)).
 
-`./data/{config,vault,staging}` and `./data/reolink-cli` (reolink-cli's own
-credential registry, written to when a camera is added from the Devices tab)
-are bind mounts, gitignored. `./secrets/reovault_master_passphrase.txt` is a
-Docker secret file, also gitignored. Never commit it.
+`./reovault.toml` is mounted read-only (ReoVault never writes its own
+config). `./data/{config,vault,staging}` and `./data/reolink-cli`
+(reolink-cli's own credential registry, written to when a camera is added
+from the Devices tab) are bind mounts holding everything that must survive an
+upgrade: database, master key, dashboard password, and the archive itself.
+`./secrets/reovault_master_passphrase.txt` is a Docker secret file. Never
+commit it, and back up `data/config/master.key` together with the passphrase:
+losing either makes the archive unrecoverable.
 
-The image bakes in a version-pinned, checksum-verified `reolink-cli` release
-(`REOLINK_CLI_VERSION` build arg); `reovault doctor` asserts it at startup.
-`reovault daemon` is the container's entrypoint and supervises the
-`reolink-gateway` sidecar in-process, so nothing else needs to run alongside
-it. Released images are published for `linux/amd64` and `linux/arm64`.
+The image bakes in a version-pinned, checksum-verified `reolink-cli` release;
+`reovault doctor` asserts it at startup. `reovault daemon` is the container's
+entrypoint and supervises the `reolink-gateway` sidecar in-process, so
+nothing else needs to run alongside it.
+
+### Upgrading
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+`:latest` follows the newest release. To upgrade on your own schedule
+instead, pin a version in `compose.yaml` (for example
+`ghcr.io/wiebe-vandendriessche/reovault:0.1.0`) and bump it after reading the
+[release notes](https://github.com/wiebe-vandendriessche/reovault/releases).
+Before 1.0 the config schema can still change between releases.
+
+### Verifying the image
+
+Release images are signed keylessly with [cosign](https://docs.sigstore.dev/)
+by the release workflow, and carry an attested CycloneDX SBOM:
+
+```bash
+cosign verify ghcr.io/wiebe-vandendriessche/reovault:0.1.0 \
+  --certificate-identity-regexp '^https://github\.com/wiebe-vandendriessche/reovault/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Each [GitHub Release](https://github.com/wiebe-vandendriessche/reovault/releases)
+also has the SBOM (`sbom.cdx.json`) and the vulnerability scan report
+(`results.sarif`) attached.
+
+### Building from source
+
+Clone the repository, then in `compose.yaml` comment out the `image:` line
+and uncomment the `build:` block below it. `docker compose up -d --build`
+builds and starts it; everything else above stays the same.
 
 ## Bare metal / development
 
@@ -47,7 +99,7 @@ never touches the camera password itself. See
 
 ```bash
 uv sync
-cp reovault.example.toml reovault.toml   # set [[devices]] alias/timezone to match reolink-cli's, and storage paths
+cp reovault.example.toml reovault.toml   # set [[devices]] alias/timezone to match reolink-cli's, storage paths, and [web] email
 
 export REOVAULT_MASTER_PASSPHRASE="a passphrase, not the camera's"
 uv run reovault key init                 # creates data/config/master.key (0600)
@@ -73,5 +125,5 @@ See the [CLI reference](cli-reference.md) for every command, or run
 2. `REOVAULT_MASTER_PASSPHRASE` (or `REOVAULT_MASTER_PASSPHRASE_FILE` /
    Docker secret) is set. `reovault key init` needs it.
 3. `reovault doctor` passes before anything camera-facing is attempted.
-4. `reovault web set-password` is run before exposing the dashboard.
-   Without it, every UI route returns 503 (the healthcheck still works).
+4. `[web] email` is set, and `reovault web set-password` is run before exposing the dashboard.
+   Until a password is set, every UI route returns 503 (the healthcheck still works).

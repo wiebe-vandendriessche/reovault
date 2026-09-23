@@ -68,7 +68,7 @@ integrity_scan_enabled = true
 [web]
 host = "127.0.0.1"
 port = 8080
-# email = "you@example.com"     # optional: autofill hint for a password manager
+# email = "you@example.com"     # required before `reovault web set-password`; the login's username field
 cookie_secure = true
 cookie_samesite = "lax"
 session_max_age_days = 30

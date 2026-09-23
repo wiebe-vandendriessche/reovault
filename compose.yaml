@@ -22,16 +22,22 @@
 
 services:
   reovault:
-    build:
-      context: .
-      args:
-        REOLINK_CLI_VERSION: "0.19.0"
-    image: reovault:latest
+    # Signed release image (see docs/installation.md to verify it). `latest`
+    # tracks the newest release; pin a tag like `:0.1.0` to upgrade on your
+    # own schedule instead.
+    image: ghcr.io/wiebe-vandendriessche/reovault:latest
+    # To build from a source checkout instead, comment out `image:` above and
+    # uncomment this block:
+    # build:
+    #   context: .
+    #   args:
+    #     REOLINK_CLI_VERSION: "0.19.0"
     restart: unless-stopped
     # Mode A: direct port publish:
     # ports:
     #   - "8080:8080"
     environment:
+      REOVAULT_CONFIG_FILE: /etc/reovault/reovault.toml
       REOVAULT_MASTER_PASSPHRASE_FILE: /run/secrets/reovault_master_passphrase
       # Mode B (active default): reverse proxy's own container IP/subnet:
       REOVAULT_WEB__FORWARDED_ALLOW_IPS: "172.16.0.0/12"
@@ -41,6 +47,10 @@ services:
     secrets:
       - reovault_master_passphrase
     volumes:
+      # Your settings. Read-only: ReoVault never writes its own config. Create
+      # it before the first `docker compose` command, or Docker makes a
+      # directory here instead.
+      - ./reovault.toml:/etc/reovault/reovault.toml:ro
       # config/DB/master.key: kept outside the vault tree so a backup tool
       # watching the vault never replicates the key alongside it.
       - ./data/config:/config

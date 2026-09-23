@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from reovault.config import load_settings
+from pydantic import BaseModel
+
+from reovault.config import Settings, load_settings
 
 
 def test_defaults_with_no_toml_file(tmp_path):
@@ -50,3 +52,17 @@ def test_config_file_env_var_used_when_not_overridden(tmp_path, monkeypatch):
     monkeypatch.setenv("REOVAULT_CONFIG_FILE", str(toml_path))
     settings = load_settings()
     assert settings.web.port == 1234
+
+
+def test_dockerfile_overrides_every_relative_default_path():
+    # A relative default resolves under the image's WORKDIR, the container's
+    # throwaway layer, so it is silently lost whenever the container is recreated.
+    dockerfile = (Path(__file__).parents[2] / "Dockerfile").read_text()
+    for section, field in Settings.model_fields.items():
+        defaults = field.get_default(call_default_factory=True)
+        if not isinstance(defaults, BaseModel):
+            continue
+        for name, value in defaults:
+            if isinstance(value, Path) and not value.is_absolute():
+                env = f"REOVAULT_{section.upper()}__{name.upper()}="
+                assert env in dockerfile, f"{section}.{name} has no Dockerfile override"
