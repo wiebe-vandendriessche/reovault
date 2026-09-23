@@ -4,6 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 20
     groups:
       python-minor-patch:
         update-types: ["minor", "patch"]
@@ -12,6 +13,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 20
     groups:
       actions-minor-patch:
         update-types: ["minor", "patch"]
@@ -20,3 +22,4 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 20
