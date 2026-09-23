@@ -3,14 +3,14 @@
 # Multi-stage build (see docs/architecture.md): a downloader stage fetches
 # the pinned `reolink-cli` release and its per-asset `.sha256`, verifies it,
 # and extracts the two binaries it ships (`reolink-cli`, `reolink-gateway`).
-# The runtime stage is `python:3.12-slim` with `uv`-installed deps, running
+# The runtime stage is `python:3.14-slim` with `uv`-installed deps, running
 # as uid 1000. The gateway daemon stays supervised in-process by
 # `GatewaySupervisor` (reovault/providers/gateway.py); no supervisord, no
 # second entrypoint.
 
 ARG REOLINK_CLI_VERSION=0.19.0
 
-FROM python:3.12-slim AS reolink-cli-download
+FROM python:3.14-slim AS reolink-cli-download
 ARG REOLINK_CLI_VERSION
 ARG TARGETARCH
 WORKDIR /dl
@@ -34,7 +34,7 @@ RUN set -eu; \
     chmod +x /out/reolink-cli /out/reolink-gateway; \
     /out/reolink-cli --version | grep -qF "$REOLINK_CLI_VERSION"
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 ARG REOLINK_CLI_VERSION
 ENV REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \
     PYTHONUNBUFFERED=1 \
