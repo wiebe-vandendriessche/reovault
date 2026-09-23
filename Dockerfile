@@ -54,7 +54,7 @@ RUN groupadd -g 1000 reovault && useradd -u 1000 -g reovault -m -d /home/reovaul
 
 COPY --from=reolink-cli-download /out/reolink-cli /out/reolink-gateway /usr/local/bin/
 
-RUN pip install --no-cache-dir uv==0.5.*
+RUN pip install --no-cache-dir uv==0.12.*
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
