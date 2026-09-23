@@ -7,6 +7,11 @@ default `./reovault.toml`), merged with `REOVAULT_*` environment variables.
 
 Start from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/reovault/blob/main/reovault.example.toml).
 
+The defaults below are for a bare-metal install. In Docker, the image points
+every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
+and `compose.yaml` mounts your `reovault.toml` read-only at
+`/etc/reovault/reovault.toml`, so leave the path fields out of it there.
+
 Nothing in config is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the
 camera password are deliberately not config fields. See
 [Security](security.md).

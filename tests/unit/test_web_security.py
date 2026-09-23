@@ -2,6 +2,7 @@
 no new dependency."""
 
 import os
+import string
 
 from reovault.web.security import (
     ANON_JTI,
@@ -40,10 +41,14 @@ def test_session_roundtrip():
 
 
 def test_session_rejects_tampered_signature():
+    # Every alternative last char, including those base64 would decode to the
+    # same bytes (the final char of a 32-byte HMAC has 2 unused bits).
     key = os.urandom(32)
     token = sign_session(key, jti=new_jti(), max_age_secs=3600)
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
-    assert verify_session(key, tampered) is None
+    for c in string.ascii_letters + string.digits + "-_":
+        if c != token[-1]:
+            assert verify_session(key, token[:-1] + c) is None, c
+    assert verify_session(key, token[:-1] + "!" + token[-1]) is None
 
 
 def test_session_rejects_expired():

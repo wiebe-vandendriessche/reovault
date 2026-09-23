@@ -75,9 +75,12 @@ def _b64url_encode(data: bytes) -> str:
 def _b64url_decode(s: str) -> bytes | None:
     try:
         padding = "=" * (-len(s) % 4)
-        return base64.urlsafe_b64decode(s + padding)
+        data = base64.urlsafe_b64decode(s + padding)
     except (ValueError, TypeError):
         return None
+    # The decoder ignores a final char's unused low bits and drops non-alphabet
+    # chars, so several strings decode alike. Accept only the one we'd emit.
+    return data if _b64url_encode(data) == s else None
 
 
 def _mac(key: bytes, label: bytes, payload: bytes) -> bytes:
