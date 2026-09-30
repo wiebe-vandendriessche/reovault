@@ -31,7 +31,11 @@ disk, not concurrency.
 
 from __future__ import annotations
 
+import itertools
 import os
+import threading
+from collections import Counter
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -314,62 +318,89 @@ def remove_device_jobs(scheduler: BackgroundScheduler, device_id: int) -> None:
 # APScheduler directly; it calls these, so scheduler knowledge stays in one
 # module.
 #
-# Each uses a per-device job id with `replace_existing=False`, so a second
-# click on the same camera while the first is still queued raises
-# apscheduler's own `ConflictingIdError` rather than silently queueing
-# twice. Two different cameras never collide on one id. The web layer
-# converts a ConflictingIdError into an "already queued" fragment.
+# Every click gets its own job id (`<base>-<n>:<device_id>`), so a second
+# run queued while the first is still going waits its turn on the
+# single-worker executor instead of being dropped as a duplicate id or by
+# `max_instances`. `queued_manual_jobs` counts the ones not started yet, so
+# the dashboard can say so: APScheduler itself forgets a DateTrigger job the
+# moment it hands it to the executor, while it may still be waiting there.
+
+_manual_seq = itertools.count(1)
+_queued: Counter[int] = Counter()
+_queued_lock = threading.Lock()
+
+
+def queued_manual_jobs(device_id: int) -> int:
+    with _queued_lock:
+        return _queued[device_id]
+
+
+def _run_manual(func: Callable[..., None], device_id: int, **kwargs: object) -> None:
+    with _queued_lock:
+        _queued[device_id] -= 1
+    func(**kwargs)
+
+
+def _queue_manual(
+    scheduler: BackgroundScheduler,
+    base: str,
+    func: Callable[..., None],
+    device_id: int,
+    **kwargs: object,
+) -> str:
+    job_id = _job_id(f"{base}-{next(_manual_seq)}", device_id)
+    with _queued_lock:
+        _queued[device_id] += 1
+    try:
+        scheduler.add_job(
+            _run_manual,
+            DateTrigger(run_date=datetime.now(UTC)),
+            args=[func, device_id],
+            kwargs=kwargs,
+            id=job_id,
+            misfire_grace_time=None,
+        )
+    except BaseException:
+        with _queued_lock:
+            _queued[device_id] -= 1
+        raise
+    return job_id
 
 
 def queue_manual_archive(
     scheduler: BackgroundScheduler, archiver: Archiver, *, from_utc: datetime, to_utc: datetime
 ) -> str:
-    job_id = _job_id(MANUAL_ARCHIVE_JOB_BASE, archiver.device_id)
-    scheduler.add_job(
+    return _queue_manual(
+        scheduler,
+        MANUAL_ARCHIVE_JOB_BASE,
         _run_and_sample,
-        DateTrigger(run_date=datetime.now(UTC)),
-        kwargs={"archiver": archiver, "trigger": "manual", "from_utc": from_utc, "to_utc": to_utc},
-        id=job_id,
-        max_instances=1,
-        misfire_grace_time=None,
-        replace_existing=False,
+        archiver.device_id,
+        archiver=archiver,
+        trigger="manual",
+        from_utc=from_utc,
+        to_utc=to_utc,
     )
-    return job_id
 
 
 def queue_manual_backfill(
     scheduler: BackgroundScheduler, archiver: Archiver, *, from_utc: datetime, to_utc: datetime
 ) -> str:
-    job_id = _job_id(MANUAL_BACKFILL_JOB_BASE, archiver.device_id)
-    scheduler.add_job(
+    return _queue_manual(
+        scheduler,
+        MANUAL_BACKFILL_JOB_BASE,
         _run_and_sample,
-        DateTrigger(run_date=datetime.now(UTC)),
-        kwargs={
-            "archiver": archiver,
-            "trigger": "backfill",
-            "from_utc": from_utc,
-            "to_utc": to_utc,
-        },
-        id=job_id,
-        max_instances=1,
-        misfire_grace_time=None,
-        replace_existing=False,
+        archiver.device_id,
+        archiver=archiver,
+        trigger="backfill",
+        from_utc=from_utc,
+        to_utc=to_utc,
     )
-    return job_id
 
 
 def queue_manual_reconcile(scheduler: BackgroundScheduler, archiver: Archiver) -> str:
-    job_id = _job_id(MANUAL_RECONCILE_JOB_BASE, archiver.device_id)
-    scheduler.add_job(
-        _reconcile_job,
-        DateTrigger(run_date=datetime.now(UTC)),
-        args=[archiver],
-        id=job_id,
-        max_instances=1,
-        misfire_grace_time=None,
-        replace_existing=False,
+    return _queue_manual(
+        scheduler, MANUAL_RECONCILE_JOB_BASE, _reconcile_job, archiver.device_id, archiver=archiver
     )
-    return job_id
 
 
 def next_run_times(scheduler: BackgroundScheduler) -> dict[int, dict[str, datetime | None]]:

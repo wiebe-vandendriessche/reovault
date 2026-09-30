@@ -12,6 +12,7 @@ from reovault.providers.base import (
     LocalError,
     NetworkError,
     ProtocolError,
+    RecordingGoneError,
     describe_exit_code,
 )
 from reovault.providers.gateway import GatewaySupervisor
@@ -251,6 +252,89 @@ def test_fetch_builds_by_name_download_command_with_dash_o(provider, tmp_path):
     assert "-o" in called_cmd
     assert str(dest) in called_cmd
     assert result.bytes_written == 10
+
+
+def _search_window(cmd: list[str]) -> tuple[str, str]:
+    return cmd[cmd.index("--from") + 1], cmd[cmd.index("--to") + 1]
+
+
+def test_list_recordings_searches_one_camera_local_day_at_a_time(provider):
+    """Issue #13: one search over a whole multi-day window outran both our
+    timeout and reolink-cli's fixed 60s gateway budget on a busy camera.
+    Chunks split at the camera's local midnight, and a clip spanning
+    midnight that both days return is kept once."""
+    spanning = {
+        "name": "0120260916235900",
+        "startTime": "2026-09-16T23:59:00",
+        "endTime": "2026-09-17T00:01:00",
+        "fileSize": 1,
+    }
+    windows = []
+
+    def fake_run(cmd, **kwargs):
+        windows.append(_search_window(cmd))
+        return _completed({"ok": True, "data": {"items": [spanning]}})
+
+    with patch("subprocess.run", side_effect=fake_run):
+        recordings = provider.list_recordings(
+            # 14:00 Brussels (UTC+2) on the 15th to 10:00 on the 17th
+            from_utc=datetime(2026, 9, 15, 12, tzinfo=UTC),
+            to_utc=datetime(2026, 9, 17, 8, tzinfo=UTC),
+        )
+    assert windows == [
+        ("2026-09-15T14:00:00", "2026-09-16T00:00:00"),
+        ("2026-09-16T00:00:00", "2026-09-17T00:00:00"),
+        ("2026-09-17T00:00:00", "2026-09-17T10:00:00"),
+    ]
+    assert [r.remote_name for r in recordings] == ["0120260916235900"]
+
+
+def _rec(name: str) -> RemoteRecording:
+    return RemoteRecording(
+        remote_name=name,
+        start_utc=datetime(2026, 9, 17, 15, 43, 20, tzinfo=UTC),
+        end_utc=None,
+        duration_s=None,
+        rec_type=None,
+        stream=None,
+        remote_size=10,
+        raw_metadata={},
+    )
+
+
+# Verbatim from a deployed D340W (reolink-cli 0.19.0), 2026-09-30: a clip
+# listed by one run's search, overwritten by loop recording before its
+# download, failing as a retryable network error on every run after.
+_NOT_FOUND_ENVELOPE = {
+    "ok": False,
+    "command": "vod",
+    "protocol": None,
+    "data": None,
+    "error": {
+        "code": "NETWORK_ERROR",
+        "message": "backend error: backend error: recording '0120260917174320' not found "
+        "on channel 0 in the search of 2026-09-17",
+        "retryable": True,
+    },
+}
+
+
+def test_fetch_of_a_recording_gone_from_the_card_is_not_retryable(provider, tmp_path):
+    with (
+        patch("subprocess.run", return_value=_completed(_NOT_FOUND_ENVELOPE, returncode=2)),
+        pytest.raises(RecordingGoneError) as info,
+    ):
+        provider.fetch(_rec("0120260917174320"), str(tmp_path / "clip"))
+    assert info.value.retryable is False
+    assert "not found on channel 0" in (info.value.detail or "")
+
+
+def test_fetch_not_found_for_a_different_name_stays_a_network_error(provider, tmp_path):
+    with (
+        patch("subprocess.run", return_value=_completed(_NOT_FOUND_ENVELOPE, returncode=2)),
+        pytest.raises(NetworkError),
+    ):
+        provider.fetch(_rec("0120260917999999"), str(tmp_path / "clip"))
 
 
 # -- describe_exit_code / the -2 "no message" case ---------------------

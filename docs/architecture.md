@@ -22,6 +22,16 @@ the archiver's retry/backoff logic never has to guess what kind of failure
 it's looking at. A second camera integration would implement the same two
 interfaces without touching the archiver, scheduler, storage, or dashboard.
 
+`ReolinkCliProvider` searches one camera-local day per `vod search` call,
+never a whole window at once. Search time grows with the number of clips on
+the card, and one multi-day search on a busy camera outruns `reolink-cli`'s
+fixed 60 s gateway read budget. A `vod download` that reports the recording
+as not found on the card (loop recording overwrote it after it was listed)
+is quarantined on the first failure rather than retried every run.
+`reolink-cli` 0.19.0 reports that case as a retryable `NETWORK_ERROR`, so
+the provider recognizes it by its message text. Both behaviors were verified
+against a D340W.
+
 `reolink-cli` itself manages camera credentials in its own encrypted
 `aliases.toml` (AES-GCM, decrypted by a `credentials.key` beside it, file
 mode 0600). ReoVault never stores the camera password: it passes through
