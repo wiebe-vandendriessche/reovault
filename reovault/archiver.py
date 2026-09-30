@@ -280,6 +280,12 @@ class Archiver:
     ) -> None:
         result.failed += 1
         result.errors.append(str(exc))
+        logger.warning(
+            "archiver.recording_failed",
+            recording_id=row_id,
+            error=str(exc),
+            error_class=exc.error_class.value,
+        )
 
         if exc.error_class == ErrorClass.AUTH:
             # Stop the run immediately: retrying a bad password can lock the
@@ -294,8 +300,9 @@ class Archiver:
             )
             raise _AbortRun(str(exc)) from exc
 
-        if exc.error_class == ErrorClass.INPUT or exc.error_class == ErrorClass.PROTOCOL:
-            # Never retry-loop on a ReoVault bug or an upstream schema change.
+        if not exc.retryable:
+            # Never retry-loop on a ReoVault bug, an upstream schema change,
+            # or a recording the camera no longer has.
             self.repository.mark_quarantined(
                 row_id, error=str(exc), error_class=exc.error_class, error_detail=exc.detail
             )

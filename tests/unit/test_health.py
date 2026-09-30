@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from reovault.db.repository import Repository
+from reovault.db.repository import Repository, parse_iso_utc
 from reovault.health import (
     coverage_margin,
     record_storage_sample,
@@ -34,12 +34,22 @@ def _rec(name: str, start: datetime, size: int = 10) -> RemoteRecording:
     return make_recording(name, start, size=size, raw_metadata={})
 
 
-def test_record_storage_sample_uses_full_search_for_oldest(repo, device_id):
+class _WindowCappedProvider(FakeProvider):
+    """Fails any search wider than a day, the way a busy camera outruns
+    reolink-cli's 60s gateway budget on a long window (issue #13)."""
+
+    def list_recordings(self, *, from_utc, to_utc):
+        assert to_utc - from_utc <= timedelta(days=1), "search window too wide"
+        return super().list_recordings(from_utc=from_utc, to_utc=to_utc)
+
+
+def test_record_storage_sample_walks_back_to_the_oldest_day(repo, device_id):
     now = datetime.now(UTC)
-    provider = FakeProvider(
+    oldest = now - timedelta(days=7, hours=5)
+    provider = _WindowCappedProvider(
         recordings=[
-            ScriptedRecording(_rec("old", now - timedelta(days=10)), b"x"),
-            ScriptedRecording(_rec("new", now - timedelta(days=1)), b"x"),
+            ScriptedRecording(_rec(f"r{d}", now - timedelta(days=d, hours=5)), b"x")
+            for d in range(8)
         ]
     )
     record_storage_sample(repository=repo, provider=provider, device_id=device_id)
@@ -47,7 +57,10 @@ def test_record_storage_sample_uses_full_search_for_oldest(repo, device_id):
     sample = repo.latest_storage_sample(device_id)
     assert sample is not None
     assert sample.total_gb == 64.0  # FakeProvider's default storage status
-    assert sample.oldest_recording_utc is not None
+    assert parse_iso_utc(sample.oldest_recording_utc) == oldest
+    # 8 days with clips, then EMPTY_DAYS_TO_STOP empty ones, then stop:
+    # nowhere near the 3650 a fixed 10-year lookback would take.
+    assert provider.list_calls == 8 + 3
 
 
 def test_record_storage_sample_handles_empty_card(repo, device_id):

@@ -17,7 +17,6 @@ file read.
 
 from __future__ import annotations
 
-import contextlib
 import hmac
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
@@ -33,7 +32,6 @@ from apscheduler.events import (
     EVENT_JOB_MISSED,
     EVENT_JOB_SUBMITTED,
 )
-from apscheduler.jobstores.base import ConflictingIdError
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request
 from fastapi.responses import (
@@ -75,6 +73,7 @@ from reovault.scheduler import (
     queue_manual_archive,
     queue_manual_backfill,
     queue_manual_reconcile,
+    queued_manual_jobs,
     remove_device_jobs,
     reschedule_device,
     save_schedule,
@@ -698,6 +697,14 @@ def create_app(
         archiver, _tz = ctx
         return render(request, "fragments/activity.html", _activity_context(archiver))
 
+    @app.get("/fragments/activity/status", response_class=HTMLResponse)
+    def fragment_activity_status(request: Request) -> Response:
+        ctx = _device_ctx(request)
+        if isinstance(ctx, Response):
+            return ctx
+        archiver, _tz = ctx
+        return render(request, "fragments/activity_status.html", _activity_context(archiver))
+
     @app.get("/fragments/problems/badge", response_class=HTMLResponse)
     def fragment_problem_badge(request: Request) -> Response:
         ctx = _device_ctx(request)
@@ -1024,6 +1031,16 @@ def create_app(
 
     # -- controls: run now / backfill / reconcile --------------------------
 
+    # Every action answers with just the polling status block (see
+    # activity_status.html), never the whole card: re-rendering the card
+    # would wipe a range the user is still typing. A run already in
+    # progress doesn't block another click; the new one queues behind it.
+
+    def _status(request: Request, archiver: Archiver, **extra: Any) -> Response:
+        return render(
+            request, "fragments/activity_status.html", {**_activity_context(archiver), **extra}
+        )
+
     @app.post("/actions/run", response_class=HTMLResponse)
     def action_run(request: Request) -> Response:
         ctx = _device_ctx(request)
@@ -1031,20 +1048,12 @@ def create_app(
             return ctx
         archiver, _tz = ctx
         if scheduler is None:
-            return render(
-                request,
-                "fragments/activity.html",
-                {**_activity_context(archiver), "scheduler_down": True},
-            )
-        if repo.running_run(archiver.device_id) is not None:
-            return render(request, "fragments/activity.html", _activity_context(archiver))
+            return _status(request, archiver, scheduler_down=True)
         now = datetime.now(UTC)
         # Same window as `archive_overlap_hours`'s default: a manual run
         # doesn't try to be smarter than the scheduled one about it.
-        from_utc = now - timedelta(hours=48)
-        with contextlib.suppress(ConflictingIdError):
-            queue_manual_archive(scheduler, archiver, from_utc=from_utc, to_utc=now)
-        return render(request, "fragments/activity.html", _activity_context(archiver))
+        queue_manual_archive(scheduler, archiver, from_utc=now - timedelta(hours=48), to_utc=now)
+        return _status(request, archiver)
 
     @app.post("/actions/stop", response_class=HTMLResponse)
     def action_stop(request: Request) -> Response:
@@ -1059,7 +1068,7 @@ def create_app(
         archiver, _tz = ctx
         if repo.running_run(archiver.device_id) is not None:
             archiver.request_cancel()
-        return render(request, "fragments/activity.html", _activity_context(archiver))
+        return _status(request, archiver)
 
     @app.post("/actions/backfill", response_class=HTMLResponse)
     async def action_backfill(request: Request) -> Response:
@@ -1069,29 +1078,24 @@ def create_app(
         archiver, tz = dctx
         body = await request.body()
         form = dict(parse_qsl(body.decode("utf-8", "replace")))
-        from_date = _parse_date(form.get("from", ""))
-        to_date = _parse_date(form.get("to", ""))
-        ctx = _activity_context(archiver)
         if scheduler is None:
-            return render(request, "fragments/activity.html", {**ctx, "scheduler_down": True})
-        if from_date is None or to_date is None or from_date > to_date:
-            return render(
-                request, "fragments/activity.html", {**ctx, "backfill_error": "Invalid date range."}
+            return _status(request, archiver, scheduler_down=True)
+        from_utc = _parse_local_datetime(form.get("from", ""), tz)
+        to_utc = _parse_local_datetime(form.get("to", ""), tz)
+        now = datetime.now(UTC)
+        if from_utc is None or to_utc is None:
+            return _status(request, archiver, backfill_error="Enter both a start and an end.")
+        to_utc = min(to_utc, now)
+        if from_utc >= to_utc:
+            return _status(
+                request, archiver, backfill_error="The start must be before the end (and the past)."
             )
-        if (to_date - from_date).days > _MAX_BACKFILL_DAYS:
-            return render(
-                request,
-                "fragments/activity.html",
-                {**ctx, "backfill_error": f"Range too wide; max {_MAX_BACKFILL_DAYS} days."},
+        if to_utc - from_utc > timedelta(days=_MAX_BACKFILL_DAYS):
+            return _status(
+                request, archiver, backfill_error=f"Range too wide; max {_MAX_BACKFILL_DAYS} days."
             )
-        from_utc, _ = local_day_bounds(from_date, tz)
-        _, to_utc = local_day_bounds(min(to_date, _local_today(tz)), tz)
-        to_utc = min(to_utc, datetime.now(UTC))
-        if repo.running_run(archiver.device_id) is not None:
-            return render(request, "fragments/activity.html", ctx)
-        with contextlib.suppress(ConflictingIdError):
-            queue_manual_backfill(scheduler, archiver, from_utc=from_utc, to_utc=to_utc)
-        return render(request, "fragments/activity.html", _activity_context(archiver))
+        queue_manual_backfill(scheduler, archiver, from_utc=from_utc, to_utc=to_utc)
+        return _status(request, archiver)
 
     @app.post("/actions/reconcile", response_class=HTMLResponse)
     def action_reconcile(request: Request) -> Response:
@@ -1100,14 +1104,9 @@ def create_app(
             return ctx
         archiver, _tz = ctx
         if scheduler is None:
-            return render(
-                request,
-                "fragments/activity.html",
-                {**_activity_context(archiver), "scheduler_down": True},
-            )
-        with contextlib.suppress(ConflictingIdError):
-            queue_manual_reconcile(scheduler, archiver)
-        return render(request, "fragments/activity.html", _activity_context(archiver))
+            return _status(request, archiver, scheduler_down=True)
+        queue_manual_reconcile(scheduler, archiver)
+        return _status(request, archiver)
 
     # -- schedule: when the standing jobs run, and whether they're on at
     # all --------------------------------------------------------------
@@ -1602,15 +1601,26 @@ def create_app(
     def _activity_context(archiver: Archiver) -> dict[str, Any]:
         device_id = archiver.device_id
         running = repo.running_run(device_id)
+        queued = queued_manual_jobs(device_id)
         # The activity log's listener is attached once to the whole
         # scheduler (every device's jobs), so events are filtered here to
         # just this device's -- otherwise camera A's Health page would show
         # camera B's scheduler activity mixed in.
         events = [e for e in activity_log.recent() if device_of_job_id(e.job_id) == device_id]
-        poll_secs = 5 if running is not None else 30
+        poll_secs = 3 if running is not None or queued else 30
         device_row = repo.get_device(device_id)
         tz = device_row.timezone if device_row is not None else "UTC"
-        return {"running": running, "events": events[:5], "poll_secs": poll_secs, "tz": tz}
+        now_local = datetime.now(ZoneInfo(tz)).replace(second=0, microsecond=0, tzinfo=None)
+        return {
+            "running": running,
+            "queued": queued,
+            "events": events[:5],
+            "poll_secs": poll_secs,
+            "tz": tz,
+            "default_from": (now_local - timedelta(hours=48)).isoformat(timespec="minutes"),
+            "default_to": now_local.isoformat(timespec="minutes"),
+            "max_backfill_days": _MAX_BACKFILL_DAYS,
+        }
 
     def _banner_context(
         sample: Any, coverage: Any, gateway_down: bool, problems_count: int
@@ -1817,6 +1827,18 @@ def _to_local(iso_utc: str, zone: ZoneInfo) -> datetime:
     from reovault.db.repository import parse_iso_utc
 
     return parse_iso_utc(iso_utc).astimezone(zone)
+
+
+def _parse_local_datetime(s: str, tz: str) -> datetime | None:
+    """An `<input type="datetime-local">` value, read as wall-clock time in
+    the camera's own timezone, returned as UTC."""
+    try:
+        naive = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if naive.tzinfo is not None:
+        return None
+    return naive.replace(tzinfo=ZoneInfo(tz)).astimezone(UTC)
 
 
 def _parse_date(s: str | None) -> date | None:

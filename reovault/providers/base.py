@@ -68,6 +68,15 @@ class DeviceError(ProviderError):
         super().__init__(message, ErrorClass.DEVICE, retryable=True, detail=detail)
 
 
+class RecordingGoneError(ProviderError):
+    """The camera no longer has this recording (loop recording overwrote it
+    between search and download). Retrying can't bring it back, so it
+    quarantines on the first failure instead of failing every run."""
+
+    def __init__(self, message: str, *, detail: str | None = None):
+        super().__init__(message, ErrorClass.DEVICE, retryable=False, detail=detail)
+
+
 class ProtocolError(ProviderError):
     """The device answered, but not in a recognized shape. Never retry-loop
     on this: it means a ReoVault bug or an upstream schema change, so it

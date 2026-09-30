@@ -9,7 +9,8 @@ camera models.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -17,7 +18,12 @@ from zoneinfo import ZoneInfo
 from reovault.logging import get_logger
 from reovault.models import FetchResult, RemoteRecording, StorageStatus
 from reovault.providers._cli import run_cli
-from reovault.providers.base import CameraProvider, ProtocolError
+from reovault.providers.base import (
+    CameraProvider,
+    ProtocolError,
+    ProviderError,
+    RecordingGoneError,
+)
 from reovault.providers.gateway import GatewaySupervisor
 
 logger = get_logger(__name__)
@@ -34,6 +40,13 @@ _END_KEYS = ("endTime", "end")
 _SIZE_KEYS = ("fileSize", "size")
 _TYPE_KEYS = ("recordType", "type", "recType")
 _STREAM_KEYS = ("streamType", "stream")
+
+# reolink-cli 0.19.0 reports a recording that's no longer on the card as a
+# retryable NETWORK_ERROR (exit 2); this message text, produced by the
+# gateway, is the only thing telling it apart from a real network failure.
+# Verified 2026-09-30 against a D340W. Unanchored on both ends: it arrives
+# wrapped in "backend error: " prefixes and can carry a channel hint suffix.
+_NOT_FOUND_RE = re.compile(r"recording '(?P<name>[^']+)' not found on channel \d+ in the search of")
 
 
 def _first(d: dict[str, object], keys: tuple[str, ...]) -> object | None:
@@ -69,8 +82,37 @@ class ReolinkCliProvider(CameraProvider):
     # -- CameraProvider ------------------------------------------------------
 
     def list_recordings(self, *, from_utc: datetime, to_utc: datetime) -> list[RemoteRecording]:
-        local_from = from_utc.astimezone(self.tz).strftime(_LOCAL_ISO)
-        local_to = to_utc.astimezone(self.tz).strftime(_LOCAL_ISO)
+        """One `vod search` per camera-local calendar day, not one for the
+        whole window: search time grows with the clips on the card, and a
+        single multi-day search on a busy camera outruns both our timeout
+        and reolink-cli's own fixed 60s gateway read budget (issue #13; a
+        951-clip day measured 6.4s, a 30-day window 55s)."""
+        seen: dict[tuple[str, datetime], RemoteRecording] = {}
+        for chunk_from, chunk_to in self._local_day_chunks(from_utc, to_utc):
+            for rec in self._search(chunk_from, chunk_to):
+                # A clip spanning midnight can come back from both days.
+                seen.setdefault((rec.remote_name, rec.start_utc), rec)
+        return list(seen.values())
+
+    def _local_day_chunks(
+        self, from_utc: datetime, to_utc: datetime
+    ) -> list[tuple[datetime, datetime]]:
+        local_from = from_utc.astimezone(self.tz)
+        local_to = to_utc.astimezone(self.tz)
+        chunks = []
+        start = local_from
+        while start < local_to:
+            next_midnight = datetime.combine(
+                start.date() + timedelta(days=1), time(), tzinfo=self.tz
+            )
+            end = min(next_midnight, local_to)
+            chunks.append((start, end))
+            start = end
+        return chunks or [(local_from, local_to)]
+
+    def _search(self, local_from_dt: datetime, local_to_dt: datetime) -> list[RemoteRecording]:
+        local_from = local_from_dt.strftime(_LOCAL_ISO)
+        local_to = local_to_dt.strftime(_LOCAL_ISO)
         envelope = self._run(
             ["vod", "search", "--from", local_from, "--to", local_to, "--limit", "0"],
             timeout=self.search_timeout_secs,
@@ -91,10 +133,20 @@ class ReolinkCliProvider(CameraProvider):
 
     def fetch(self, recording: RemoteRecording, dest_path: str) -> FetchResult:
         Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
-        self._run(
-            ["vod", "download", recording.remote_name, "-o", dest_path],
-            timeout=self.download_timeout_secs,
-        )
+        try:
+            self._run(
+                ["vod", "download", recording.remote_name, "-o", dest_path],
+                timeout=self.download_timeout_secs,
+            )
+        except ProviderError as exc:
+            match = _NOT_FOUND_RE.search(str(exc))
+            if match and match.group("name") == recording.remote_name:
+                raise RecordingGoneError(
+                    "No longer on the camera's SD card, most likely overwritten "
+                    "by loop recording before it could be archived",
+                    detail=f"{exc}\n{exc.detail or ''}".strip(),
+                ) from exc
+            raise
         size = Path(dest_path).stat().st_size
         return FetchResult(local_path=dest_path, bytes_written=size)
 

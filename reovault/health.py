@@ -21,10 +21,13 @@ logger = get_logger(__name__)
 
 DEFAULT_COVERAGE_MARGIN = 0.20
 
-# How far back a "full search" looks to find the oldest recording still
-# physically on the card. The card's own loop-overwrite bounds what actually
-# comes back regardless of how wide this is; ~10 years comfortably exceeds
-# any real SD card's retention.
+# Finding the oldest recording still physically on the card walks back one
+# day at a time (never one huge search, see issue #13) and stops after this
+# many empty days in a row. A camera that recorded nothing for longer than
+# that (unplugged for a week) makes the oldest look more recent than it is,
+# which errs toward the coverage alarm firing early, never late.
+EMPTY_DAYS_TO_STOP = 3
+# Hard stop for the walk: far beyond any real SD card's retention.
 FULL_SCAN_LOOKBACK_DAYS = 3650
 
 
@@ -60,12 +63,19 @@ def record_storage_sample(
 
 def _find_oldest_recording_utc(provider: CameraProvider) -> datetime | None:
     now = datetime.now(UTC)
-    recordings = provider.list_recordings(
-        from_utc=now - timedelta(days=FULL_SCAN_LOOKBACK_DAYS), to_utc=now
-    )
-    if not recordings:
-        return None
-    return min(r.start_utc for r in recordings)
+    oldest: datetime | None = None
+    empty_streak = 0
+    for days_back in range(FULL_SCAN_LOOKBACK_DAYS):
+        to_utc = now - timedelta(days=days_back)
+        recordings = provider.list_recordings(from_utc=to_utc - timedelta(days=1), to_utc=to_utc)
+        if not recordings:
+            empty_streak += 1
+            if empty_streak >= EMPTY_DAYS_TO_STOP:
+                break
+            continue
+        empty_streak = 0
+        oldest = min(r.start_utc for r in recordings)
+    return oldest
 
 
 def coverage_margin(

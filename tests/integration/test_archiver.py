@@ -13,6 +13,7 @@ from reovault.providers.base import (
     InputError,
     NetworkError,
     ProtocolError,
+    RecordingGoneError,
 )
 from reovault.providers.fake import FakeProvider, ScriptedRecording
 from tests.integration.conftest import make_recording
@@ -182,8 +183,8 @@ def test_device_error_retries_once_then_quarantines(env):
         assert row_after_second["attempts"] == 2
 
 
-@pytest.mark.parametrize("error_cls", [InputError, ProtocolError])
-def test_input_and_protocol_errors_quarantine_immediately(env, error_cls):
+@pytest.mark.parametrize("error_cls", [InputError, ProtocolError, RecordingGoneError])
+def test_non_retryable_errors_quarantine_immediately(env, error_cls):
     rec = _rec("clip1", datetime(2026, 4, 17, 12, tzinfo=UTC), 10)
 
     def _boom():
