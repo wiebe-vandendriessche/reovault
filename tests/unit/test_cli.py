@@ -174,3 +174,19 @@ def test_key_init_accepts_passphrase_from_file(tmp_path):
     )
     assert doctor_result.exit_code == 0
     assert "master key unwraps with the configured passphrase" in doctor_result.stdout
+
+
+def test_daemon_starts_the_gateway_at_boot_and_survives_a_failure():
+    """Without this the Health tab said "gateway unreachable" after every
+    restart until the first camera call (seen on the deployed v0.2.0)."""
+    from unittest.mock import MagicMock
+
+    from reovault.cli import _start_gateway
+    from reovault.providers.base import LocalError
+
+    gateway = MagicMock()
+    _start_gateway(gateway)
+    gateway.ensure_running.assert_called_once()
+
+    gateway.ensure_running.side_effect = LocalError("gateway exited early")
+    _start_gateway(gateway)  # logged, not raised: the daemon still boots
