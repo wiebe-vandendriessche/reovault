@@ -28,6 +28,7 @@ from reovault.db.repository import RecordingRow, Repository
 from reovault.fleet import Fleet, build_fleet
 from reovault.logging import configure_logging, get_logger
 from reovault.models import ArchiveRunResult
+from reovault.providers.base import LocalError
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.providers.reolink_cli_registry import ReolinkCliRegistry
@@ -560,6 +561,17 @@ def reconcile(device: str | None = _DeviceOption) -> None:
     typer.echo("Reconciliation complete.")
 
 
+def _start_gateway(gateway: GatewaySupervisor) -> None:
+    """Start the gateway at boot instead of waiting for the first camera
+    call, otherwise the Health tab reports it unreachable from every
+    restart until the next scheduled run. Best-effort: the first camera
+    call retries it anyway, so a failure here is logged and startup goes on."""
+    try:
+        gateway.ensure_running()
+    except LocalError as exc:
+        logger.warning("daemon.gateway_start_failed", error=str(exc))
+
+
 @app.command()
 def daemon() -> None:
     """Run continuously: the scheduler plus the dashboard, for every enabled
@@ -587,6 +599,7 @@ def daemon() -> None:
             detail="cookie_secure=False: the session cookie travels over plain HTTP",
         )
 
+    _start_gateway(runtime.gateway)
     scheduler = build_scheduler()
     reschedule_all_devices(scheduler, runtime.fleet, runtime.repository, settings)
     scheduler.start()
