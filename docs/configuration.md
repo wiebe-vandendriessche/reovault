@@ -85,6 +85,33 @@ tab, that camera's own saved schedule wins from then on. Setting any
 `REOVAULT_SCHEDULE__*` env var instead pins this schedule for every camera
 and takes the dashboard's Schedule tab out of the loop entirely.
 
+## `[retention]`
+
+| Field | Type | Default |
+|---|---|---|
+| `max_age_days` | int >= 1 or unset | unset (no age limit) |
+| `max_vault_gb` | float >= 1 or unset | unset (no size cap) |
+
+One global policy for the whole vault, all cameras together. When either
+limit is exceeded, the oldest archived clips (by recording start time,
+across every camera) are deleted from the vault until both limits hold
+again. The size cap is measured against the encrypted bytes ReoVault has
+archived, not the disk's free space, so other data on the same disk does
+not change how much footage is kept. Leave some headroom on the disk for
+the database, staging downloads and anything else that lives there.
+
+Retention runs before each archive run and after every clip it archives,
+so even a long backfill overshoots the cap by at most one clip. A pruned
+clip keeps its database row in state `pruned` and is never downloaded
+again, even while it is still on the camera's SD card.
+
+Like `[schedule]`, this table only seeds the dashboard on first boot; after
+that, the Retention card on the Schedule tab is authoritative. Saving a
+policy that would delete footage right away asks for confirmation first,
+showing how many clips and bytes would go. Setting any
+`REOVAULT_RETENTION__*` env var pins the policy and makes the card
+read-only.
+
 ## `[web]`
 
 | Field | Type | Default | Notes |

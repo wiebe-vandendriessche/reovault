@@ -6,6 +6,8 @@
          reserves a 16:9 box so nothing jumps when metadata loads. -->
     <video src="/recordings/{{ rec.id }}/stream" controls playsinline preload="metadata"
            controlslist="nodownload" data-download-href="/recordings/{{ rec.id }}/stream?download=1"></video>
+    {% elif rec.state == 'pruned' %}
+    <div class="codec-fallback">Removed from the vault by the retention policy.</div>
     {% else %}
     <div class="codec-fallback">Clip is not archived yet.</div>
     {% endif %}

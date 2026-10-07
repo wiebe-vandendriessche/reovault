@@ -92,6 +92,15 @@ class ScheduleConfig(BaseModel):
     timezone: str | None = None
 
 
+class RetentionConfig(BaseModel):
+    """Global, rolling cap on the vault. Either limit (or both) prunes the
+    oldest archived clips first; `None` disables that limit. Both default to
+    off so upgrading never deletes anything (see `reovault.retention`)."""
+
+    max_age_days: int | None = Field(default=None, ge=1)
+    max_vault_gb: float | None = Field(default=None, ge=1)
+
+
 class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
@@ -142,6 +151,7 @@ class Settings(BaseSettings):
     reolink_cli: ReolinkCliConfig = Field(default_factory=ReolinkCliConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 
     @classmethod

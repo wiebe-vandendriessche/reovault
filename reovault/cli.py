@@ -20,7 +20,7 @@ from typing import Any
 import typer
 import uvicorn
 
-from reovault import __version__, health
+from reovault import __version__, health, retention
 from reovault.archiver import Archiver, assert_pinned_cli_version, assert_same_filesystem
 from reovault.config import DeviceConfig, Settings, load_settings
 from reovault.crypto import keyring
@@ -336,6 +336,7 @@ def _bootstrap(device_alias: str | None) -> _Context:
         # in-flight download away.
         staging_dir=settings.storage.staging_dir / str(device_id),
         lock_path=settings.storage.config_dir / f"reovault-{device_id}.lock",
+        retention=retention.archiver_hook(settings, repository, vault),
     )
     return _Context(settings=settings, device=device, archiver=archiver)
 

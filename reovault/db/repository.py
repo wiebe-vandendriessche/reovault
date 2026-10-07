@@ -40,7 +40,7 @@ _DEVICE_COLS = (
 # value before it's inlined as a SQL literal (see `problems()`), never to
 # validate arbitrary external input.
 _VALID_STATES = frozenset(
-    {"discovered", "downloading", "verifying", "archived", "failed", "quarantined"}
+    {"discovered", "downloading", "verifying", "archived", "failed", "quarantined", "pruned"}
 )
 
 
@@ -574,6 +574,55 @@ class Repository:
                 ),
             )
 
+    def mark_pruned(self, recording_id: int) -> None:
+        """Retention removed this clip's vault file. The row is kept (never
+        deleted) because dedup is the unique key alone: dropping it would
+        make the next scan or backfill re-download a clip still on the SD
+        card. Only valid on an `archived` row whose file is already gone."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE recordings SET state = 'pruned', vault_path = NULL "
+                "WHERE id = ? AND state = 'archived'",
+                (recording_id,),
+            )
+
+    def archived_ciphertext_total(self) -> int:
+        """Bytes the vault holds across every device; what the retention
+        size cap is measured against."""
+        # `INDEXED BY`: without ANALYZE stats (a fresh upgrade, until
+        # `PRAGMA optimize` has run) the planner picks `idx_rec_state_next`
+        # and touches the base table: measured 97ms vs 22ms at 300k rows,
+        # paid after every archived clip.
+        row = self._fetchone(
+            "SELECT COALESCE(SUM(ciphertext_size), 0) AS total "
+            "FROM recordings INDEXED BY idx_rec_retention WHERE state = 'archived'"
+        )
+        return int(row["total"]) if row else 0
+
+    def oldest_archived(
+        self, *, limit: int, after: tuple[str, int] | None = None
+    ) -> list[RecordingRow]:
+        """Oldest archived clips across every device, by `(start_utc, id)`,
+        keyset-paginated after `after`. Retention's pruning order. Pinned
+        to `idx_rec_retention` for the same reason as
+        `archived_ciphertext_total`: otherwise a temp B-tree sort of every
+        archived row, measured 105ms vs 8ms at 300k rows."""
+        clauses = ["state = 'archived'"]
+        params: list[object] = []
+        if after is not None:
+            clauses.append("(start_utc, id) > (?, ?)")
+            params.extend(after)
+        params.append(limit)
+        rows = self._fetchall(
+            f"""
+            SELECT {_REC_COLS} FROM recordings INDEXED BY idx_rec_retention
+            WHERE {" AND ".join(clauses)}
+            ORDER BY start_utc ASC, id ASC LIMIT ?
+            """,
+            tuple(params),
+        )
+        return [self._row_to_recording(r) for r in rows]
+
     def mark_failed(
         self,
         recording_id: int,
@@ -737,7 +786,7 @@ class Repository:
         row = self._fetchone(
             """
             SELECT MIN(start_utc) AS oldest FROM recordings
-            WHERE device_id = ? AND state != 'archived'
+            WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
             """,
             (device_id,),
         )
@@ -987,9 +1036,9 @@ class Repository:
         row = self._fetchone(
             """
             SELECT
-              COALESCE(SUM(CASE WHEN state = 'archived' THEN remote_size END), 0)
+              COALESCE(SUM(CASE WHEN state IN ('archived', 'pruned') THEN remote_size END), 0)
                 AS archived_bytes,
-              COALESCE(SUM(CASE WHEN state != 'archived' THEN remote_size END), 0)
+              COALESCE(SUM(CASE WHEN state NOT IN ('archived', 'pruned') THEN remote_size END), 0)
                 AS pending_bytes
             FROM recordings
             WHERE device_id = ? AND start_utc >= ?

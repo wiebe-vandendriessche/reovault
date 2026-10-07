@@ -18,7 +18,7 @@ import re
 import shutil
 import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -141,6 +141,10 @@ class Archiver:
     # reconcile delete another's in-flight download.
     staging_dir: Path
     lock_path: Path
+    # Retention hook (see `reovault.retention.enforce`), wired by
+    # `fleet.build_archiver`. Called before a run and after every finalized
+    # clip, so a long backfill overshoots the size cap by at most one clip.
+    retention: Callable[[], object] | None = None
     processed_ids: set[int] = field(default_factory=set, init=False, repr=False)
     # Cooperative cancellation for the dashboard's Stop button: a plain flag,
     # not a hard kill, so cancellation can only ever land *between*
@@ -178,6 +182,8 @@ class Archiver:
         self.processed_ids = set()
         self.cancel_requested.clear()
         staging_run_dir = self.staging_dir / str(run_id)
+        # Also catches clips that aged out while nothing new was downloaded.
+        self._apply_retention()
 
         try:
             recordings = self.provider.list_recordings(from_utc=widened_from, to_utc=widened_to)
@@ -274,6 +280,18 @@ class Archiver:
 
         result.downloaded += 1
         result.bytes_archived += put_result.plaintext_size
+        self._apply_retention()
+
+    def _apply_retention(self) -> None:
+        """Never fails a run: a retention error means the vault grows a bit
+        past its cap until the next attempt, while failing the run would
+        stop archiving footage that may be about to loop off the SD card."""
+        if self.retention is None:
+            return
+        try:
+            self.retention()
+        except Exception as exc:
+            logger.exception("archiver.retention_failed", error=str(exc))
 
     def _handle_provider_failure(
         self, row_id: int, exc: ProviderError, result: ArchiveRunResult
@@ -430,7 +448,8 @@ class Archiver:
                     start_utc=start_utc,
                 )
 
-        if row is None or row.state == "archived":
+        # `pruned`: retention already decided this clip goes; never re-adopt.
+        if row is None or row.state in ("archived", "pruned"):
             logger.warning(
                 "archiver.reconcile.delete_unattributed_vault_file", vault_path=vault_path
             )
