@@ -50,8 +50,9 @@ from pydantic import BaseModel, Field, SecretStr
 from pydantic import ValidationError as PydanticValidationError
 
 from reovault import __version__, health
+from reovault import retention as retention_policy
 from reovault.archiver import Archiver
-from reovault.config import ScheduleConfig, Settings
+from reovault.config import RetentionConfig, ScheduleConfig, Settings
 from reovault.db.repository import (
     DeviceRow,
     OnCardBytesRow,
@@ -1144,7 +1145,9 @@ def create_app(
         if isinstance(ctx, Response):
             return ctx
         archiver, _tz = ctx
-        return render(request, "schedule.html", _schedule_context(archiver))
+        return render(
+            request, "schedule.html", {**_schedule_context(archiver), **_retention_context()}
+        )
 
     @app.post("/schedule", response_class=HTMLResponse)
     async def schedule_save(request: Request) -> Response:
@@ -1191,6 +1194,53 @@ def create_app(
         return render(
             request, "fragments/schedule_body.html", _schedule_context(archiver, saved=True)
         )
+
+    # -- retention: global age/size limits on the vault -------------------
+
+    def _retention_context(
+        policy: RetentionConfig | None = None,
+        *,
+        error: str | None = None,
+        saved: bool = False,
+        confirm: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "retention": policy or retention_policy.load_effective_retention(settings, repo),
+            "retention_env_pinned": retention_policy.is_retention_env_pinned(),
+            "vault_used_bytes": repo.archived_ciphertext_total(),
+            "retention_error": error,
+            "retention_saved": saved,
+            "retention_confirm": confirm,
+        }
+
+    @app.post("/retention", response_class=HTMLResponse)
+    async def retention_save(request: Request) -> Response:
+        def body(**kw: Any) -> Response:
+            return render(request, "fragments/retention.html", _retention_context(**kw))
+
+        if retention_policy.is_retention_env_pinned():
+            return body(error="Retention is set by environment variables.")
+        form = dict(parse_qsl((await request.body()).decode("utf-8", "replace")))
+        try:
+            policy = RetentionConfig(
+                max_age_days=int(form["max_age_days"]) if form.get("max_age_days") else None,
+                max_vault_gb=float(form["max_vault_gb"]) if form.get("max_vault_gb") else None,
+            )
+        except (ValueError, PydanticValidationError) as exc:
+            return body(error=str(exc))
+
+        # Typo guard: a wrong digit must not silently wipe the archive. If the
+        # new policy would delete anything, show how much and require a
+        # second submit carrying a token bound to these exact values.
+        token = f"{policy.max_age_days}|{policy.max_vault_gb}"
+        doomed = retention_policy.preview(repo, policy)
+        if doomed.count and form.get("confirm") != token:
+            return body(
+                policy=policy,
+                confirm={"count": doomed.count, "bytes": doomed.bytes, "token": token},
+            )
+        retention_policy.save_retention(repo, policy)
+        return body(policy=policy, saved=True)
 
     # -- devices: see cameras, add one on the LAN --------------------------
 
@@ -1547,6 +1597,7 @@ def create_app(
         }
 
     def _growth_context(archiver: Archiver, tz: str, days: int) -> dict[str, Any]:
+        policy = retention_policy.load_effective_retention(settings, repo)
         device_id = archiver.device_id
         totals = repo.totals(device_id)
         now = datetime.now(UTC)
@@ -1596,6 +1647,10 @@ def create_app(
             "yearly_projection": avg_per_day * 365,
             "vault_free_str": vault_free_str,
             "days_headroom": days_headroom,
+            "vault_cap_bytes": (
+                int(policy.max_vault_gb * retention_policy.GB) if policy.max_vault_gb else None
+            ),
+            "vault_used_bytes": repo.archived_ciphertext_total(),
         }
 
     def _activity_context(archiver: Archiver) -> dict[str, Any]:

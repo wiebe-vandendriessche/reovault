@@ -86,9 +86,11 @@ class VaultStore(ABC):
 
     @abstractmethod
     def delete(self, vault_path: str) -> None:
-        """Remove an unreferenced vault file plus its sidecar. Only ever
-        used by reconciliation on files no DB row points to, never to delete
-        something the camera still has."""
+        """Remove a vault file plus its sidecar; a missing file is not an
+        error. Two callers only: reconciliation, on files no archived row
+        points to, and retention (`reovault.retention.enforce`), on the
+        oldest archived clips when the operator's age or size limit is
+        exceeded."""
 
     @abstractmethod
     def open_range(self, vault_path: str, offset: int, length: int) -> bytes:

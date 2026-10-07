@@ -1,8 +1,11 @@
-<div id="calendar">
+{# A class, not an id: recordings.html loads this fragment twice (mobile and
+   desktop), so an id would be duplicated and `#calendar` would always swap
+   the first, hidden copy. `closest` targets the calendar that was clicked. #}
+<div class="calendar-panel">
   <div class="row-between">
-    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ prev_month) }}" hx-target="#calendar" hx-swap="outerHTML" aria-label="Previous month">{{ icon('chevron-left') }}</a>
+    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ prev_month) }}" hx-target="closest .calendar-panel" hx-swap="outerHTML" aria-label="Previous month">{{ icon('chevron-left') }}</a>
     <strong>{{ month_label }}</strong>
-    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ next_month) }}" hx-target="#calendar" hx-swap="outerHTML" aria-label="Next month">{{ icon('chevron-right') }}</a>
+    <a class="btn-icon" href="#" hx-get="{{ durl('/fragments/calendar?month=' ~ next_month) }}" hx-target="closest .calendar-panel" hx-swap="outerHTML" aria-label="Next month">{{ icon('chevron-right') }}</a>
   </div>
   <div class="calendar">
     {% for week in weeks %}

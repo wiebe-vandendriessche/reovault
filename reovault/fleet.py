@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 
+from reovault import retention
 from reovault.archiver import Archiver
 from reovault.config import Settings
 from reovault.db.repository import DeviceRow, Repository
@@ -68,6 +69,7 @@ def build_archiver(
         # path segment.
         staging_dir=settings.storage.staging_dir / str(device.id),
         lock_path=settings.storage.config_dir / f"reovault-{device.id}.lock",
+        retention=retention.archiver_hook(settings, repository, vault),
     )
 
 

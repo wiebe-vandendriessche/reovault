@@ -1,0 +1,32 @@
+<div id="retention" class="section-gap">
+<form class="card stack" hx-post="/retention" hx-target="#retention" hx-swap="outerHTML">
+  <span class="card-label">Retention</span>
+  <p class="field-hint">
+    Applies to the whole vault, every camera together. When a limit is exceeded, the oldest archived clips are permanently deleted from the vault, starting at the next archive run. Leave a field empty to turn that limit off.
+  </p>
+  {% if retention_env_pinned %}
+  <p class="muted">{{ icon('key-round') }} Set by environment variables on the server and can't be edited here.</p>
+  {% endif %}
+  {% if retention_error %}<p class="field-error">{{ retention_error }}</p>{% endif %}
+  {% if retention_saved %}<p class="pill ok">{{ icon('circle-check') }} Saved.</p>{% endif %}
+  <div class="field">
+    <label for="max_age_days">Keep at most (days)</label>
+    <input id="max_age_days" type="number" min="1" step="1" name="max_age_days" value="{{ retention.max_age_days or '' }}" placeholder="No limit" {% if retention_env_pinned %}disabled{% endif %}>
+  </div>
+  <div class="field">
+    <label for="max_vault_gb">Vault size cap (GB)</label>
+    <input id="max_vault_gb" type="number" min="1" step="any" name="max_vault_gb" value="{{ retention.max_vault_gb or '' }}" placeholder="No limit" {% if retention_env_pinned %}disabled{% endif %}>
+    <span class="field-hint">Currently using {{ vault_used_bytes | human_bytes }}.</span>
+  </div>
+  {% if retention_confirm %}
+  <div class="banner warn" role="alert">
+    {{ icon('triangle-alert') }}
+    <span>This will permanently delete <strong>{{ retention_confirm.count }} clips ({{ retention_confirm.bytes | human_bytes }})</strong> from the vault at the next archive run.</span>
+  </div>
+  <input type="hidden" name="confirm" value="{{ retention_confirm.token }}">
+  <button class="btn primary" type="submit">Delete and save</button>
+  {% elif not retention_env_pinned %}
+  <button class="btn primary" type="submit">{{ icon('shield-check') }} Save retention</button>
+  {% endif %}
+</form>
+</div>

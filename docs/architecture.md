@@ -48,6 +48,13 @@ adopts/deletes unreferenced vault files left behind. A recording is never
 marked archived before verification and finalization both succeed, and a
 successfully archived recording is never re-downloaded.
 
+Retention (`reovault/retention.py`, see `[retention]` in the configuration
+docs) is the only path that deletes archived footage, and only when the
+operator has set an age or size limit. It deletes the oldest vault files
+first and marks their rows `pruned` instead of removing them, because
+dedup lives entirely in the database: a deleted row would let the next scan
+re-download the clip from the SD card.
+
 ## Storage: the vault
 
 `EncryptedFsVault` (`reovault/storage/vault.py`) lays out ciphertext on disk

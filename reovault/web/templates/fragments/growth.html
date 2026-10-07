@@ -7,6 +7,7 @@
   <p class="meta">
     {{ (avg_per_day) | human_bytes }}/day average.
     About {{ (yearly_projection) | human_bytes }} a year.
+    {% if vault_cap_bytes %}{{ vault_used_bytes | human_bytes }} of the {{ vault_cap_bytes | human_bytes }} retention cap used.{% endif %}
     {% if vault_free_str %}The vault disk has {{ vault_free_str }}{% if days_headroom %}, roughly {{ days_headroom }} days at this rate{% endif %}.{% endif %}
   </p>
 </div>

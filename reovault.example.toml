@@ -65,6 +65,15 @@ integrity_scan_enabled = true
 # timezone = "Europe/Brussels"  # uncomment to force every camera onto one
                                  # zone instead of each camera's own
 
+# Global cap on the vault, all cameras together. When either limit is
+# exceeded, the oldest archived clips are permanently deleted from the vault
+# (their database rows stay, marked `pruned`, so they are never downloaded
+# again). Both are off by default. Like [schedule], this only seeds the
+# dashboard on first boot; any REOVAULT_RETENTION__* env var pins it.
+[retention]
+# max_age_days = 90
+# max_vault_gb = 500
+
 [web]
 host = "127.0.0.1"
 port = 8080
