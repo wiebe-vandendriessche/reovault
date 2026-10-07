@@ -208,6 +208,26 @@ def _integrity_scan_job(archiver: Archiver, sample_pct: float) -> None:
     )
 
 
+ALERTS_JOB_ID = "alerts"
+
+
+def add_alerts_job(scheduler: BackgroundScheduler, evaluate: Callable[[], None]) -> None:
+    """Alert evaluation, once a minute, on its own single-thread executor:
+    the default one is busy for the whole length of an archive run, and a
+    gateway that goes down mid-run is exactly when an alert matters."""
+    if "alerts" not in scheduler._executors:  # noqa: SLF001 - no public lookup in APScheduler 3
+        scheduler.add_executor(ThreadPoolExecutor(1), "alerts")
+    scheduler.add_job(
+        evaluate,
+        IntervalTrigger(minutes=1),
+        id=ALERTS_JOB_ID,
+        executor="alerts",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+
+
 def build_scheduler() -> BackgroundScheduler:
     """One instance per daemon process, with no jobs yet: call
     `add_device_jobs` once per device in the fleet. Caller owns

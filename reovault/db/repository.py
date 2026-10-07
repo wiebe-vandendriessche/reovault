@@ -202,6 +202,17 @@ class DayBytesRow:
     downloaded: int
 
 
+@dataclass(frozen=True, slots=True)
+class AlertRow:
+    key: str
+    condition: str
+    device_id: int | None
+    title: str
+    message: str
+    first_seen_at: str
+    last_sent_at: str | None
+
+
 class Repository:
     """One instance per SQLite database file. Opens with WAL journaling
     (single writer, embedded, no infra) and enforces foreign keys, which
@@ -393,6 +404,47 @@ class Repository:
                 """,
                 (key, value, _now()),
             )
+
+    # -- alert_state: see reovault.notify --
+
+    def list_alerts(self) -> list[AlertRow]:
+        rows = self._fetchall(
+            "SELECT key, condition, device_id, title, message, first_seen_at, last_sent_at "
+            "FROM alert_state ORDER BY first_seen_at"
+        )
+        return [AlertRow(**dict(r)) for r in rows]
+
+    def open_alert(
+        self,
+        *,
+        key: str,
+        condition: str,
+        device_id: int | None,
+        title: str,
+        message: str,
+        now: datetime,
+    ) -> None:
+        """Inserts a newly-true condition; for one already open, only
+        refreshes its text (a problems count that grew), never its
+        timestamps."""
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO alert_state
+                  (key, condition, device_id, title, message, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET title = excluded.title, message = excluded.message
+                """,
+                (key, condition, device_id, title, message, _iso(now)),
+            )
+
+    def mark_alert_sent(self, key: str, now: datetime) -> None:
+        with self.transaction() as conn:
+            conn.execute("UPDATE alert_state SET last_sent_at = ? WHERE key = ?", (_iso(now), key))
+
+    def delete_alert(self, key: str) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM alert_state WHERE key = ?", (key,))
 
     # -- recordings / dedup ----------------------------------------------
 
@@ -936,6 +988,23 @@ class Repository:
             tuple(params),
         )
         return [self._row_to_recording(r) for r in rows]
+
+    def window_summary(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime
+    ) -> tuple[int, int]:
+        """(clip count in any state, archived plaintext bytes) for one
+        window, as one aggregate over `idx_rec_start` instead of loading the
+        rows to count them."""
+        row = self._fetchone(
+            """
+            SELECT COUNT(*) AS n,
+                   COALESCE(SUM(CASE WHEN state = 'archived' THEN plaintext_size END), 0) AS b
+            FROM recordings WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+            """,
+            (device_id, _iso(from_utc), _iso(to_utc)),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["n"]), int(row["b"])
 
     def problems(
         self,

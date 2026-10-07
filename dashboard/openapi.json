@@ -1,0 +1,3761 @@
+{
+  "components": {
+    "schemas": {
+      "ActivityEventOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "job_id",
+          "kind",
+          "detail"
+        ],
+        "title": "ActivityEventOut",
+        "type": "object"
+      },
+      "ActivityOut": {
+        "properties": {
+          "default_from": {
+            "title": "Default From",
+            "type": "string"
+          },
+          "default_to": {
+            "title": "Default To",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "max_backfill_days": {
+            "title": "Max Backfill Days",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "running": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scheduler_available": {
+            "title": "Scheduler Available",
+            "type": "boolean"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "running",
+          "queued",
+          "events",
+          "scheduler_available",
+          "timezone",
+          "default_from",
+          "default_to",
+          "max_backfill_days"
+        ],
+        "title": "ActivityOut",
+        "type": "object"
+      },
+      "AddDeviceIn": {
+        "description": "Password is `SecretStr` so an accidental `repr()` anywhere, including\na structlog kwarg, renders `**********` instead of the plaintext.",
+        "properties": {
+          "alias": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Alias",
+            "type": "string"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "maximum": 255.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "host": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "user": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "host",
+          "user",
+          "password",
+          "timezone"
+        ],
+        "title": "AddDeviceIn",
+        "type": "object"
+      },
+      "AlertRules": {
+        "description": "What to alert on. Seeded from `[alerts.rules]` and editable from the\ndashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same\nscheme as retention).",
+        "properties": {
+          "coverage": {
+            "default": true,
+            "title": "Coverage",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "gateway_down": {
+            "default": true,
+            "title": "Gateway Down",
+            "type": "boolean"
+          },
+          "gateway_down_minutes": {
+            "default": 15,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Gateway Down Minutes",
+            "type": "integer"
+          },
+          "notify_on_resolve": {
+            "default": true,
+            "title": "Notify On Resolve",
+            "type": "boolean"
+          },
+          "problems": {
+            "default": true,
+            "title": "Problems",
+            "type": "boolean"
+          },
+          "renotify_hours": {
+            "default": 24,
+            "maximum": 720.0,
+            "minimum": 1.0,
+            "title": "Renotify Hours",
+            "type": "integer"
+          },
+          "run_failed": {
+            "default": true,
+            "title": "Run Failed",
+            "type": "boolean"
+          }
+        },
+        "title": "AlertRules",
+        "type": "object"
+      },
+      "AlertsOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "env_pinned": {
+            "title": "Env Pinned",
+            "type": "boolean"
+          },
+          "open": {
+            "items": {
+              "$ref": "#/components/schemas/OpenAlertOut"
+            },
+            "title": "Open",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/AlertRules"
+          }
+        },
+        "required": [
+          "rules",
+          "env_pinned",
+          "channels",
+          "open"
+        ],
+        "title": "AlertsOut",
+        "type": "object"
+      },
+      "BackfillIn": {
+        "properties": {
+          "from_local": {
+            "title": "From Local",
+            "type": "string"
+          },
+          "to_local": {
+            "title": "To Local",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_local",
+          "to_local"
+        ],
+        "title": "BackfillIn",
+        "type": "object"
+      },
+      "BannerOut": {
+        "properties": {
+          "level": {
+            "enum": [
+              "warn",
+              "bad"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "const": "problems",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "text"
+        ],
+        "title": "BannerOut",
+        "type": "object"
+      },
+      "CalendarDayOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "density": {
+            "title": "Density",
+            "type": "integer"
+          },
+          "problems": {
+            "title": "Problems",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "count",
+          "problems",
+          "density"
+        ],
+        "title": "CalendarDayOut",
+        "type": "object"
+      },
+      "CalendarOut": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "today": {
+            "title": "Today",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "today",
+          "days"
+        ],
+        "title": "CalendarOut",
+        "type": "object"
+      },
+      "ChannelOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "configured"
+        ],
+        "title": "ChannelOut",
+        "type": "object"
+      },
+      "ConfirmOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "bytes",
+          "token"
+        ],
+        "title": "ConfirmOut",
+        "type": "object"
+      },
+      "CountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "CountOut",
+        "type": "object"
+      },
+      "CoverageOut": {
+        "properties": {
+          "alarm": {
+            "title": "Alarm",
+            "type": "boolean"
+          },
+          "margin_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Fraction"
+          },
+          "oldest_on_card_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest On Card Utc"
+          },
+          "oldest_unarchived_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Unarchived Utc"
+          }
+        },
+        "required": [
+          "oldest_on_card_utc",
+          "oldest_unarchived_utc",
+          "margin_fraction",
+          "alarm"
+        ],
+        "title": "CoverageOut",
+        "type": "object"
+      },
+      "DayOut": {
+        "properties": {
+          "available_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Types",
+            "type": "array"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/HourOut"
+            },
+            "title": "Hours",
+            "type": "array"
+          },
+          "today": {
+            "title": "Today",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "today",
+          "total",
+          "total_bytes",
+          "hours",
+          "available_types"
+        ],
+        "title": "DayOut",
+        "type": "object"
+      },
+      "DeviceOut": {
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "archived_bytes": {
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "archived_count": {
+            "title": "Archived Count",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "gateway_down": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway Down"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageSampleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdBarOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias",
+          "host",
+          "model",
+          "name",
+          "timezone",
+          "enabled",
+          "archived_count",
+          "archived_bytes",
+          "sample",
+          "sd",
+          "last_run",
+          "gateway_down"
+        ],
+        "title": "DeviceOut",
+        "type": "object"
+      },
+      "DeviceSummaryOut": {
+        "description": "The navbar device switcher's row: cheap, no camera calls.",
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "problems": {
+            "title": "Problems",
+            "type": "integer"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias",
+          "name",
+          "timezone",
+          "problems"
+        ],
+        "title": "DeviceSummaryOut",
+        "type": "object"
+      },
+      "DevicesOut": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "registry_available": {
+            "title": "Registry Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "devices",
+          "registry_available"
+        ],
+        "title": "DevicesOut",
+        "type": "object"
+      },
+      "DiscoveredOut": {
+        "properties": {
+          "already_registered": {
+            "title": "Already Registered",
+            "type": "boolean"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol"
+          },
+          "uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uid"
+          }
+        },
+        "required": [
+          "host",
+          "uid",
+          "mac",
+          "protocol",
+          "model",
+          "name",
+          "already_registered"
+        ],
+        "title": "DiscoveredOut",
+        "type": "object"
+      },
+      "EnabledIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EnabledIn",
+        "type": "object"
+      },
+      "ExportPreviewOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "bytes"
+        ],
+        "title": "ExportPreviewOut",
+        "type": "object"
+      },
+      "GrowthDayOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "bytes"
+        ],
+        "title": "GrowthDayOut",
+        "type": "object"
+      },
+      "GrowthOut": {
+        "properties": {
+          "archived_bytes": {
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "archived_count": {
+            "title": "Archived Count",
+            "type": "integer"
+          },
+          "avg_per_day": {
+            "title": "Avg Per Day",
+            "type": "number"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/GrowthDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "days_headroom": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Headroom"
+          },
+          "vault_cap_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vault Cap Bytes"
+          },
+          "vault_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vault Free Bytes"
+          },
+          "vault_used_bytes": {
+            "title": "Vault Used Bytes",
+            "type": "integer"
+          },
+          "yearly_projection": {
+            "title": "Yearly Projection",
+            "type": "number"
+          }
+        },
+        "required": [
+          "archived_count",
+          "archived_bytes",
+          "days",
+          "avg_per_day",
+          "yearly_projection",
+          "vault_free_bytes",
+          "days_headroom",
+          "vault_cap_bytes",
+          "vault_used_bytes"
+        ],
+        "title": "GrowthOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthOut": {
+        "properties": {
+          "banner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BannerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageOut"
+          },
+          "gateway_down": {
+            "title": "Gateway Down",
+            "type": "boolean"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_archive_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Archive Utc"
+          },
+          "problems_count": {
+            "title": "Problems Count",
+            "type": "integer"
+          },
+          "running": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageSampleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SdBarOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "warn",
+              "bad",
+              "idle"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "today": {
+            "$ref": "#/components/schemas/TodayOut"
+          }
+        },
+        "required": [
+          "status",
+          "running",
+          "last_run",
+          "next_archive_utc",
+          "coverage",
+          "sample",
+          "sd",
+          "gateway_down",
+          "problems_count",
+          "banner",
+          "today"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "HourOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hour",
+          "total",
+          "bytes"
+        ],
+        "title": "HourOut",
+        "type": "object"
+      },
+      "LoginIn": {
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginIn",
+        "type": "object"
+      },
+      "OpenAlertOut": {
+        "properties": {
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition",
+          "device_id",
+          "title",
+          "message",
+          "first_seen_at",
+          "last_sent_at"
+        ],
+        "title": "OpenAlertOut",
+        "type": "object"
+      },
+      "Page_RecordingOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "title": "Page[RecordingOut]",
+        "type": "object"
+      },
+      "RecordingOut": {
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "ciphertext_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ciphertext Size"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "integer"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_error_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Class"
+          },
+          "last_error_class_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Class Text"
+          },
+          "last_error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Detail"
+          },
+          "local_datetime": {
+            "title": "Local Datetime",
+            "type": "string"
+          },
+          "local_time": {
+            "title": "Local Time",
+            "type": "string"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "plaintext_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plaintext Sha256"
+          },
+          "plaintext_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plaintext Size"
+          },
+          "remote_name": {
+            "title": "Remote Name",
+            "type": "string"
+          },
+          "remote_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Size"
+          },
+          "start_utc": {
+            "format": "date-time",
+            "title": "Start Utc",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "device_id",
+          "remote_name",
+          "start_utc",
+          "local_time",
+          "local_datetime",
+          "duration_s",
+          "types",
+          "state",
+          "plaintext_size",
+          "ciphertext_size",
+          "remote_size",
+          "plaintext_sha256",
+          "archived_at",
+          "attempts",
+          "next_attempt_at",
+          "last_error",
+          "last_error_class",
+          "last_error_class_text",
+          "last_error_detail"
+        ],
+        "title": "RecordingOut",
+        "type": "object"
+      },
+      "RetentionBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
+          },
+          "max_vault_gb": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Vault Gb"
+          }
+        },
+        "title": "RetentionBody",
+        "type": "object"
+      },
+      "RetentionOut": {
+        "properties": {
+          "env_pinned": {
+            "title": "Env Pinned",
+            "type": "boolean"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
+          },
+          "max_vault_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Vault Gb"
+          },
+          "vault_used_bytes": {
+            "title": "Vault Used Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_age_days",
+          "max_vault_gb",
+          "env_pinned",
+          "vault_used_bytes"
+        ],
+        "title": "RetentionOut",
+        "type": "object"
+      },
+      "RetentionSaveOut": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfirmOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionOut"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "confirm",
+          "retention"
+        ],
+        "title": "RetentionSaveOut",
+        "type": "object"
+      },
+      "RunDetailOut": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/RunOut"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run",
+          "timezone"
+        ],
+        "title": "RunDetailOut",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "bytes_archived": {
+            "title": "Bytes Archived",
+            "type": "integer"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "discovered": {
+            "title": "Discovered",
+            "type": "integer"
+          },
+          "downloaded": {
+            "title": "Downloaded",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "skipped_dup": {
+            "title": "Skipped Dup",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          },
+          "window_from_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window From Utc"
+          },
+          "window_to_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window To Utc"
+          }
+        },
+        "required": [
+          "id",
+          "device_id",
+          "trigger",
+          "window_from_utc",
+          "window_to_utc",
+          "started_at",
+          "finished_at",
+          "outcome",
+          "discovered",
+          "downloaded",
+          "skipped_dup",
+          "failed",
+          "bytes_archived",
+          "error"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
+      "RunsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "scheduled": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledRunOut"
+            },
+            "title": "Scheduled",
+            "type": "array"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next",
+          "scheduled",
+          "timezone"
+        ],
+        "title": "RunsOut",
+        "type": "object"
+      },
+      "ScheduleBody": {
+        "properties": {
+          "archive_enabled": {
+            "title": "Archive Enabled",
+            "type": "boolean"
+          },
+          "archive_overlap_hours": {
+            "maximum": 720.0,
+            "minimum": 1.0,
+            "title": "Archive Overlap Hours",
+            "type": "integer"
+          },
+          "archive_time": {
+            "title": "Archive Time",
+            "type": "string"
+          },
+          "backfill_days": {
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Backfill Days",
+            "type": "integer"
+          },
+          "backfill_dow": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Backfill Dow",
+            "type": "integer"
+          },
+          "backfill_enabled": {
+            "title": "Backfill Enabled",
+            "type": "boolean"
+          },
+          "backfill_time": {
+            "title": "Backfill Time",
+            "type": "string"
+          },
+          "integrity_scan_enabled": {
+            "title": "Integrity Scan Enabled",
+            "type": "boolean"
+          },
+          "integrity_scan_sample_pct": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Integrity Scan Sample Pct",
+            "type": "number"
+          },
+          "reconcile_enabled": {
+            "title": "Reconcile Enabled",
+            "type": "boolean"
+          },
+          "reconcile_interval_hours": {
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Reconcile Interval Hours",
+            "type": "integer"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "archive_enabled",
+          "archive_time",
+          "archive_overlap_hours",
+          "backfill_enabled",
+          "backfill_dow",
+          "backfill_time",
+          "backfill_days",
+          "reconcile_enabled",
+          "reconcile_interval_hours",
+          "integrity_scan_enabled",
+          "integrity_scan_sample_pct"
+        ],
+        "title": "ScheduleBody",
+        "type": "object"
+      },
+      "ScheduleOut": {
+        "properties": {
+          "archive_enabled": {
+            "title": "Archive Enabled",
+            "type": "boolean"
+          },
+          "archive_overlap_hours": {
+            "maximum": 720.0,
+            "minimum": 1.0,
+            "title": "Archive Overlap Hours",
+            "type": "integer"
+          },
+          "archive_time": {
+            "title": "Archive Time",
+            "type": "string"
+          },
+          "backfill_days": {
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Backfill Days",
+            "type": "integer"
+          },
+          "backfill_dow": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Backfill Dow",
+            "type": "integer"
+          },
+          "backfill_enabled": {
+            "title": "Backfill Enabled",
+            "type": "boolean"
+          },
+          "backfill_time": {
+            "title": "Backfill Time",
+            "type": "string"
+          },
+          "env_pinned": {
+            "title": "Env Pinned",
+            "type": "boolean"
+          },
+          "integrity_scan_enabled": {
+            "title": "Integrity Scan Enabled",
+            "type": "boolean"
+          },
+          "integrity_scan_sample_pct": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Integrity Scan Sample Pct",
+            "type": "number"
+          },
+          "reconcile_enabled": {
+            "title": "Reconcile Enabled",
+            "type": "boolean"
+          },
+          "reconcile_interval_hours": {
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Reconcile Interval Hours",
+            "type": "integer"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "archive_enabled",
+          "archive_time",
+          "archive_overlap_hours",
+          "backfill_enabled",
+          "backfill_dow",
+          "backfill_time",
+          "backfill_days",
+          "reconcile_enabled",
+          "reconcile_interval_hours",
+          "integrity_scan_enabled",
+          "integrity_scan_sample_pct",
+          "env_pinned"
+        ],
+        "title": "ScheduleOut",
+        "type": "object"
+      },
+      "ScheduledRunOut": {
+        "properties": {
+          "job": {
+            "title": "Job",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "next_run_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run Utc"
+          }
+        },
+        "required": [
+          "job",
+          "label",
+          "next_run_utc"
+        ],
+        "title": "ScheduledRunOut",
+        "type": "object"
+      },
+      "SdBarOut": {
+        "description": "GiB, all on the camera's own binary scale (see `sd_bar`).",
+        "properties": {
+          "archived_gb": {
+            "title": "Archived Gb",
+            "type": "number"
+          },
+          "free_gb": {
+            "title": "Free Gb",
+            "type": "number"
+          },
+          "other_gb": {
+            "title": "Other Gb",
+            "type": "number"
+          },
+          "total_gb": {
+            "title": "Total Gb",
+            "type": "number"
+          },
+          "used_gb": {
+            "title": "Used Gb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_gb",
+          "used_gb",
+          "free_gb",
+          "archived_gb",
+          "other_gb"
+        ],
+        "title": "SdBarOut",
+        "type": "object"
+      },
+      "SessionOut": {
+        "properties": {
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "pinned_cli_version": {
+            "title": "Pinned Cli Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authenticated",
+          "csrf_token",
+          "version",
+          "pinned_cli_version"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
+      "StorageSampleOut": {
+        "properties": {
+          "formatted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formatted"
+          },
+          "mounted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mounted"
+          },
+          "remain_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remain Gb"
+          },
+          "sampled_at": {
+            "format": "date-time",
+            "title": "Sampled At",
+            "type": "string"
+          },
+          "total_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Gb"
+          }
+        },
+        "required": [
+          "total_gb",
+          "remain_gb",
+          "formatted",
+          "mounted",
+          "sampled_at"
+        ],
+        "title": "StorageSampleOut",
+        "type": "object"
+      },
+      "TestResultOut": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "ok",
+          "error"
+        ],
+        "title": "TestResultOut",
+        "type": "object"
+      },
+      "TodayOut": {
+        "properties": {
+          "archived_bytes": {
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "count",
+          "archived_bytes"
+        ],
+        "title": "TodayOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyOut": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "recording": {
+            "$ref": "#/components/schemas/RecordingOut"
+          }
+        },
+        "required": [
+          "ok",
+          "recording"
+        ],
+        "title": "VerifyOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "ReoVault",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/actions/backfill": {
+      "post": {
+        "operationId": "action_backfill_api_v1_actions_backfill_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Backfill",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/actions/reconcile": {
+      "post": {
+        "operationId": "action_reconcile_api_v1_actions_reconcile_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Reconcile",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/actions/run": {
+      "post": {
+        "operationId": "action_run_api_v1_actions_run_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Run",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/actions/stop": {
+      "post": {
+        "description": "Cooperative: the Archiver checks the flag between recordings, so a\nfetch or encrypt in flight finishes or fails on its own rather than\nbeing torn down mid-write. The run then closes out as `aborted`.",
+        "operationId": "action_stop_api_v1_actions_stop_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Stop",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/activity": {
+      "get": {
+        "operationId": "get_activity_api_v1_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Activity",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/alerts": {
+      "get": {
+        "operationId": "get_alerts_api_v1_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Alerts",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/v1/alerts/rules": {
+      "put": {
+        "operationId": "put_rules_api_v1_alerts_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Rules",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/v1/alerts/test": {
+      "post": {
+        "operationId": "send_test_api_v1_alerts_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TestResultOut"
+                  },
+                  "title": "Response Send Test Api V1 Alerts Test Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        },
+        "summary": "Send Test",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/api/v1/calendar": {
+      "get": {
+        "operationId": "get_calendar_api_v1_calendar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Calendar",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/day": {
+      "get": {
+        "description": "`date_` defaults to the camera's own local today, so the dashboard\ncan open Footage without first knowing the camera's timezone.",
+        "operationId": "get_day_api_v1_day_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date_",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date "
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Day",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/day/hour": {
+      "get": {
+        "operationId": "get_day_hour_api_v1_day_hour_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date_",
+            "required": true,
+            "schema": {
+              "title": "Date ",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hour",
+            "required": true,
+            "schema": {
+              "maximum": 23,
+              "minimum": 0,
+              "title": "Hour",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RecordingOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Day Hour",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "operationId": "list_devices_api_v1_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      },
+      "post": {
+        "operationId": "add_device_api_v1_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddDeviceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Add Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/discover": {
+      "post": {
+        "operationId": "discover_api_v1_devices_discover_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscoveredOut"
+                  },
+                  "title": "Response Discover Api V1 Devices Discover Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Discover",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/enabled": {
+      "get": {
+        "operationId": "list_enabled_api_v1_devices_enabled_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceSummaryOut"
+                  },
+                  "title": "Response List Enabled Api V1 Devices Enabled Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Enabled",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{device_id}/enabled": {
+      "put": {
+        "operationId": "set_enabled_api_v1_devices__device_id__enabled_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnabledIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Enabled",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "events_api_v1_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/export": {
+      "get": {
+        "operationId": "export_api_v1_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_",
+            "required": true,
+            "schema": {
+              "title": "From ",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/api/v1/export/preview": {
+      "get": {
+        "operationId": "preview_api_v1_export_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_",
+            "required": true,
+            "schema": {
+              "title": "From ",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/api/v1/growth": {
+      "get": {
+        "operationId": "get_growth_api_v1_growth_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrowthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Growth",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "get_health_api_v1_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/login": {
+      "post": {
+        "operationId": "login_api_v1_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/logout": {
+      "post": {
+        "description": "Revokes every session server-side by bumping the epoch, not just this\nbrowser's cookie: a copied cookie stops working too.",
+        "operationId": "logout_api_v1_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/problems": {
+      "get": {
+        "operationId": "list_problems_api_v1_problems_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RecordingOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Problems",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/problems/count": {
+      "get": {
+        "operationId": "get_problems_count_api_v1_problems_count_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Problems Count",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/recordings/{recording_id}": {
+      "get": {
+        "operationId": "get_recording_api_v1_recordings__recording_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "title": "Recording Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recording",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/recordings/{recording_id}/retry": {
+      "post": {
+        "description": "Makes a failed recording eligible for the next run's pickup; it is\nnot re-downloaded on the spot (see Repository.retry_recording).",
+        "operationId": "retry_recording_api_v1_recordings__recording_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "title": "Recording Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Recording",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/recordings/{recording_id}/stream": {
+      "get": {
+        "operationId": "stream_recording_api_v1_recordings__recording_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "title": "Recording Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Download",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Recording",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/recordings/{recording_id}/verify": {
+      "post": {
+        "operationId": "verify_recording_api_v1_recordings__recording_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "title": "Recording Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Recording",
+        "tags": [
+          "footage"
+        ]
+      }
+    },
+    "/api/v1/retention": {
+      "get": {
+        "operationId": "get_retention_api_v1_retention_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Retention",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_retention_api_v1_retention_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionSaveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Retention",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/schedule": {
+      "get": {
+        "operationId": "get_schedule_api_v1_schedule_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Schedule",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_schedule_api_v1_schedule_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Schedule",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "operationId": "get_session_api_v1_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Public, for the Docker healthcheck, which only needs the status\ncode. `?verbose=1` adds gateway state, per-device coverage alarms\nand database error text, so it needs a logged-in session: behind a\nreverse-proxy hostname that detail would otherwise be public.",
+        "operationId": "healthz_healthz_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "verbose",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Verbose",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Healthz"
+      }
+    }
+  }
+}

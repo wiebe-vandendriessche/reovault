@@ -1,8 +1,8 @@
-"""`/healthz`: the unauthenticated body is status-only once the app sits
-behind a reachable hostname; `?verbose=1` restores the old detail (gateway,
-per-device coverage alarm) for an authenticated dashboard caller. Under
-multi-camera, the gateway is one shared check but coverage alarms are
-broken out per device under `checks["devices"]`.
+"""`/healthz`: public status-only body for the Docker healthcheck, which
+can't log in; `?verbose=1` adds the detail (gateway, per-device coverage
+alarm) only for a logged-in session. Under multi-camera, the gateway is one
+shared check but coverage alarms are broken out per device under
+`checks["devices"]`.
 """
 
 from unittest.mock import MagicMock
@@ -14,7 +14,7 @@ from reovault.providers.fake import FakeProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.web.app import create_app
-from tests.integration.conftest import make_web_app
+from tests.integration.conftest import login, make_web_app
 
 
 def test_healthz_ok_when_database_reachable(env, web_settings, web_device):
@@ -47,7 +47,7 @@ def test_healthz_503_when_database_unreachable(env, web_settings, web_device):
 
 
 def test_healthz_verbose_reports_gateway_state_for_reolink_cli_provider(
-    env, web_settings, web_device
+    env, web_settings, web_device, web_password_hash
 ):
     gateway = MagicMock()
     gateway.is_listening.return_value = True
@@ -57,22 +57,28 @@ def test_healthz_verbose_reports_gateway_state_for_reolink_cli_provider(
     app = make_web_app(env, web_settings, web_device, provider=provider)
     client = TestClient(app)
 
+    login(client)
     response = client.get("/healthz", params={"verbose": "1"})
 
     assert response.status_code == 200
     assert response.json()["checks"]["gateway"] == "listening"
 
 
-def test_healthz_verbose_omits_gateway_check_for_fake_provider(env, web_settings, web_device):
+def test_healthz_verbose_omits_gateway_check_for_fake_provider(
+    env, web_settings, web_device, web_password_hash
+):
     app = make_web_app(env, web_settings, web_device)
     client = TestClient(app)
 
+    login(client)
     response = client.get("/healthz", params={"verbose": "1"})
 
     assert "gateway" not in response.json()["checks"]
 
 
-def test_healthz_verbose_reports_coverage_alarm_state(env, web_settings, web_device):
+def test_healthz_verbose_reports_coverage_alarm_state(
+    env, web_settings, web_device, web_password_hash
+):
     from datetime import UTC, datetime, timedelta
 
     oldest_on_card = datetime.now(UTC) - timedelta(days=10)
@@ -101,6 +107,7 @@ def test_healthz_verbose_reports_coverage_alarm_state(env, web_settings, web_dev
     app = make_web_app(env, web_settings, web_device)
     client = TestClient(app)
 
+    login(client)
     response = client.get("/healthz", params={"verbose": "1"})
 
     assert response.status_code == 200  # a coverage alarm doesn't fail the healthcheck itself
@@ -116,3 +123,23 @@ def test_healthz_is_unauthenticated(env, web_settings, web_device, web_password_
     response = client.get("/healthz")
 
     assert response.status_code == 200
+
+
+def test_healthz_unauthenticated_body_is_status_only_with_password_set(
+    env, web_settings, web_device, web_password_hash
+):
+    """The default body must not grow detail once a password exists: it's
+    what an anonymous caller behind a public hostname sees."""
+    client = TestClient(make_web_app(env, web_settings, web_device))
+
+    assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_healthz_verbose_needs_a_session(env, web_settings, web_device, web_password_hash):
+    """Verbose detail (gateway state, coverage alarms, database error text)
+    is only for a logged-in caller; anyone else gets the status-only body,
+    still with the real status code for the healthcheck."""
+    client = TestClient(make_web_app(env, web_settings, web_device))
+    response = client.get("/healthz", params={"verbose": "1"})
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

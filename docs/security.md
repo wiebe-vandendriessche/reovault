@@ -35,6 +35,33 @@ The dashboard's own login is separate: a single-user password (Argon2id
 hashed) plus an optional email field used only as a password-manager
 autofill hint, not an authorization boundary.
 
+Alert channel secrets (an ntfy token, a webhook URL, an SMTP password) are
+read from files at send time and never stored in the database. A failed
+send logs only the error, never the URL, since a Slack or Discord webhook
+URL is itself the credential.
+
+## Dashboard and API
+
+* **Sessions:** a signed, `HttpOnly` cookie. Logout revokes sessions
+  server-side by bumping a session epoch, so a copied cookie stops working
+  too (single user, so every open session is signed out at once).
+* **CSRF:** every mutating `/api/v1` request needs an `X-CSRF-Token` bound
+  to the session, plus a matching `Origin` when the browser sends one.
+* **Content Security Policy:** `script-src 'self'` plus the SHA-256 of the
+  one inline boot script, which the server computes from the `index.html`
+  it actually serves; `style-src 'self'` with no `'unsafe-inline'`. Dynamic
+  styles go through the CSSOM, which CSP permits. The browser console
+  reports one refused inline style at startup: SvelteKit's screen-reader
+  route announcer hard-codes a `style` attribute, and the stylesheet
+  supplies the same rules instead, so nothing is lost.
+* **Request size:** bodies over 64 KB get 413, and chunked request bodies
+  (which carry no length to check) get 411.
+* **`/healthz`** is public and status-only for the Docker healthcheck;
+  `?verbose=1` adds gateway and coverage detail only for a logged-in
+  session.
+* **Exports** decrypt clips on the fly into a streamed zip, one export at a
+  time, capped at 31 days and 5000 clips per request.
+
 ## Deployment modes
 
 Binding `127.0.0.1` inside a container makes the dashboard unreachable
@@ -61,6 +88,9 @@ Released Docker images (`ghcr.io/wiebe-vandendriessche/reovault`) are:
 
 * Scanned for known vulnerabilities (Grype) before publishing, gated on
   critical-severity, fixable CVEs.
+* Built with the dashboard's npm dependencies installed by `npm ci
+  --ignore-scripts` from a committed lockfile, in a build stage only: the
+  runtime image carries the static output and no Node.
 * Shipped with a CycloneDX SBOM, attached to both the GitHub Release and the
   image itself (via a Sigstore/cosign attestation).
 * Signed keylessly with [cosign](https://github.com/sigstore/cosign) using

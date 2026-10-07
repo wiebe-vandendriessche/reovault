@@ -1,5 +1,6 @@
 """Mechanizes the WCAG contrast checking that was done by hand during the
-brand token rewrite. Parses the two theme blocks straight out of app.css
+brand token rewrite. Parses the two theme blocks straight out of the
+dashboard's layout.css
 (not a hand-copied literal palette: if the tokens drift, this test reads
 the drift) and checks a fixed table of known text/surface and fill/surface
 pairs -- not a generic CSS contrast linter, just the pairs this app
@@ -12,7 +13,7 @@ import re
 from pathlib import Path
 
 _APP_CSS = (
-    Path(__file__).resolve().parents[2] / "reovault" / "web" / "static" / "app.css"
+    Path(__file__).resolve().parents[2] / "dashboard" / "src" / "routes" / "layout.css"
 ).read_text()
 
 _TOKEN_RE = re.compile(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})")
@@ -39,7 +40,7 @@ def _extract_block(text: str, start_marker: str) -> dict[str, str]:
 
 
 def _dark_tokens() -> dict[str, str]:
-    return _extract_block(_APP_CSS, "\n  :root {")
+    return _extract_block(_APP_CSS, "\n:root {")
 
 
 def _light_tokens() -> dict[str, str]:

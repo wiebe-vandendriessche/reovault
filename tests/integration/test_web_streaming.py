@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from reovault.models import ErrorClass, RemoteRecording
-from tests.integration.conftest import WEB_TEST_PASSWORD, make_web_app
+from tests.integration.conftest import WEB_TEST_EMAIL, WEB_TEST_PASSWORD, login, make_web_app
 
 PLAINTEXT = bytes(range(256)) * 4  # 1024 bytes, exercised against a 16-byte frame size
 
@@ -49,20 +49,8 @@ def archived(env):
     return rid, plaintext
 
 
-@pytest.fixture
-def auth_client(env, web_settings, web_device, web_password_hash):
-    import re
-
-    app = make_web_app(env, web_settings, web_device)
-    client = TestClient(app)
-    html = client.get("/login").text
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
-    client.post("/login", data={"password": WEB_TEST_PASSWORD, "csrf_token": csrf, "next": "/"})
-    return client
-
-
 def _url(rid: int) -> str:
-    return f"/recordings/{rid}/stream"
+    return f"/api/v1/recordings/{rid}/stream"
 
 
 # -- byte-exact range behavior --------------------------------------------
@@ -263,13 +251,14 @@ def test_range_property_matches_plaintext_slice(data):
         master_key_path=tmp / "master.key",
     )
     web = WebConfig(
+        email=WEB_TEST_EMAIL,
         password_file=tmp / "web_password",
         session_key_path=tmp / "session.key",
         cookie_secure=False,
         stream_chunk_bytes=16,
     )
     settings = Settings(storage=storage, web=web)
-    write_password_file(web.password_file, security.hash_password(b"testpass"))
+    write_password_file(web.password_file, security.hash_password(WEB_TEST_PASSWORD.encode()))
     fleet = Fleet(
         settings=settings,
         repository=repo,
@@ -278,12 +267,7 @@ def test_range_property_matches_plaintext_slice(data):
     )
     fleet.archivers[device_id] = archiver
     app = create_app(fleet, settings=settings, repository=repo)
-    client = TestClient(app)
-    import re
-
-    html = client.get("/login").text
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
-    client.post("/login", data={"password": "testpass", "csrf_token": csrf, "next": "/"})
+    client = login(TestClient(app))
 
     size = max(len(plaintext), 0)
     offset = data.draw(st.integers(min_value=0, max_value=size if size else 0))
@@ -309,8 +293,6 @@ def test_corrupted_final_frame_truncates_rather_than_serving_garbage(
     a truncated transfer, never corrupt bytes served as if they were valid.
     `raise_server_exceptions=False` is required to observe that truncation
     instead of the exception propagating to the test process itself."""
-    import re
-
     rid, plaintext = archived
     row = env.repository.get(rid)
     vault_file = env.tmp_path / "vault" / row.vault_path
@@ -319,9 +301,7 @@ def test_corrupted_final_frame_truncates_rather_than_serving_garbage(
     vault_file.write_bytes(bytes(data))
 
     app = make_web_app(env, web_settings, web_device)
-    client = TestClient(app, raise_server_exceptions=False)
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text).group(1)
-    client.post("/login", data={"password": WEB_TEST_PASSWORD, "csrf_token": csrf, "next": "/"})
+    client = login(TestClient(app, raise_server_exceptions=False))
 
     r = client.get(_url(rid))
 
@@ -335,8 +315,6 @@ def test_corrupted_first_frame_is_a_clean_500(
 ):
     """Corruption the pre-flight *does* catch: nothing has been sent to the
     client yet, so the status can still change to a clean 500."""
-    import re
-
     from reovault.crypto.envelope import HEADER_SIZE
 
     rid, _plaintext = archived
@@ -347,9 +325,7 @@ def test_corrupted_first_frame_is_a_clean_500(
     vault_file.write_bytes(bytes(data))
 
     app = make_web_app(env, web_settings, web_device)
-    client = TestClient(app, raise_server_exceptions=False)
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text).group(1)
-    client.post("/login", data={"password": WEB_TEST_PASSWORD, "csrf_token": csrf, "next": "/"})
+    client = login(TestClient(app, raise_server_exceptions=False))
 
     r = client.get(_url(rid))
     assert r.status_code == 500
@@ -364,12 +340,21 @@ def test_vault_file_deleted_returns_404(env, auth_client, archived):
 
     r = auth_client.get(_url(rid))
     assert r.status_code == 404
-    assert "vault" not in r.text.lower() or "/vault" not in r.text
+    assert r.json() == {"detail": "Recording not found."}  # same answer as an unknown id
+    assert str(env.tmp_path) not in r.text
 
 
 def test_unknown_id_is_404(auth_client):
     r = auth_client.get(_url(999999))
     assert r.status_code == 404
+    assert r.json() == {"detail": "Recording not found."}
+
+
+def test_stream_requires_a_session(client, archived):
+    rid, _plaintext = archived
+    r = client.get(_url(rid))
+    assert r.status_code == 401
+    assert r.content != archived[1]
 
 
 def test_failed_state_recording_is_404(env, auth_client):
@@ -421,7 +406,9 @@ def test_hostile_remote_name_produces_safe_header(env, auth_client):
 
     r = auth_client.get(_url(rid))
     disposition = r.headers["content-disposition"]
-    assert '"' not in disposition.split("filename=", 1)[1].strip('"') or True
+    filename = disposition.split("filename=", 1)[1]
+    assert filename.startswith('"') and filename.endswith('"')
+    assert '"' not in filename[1:-1]
     assert "\r" not in disposition
     assert "\n" not in disposition
     assert "/" not in disposition.split("filename=")[1]
@@ -467,19 +454,35 @@ def test_no_vault_path_or_filesystem_path_in_any_response(env, auth_client, arch
     )
 
     pages = [
-        "/",
-        "/runs",
-        f"/runs/{run_id}",
-        "/problems",
-        "/recordings?date_=2026-09-16",
-        f"/fragments/recordings/{rid}/player",
-        f"/fragments/recordings/{rid}/row",
+        "/api/v1/health",
+        "/api/v1/runs",
+        f"/api/v1/runs/{run_id}",
+        "/api/v1/problems",
+        "/api/v1/day?date_=2026-09-16",
+        "/api/v1/day/hour?date_=2026-09-16&hour=13",
+        "/api/v1/day?date_=2026-01-03&types=__problems__",
+        "/api/v1/day/hour?date_=2026-01-03&hour=1&types=__problems__",
+        f"/api/v1/recordings/{rid}",
+        f"/api/v1/recordings/{problem_rid}",
     ]
     forbidden = [str(env.tmp_path), row.vault_path, str(env.staging_dir)]
     for path in pages:
         r = auth_client.get(path)
+        assert r.status_code == 200, (path, r.text)
         for secret in forbidden:
             assert secret not in r.text, f"{secret!r} leaked in {path}"
+
+    # Redacted, not dropped: the error is still there for a human to read.
+    run = auth_client.get(f"/api/v1/runs/{run_id}").json()["run"]
+    assert run["error"] == "OSError: no space left on device: <staging>/123/clip.mp4.tmp"
+    problem = auth_client.get(f"/api/v1/recordings/{problem_rid}").json()
+    assert problem["last_error"] == "local error touching <staging>/456/x.tmp"
+    listed = auth_client.get("/api/v1/problems").json()["items"]
+    assert [p["last_error"] for p in listed] == [problem["last_error"]]
+    hour = auth_client.get(
+        "/api/v1/day/hour", params={"date_": "2026-01-03", "hour": 1, "types": "__problems__"}
+    ).json()
+    assert [i["id"] for i in hour["items"]] == [problem_rid]
 
 
 def test_500_response_contains_no_exception_text_or_path(
@@ -490,22 +493,17 @@ def test_500_response_contains_no_exception_text_or_path(
     (so a real server can log it), which is exactly what a real HTTP
     client never sees. With it False, TestClient behaves like a real
     client and returns what was actually sent on the wire."""
-    import re
-
     rid, _plaintext = archived
 
     def boom(*_a, **_kw):
         raise RuntimeError(f"leaking {env.tmp_path}/secret/path")
 
-    monkeypatch.setattr(env.repository.__class__, "get", boom)
-
     app = make_web_app(env, web_settings, web_device)
-    client = TestClient(app, raise_server_exceptions=False)
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text).group(1)
-    client.post("/login", data={"password": WEB_TEST_PASSWORD, "csrf_token": csrf, "next": "/"})
+    client = login(TestClient(app, raise_server_exceptions=False))
+    monkeypatch.setattr(env.repository.__class__, "get", boom)
 
     r = client.get(_url(rid))
     assert r.status_code == 500
     assert str(env.tmp_path) not in r.text
     assert "RuntimeError" not in r.text
-    assert "RuntimeError" not in r.text
+    assert r.json() == {"detail": "internal error"}

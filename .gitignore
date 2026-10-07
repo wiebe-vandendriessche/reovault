@@ -17,8 +17,11 @@ eggs/
 # MkDocs build output
 site/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: an unanchored `lib/` also matched the
+# dashboard's SvelteKit `dashboard/src/lib/`, and Tailwind skips gitignored
+# paths, so it silently dropped every component's styles.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -240,3 +243,10 @@ dev-notes/
 .github/hooks/
 .github/skills/
 skills-lock.json
+
+# Dashboard (Node). dashboard/.gitignore covers node_modules, .svelte-kit
+# and build/ inside dashboard/; the built copy the daemon serves lives here,
+# copied in by the Dockerfile or by hand in development (CONTRIBUTING.md).
+reovault/web/dist/
+dashboard/coverage/
+npm-debug.log*

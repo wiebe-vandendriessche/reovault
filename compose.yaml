@@ -23,7 +23,7 @@
 services:
   reovault:
     # Signed release image (see docs/installation.md to verify it). `latest`
-    # tracks the newest release; pin a tag like `:0.1.0` to upgrade on your
+    # tracks the newest release; pin a tag like `:0.4.0` to upgrade on your
     # own schedule instead.
     image: ghcr.io/wiebe-vandendriessche/reovault:latest
     # To build from a source checkout instead, comment out `image:` above and
@@ -46,6 +46,8 @@ services:
       # REOVAULT_WEB__COOKIE_SECURE: "false"
     secrets:
       - reovault_master_passphrase
+      # Alert channel secrets (see docs/installation.md#alerts), e.g.:
+      # - ntfy_token
     volumes:
       # Your settings. Read-only: ReoVault never writes its own config. Create
       # it before the first `docker compose` command, or Docker makes a
@@ -81,6 +83,10 @@ services:
 secrets:
   reovault_master_passphrase:
     file: ./secrets/reovault_master_passphrase.txt
+  # Referenced from reovault.toml as /run/secrets/<name>, e.g.
+  # `ntfy_token_file = "/run/secrets/ntfy_token"`:
+  # ntfy_token:
+  #   file: ./secrets/ntfy_token.txt
 
 # networks:
 #   proxy_network:

@@ -101,6 +101,40 @@ class RetentionConfig(BaseModel):
     max_vault_gb: float | None = Field(default=None, ge=1)
 
 
+class AlertRules(BaseModel):
+    """What to alert on. Seeded from `[alerts.rules]` and editable from the
+    dashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same
+    scheme as retention)."""
+
+    enabled: bool = True
+    run_failed: bool = True
+    problems: bool = True
+    gateway_down: bool = True
+    gateway_down_minutes: int = Field(default=15, ge=1, le=1440)
+    coverage: bool = True
+    renotify_hours: int = Field(default=24, ge=1, le=720)
+    notify_on_resolve: bool = True
+
+
+class AlertsConfig(BaseModel):
+    """Where alerts go. Config/env only, never the database or the
+    dashboard: a webhook URL (Slack, Discord) or an ntfy token is a
+    credential, so those are read from files (Docker secrets), the same
+    posture as the master passphrase."""
+
+    ntfy_url: str | None = None  # full topic URL, e.g. https://ntfy.sh/my-reovault
+    ntfy_token_file: Path | None = None
+    webhook_url_file: Path | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_starttls: bool = True
+    smtp_user: str | None = None
+    smtp_password_file: Path | None = None
+    smtp_from: str | None = None
+    smtp_to: list[str] = Field(default_factory=list)
+    rules: AlertRules = Field(default_factory=AlertRules)
+
+
 class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
@@ -152,6 +186,7 @@ class Settings(BaseSettings):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 
     @classmethod

@@ -107,7 +107,7 @@ def test_day_view_stays_fast(big_repo):
 
 
 def test_calendar_month_stays_fast(big_repo):
-    """Mirrors what app.py's calendar fragment actually does: bounds come
+    """Mirrors what `GET /api/v1/calendar` actually does: bounds come
     from `local_day_bounds` on the first/last day of the month, not raw
     UTC month boundaries (which don't align with local days and would
     silently pull in a sliver of the adjacent month)."""
@@ -124,6 +124,29 @@ def test_calendar_month_stays_fast(big_repo):
     elapsed = time.perf_counter() - t0
     assert len(buckets) <= 31
     assert elapsed < 0.5, f"calendar month took {elapsed * 1000:.1f}ms, expected well under 500ms"
+
+
+def test_window_summary_stays_fast_and_matches_a_row_scan(big_repo):
+    """`GET /api/v1/health`'s "today" card: one aggregate, not a row load.
+    Checked against the Python sum it replaced."""
+    from reovault.timeline import local_day_bounds
+
+    repo, device_id = big_repo
+    day_start, day_end = local_day_bounds(
+        datetime(2026, 3, 15, tzinfo=UTC).date(), "Europe/Brussels"
+    )
+    t0 = time.perf_counter()
+    count, archived_bytes = repo.window_summary(
+        device_id=device_id, from_utc=day_start, to_utc=day_end
+    )
+    elapsed = time.perf_counter() - t0
+
+    rows = repo.recordings_in_window(
+        device_id=device_id, from_utc=day_start, to_utc=day_end, limit=100000
+    )
+    assert count == len(rows) > 0
+    assert archived_bytes == sum(r.plaintext_size or 0 for r in rows if r.state == "archived")
+    assert elapsed < 0.1, f"window summary took {elapsed * 1000:.1f}ms, expected well under 100ms"
 
 
 def test_problems_list_stays_fast_when_healthy(big_repo):

@@ -9,7 +9,7 @@ import pytest
 from reovault import retention
 from reovault.config import RetentionConfig
 from reovault.providers.fake import FakeProvider, ScriptedRecording
-from tests.integration.conftest import extract_body_csrf, make_recording
+from tests.integration.conftest import make_recording
 
 DAY0 = datetime(2026, 4, 1, 12, tzinfo=UTC)
 WINDOW_FROM = DAY0 - timedelta(days=1)
@@ -173,52 +173,50 @@ def test_pruned_clips_are_not_backlog_for_the_coverage_alarm(env):
 
 def test_retention_save_requires_confirmation_when_it_would_delete(env, auth_client):
     _archive(env, _provider(0, 1))
-    csrf = extract_body_csrf(auth_client.get("/schedule").text)
-    form = {"max_age_days": "", "max_vault_gb": "1"}
+    body = {"max_age_days": None, "max_vault_gb": 1}
 
-    r = auth_client.post("/retention", data=form, headers={"X-CSRF-Token": csrf})
-    assert "permanently delete" in r.text
+    r = auth_client.put("/api/v1/retention", json=body)
+    assert r.status_code == 200
+    assert r.json()["saved"] is False
+    confirm = r.json()["confirm"]
+    assert confirm["count"] == 2
+    assert confirm["bytes"] > 0
     stored = env.repository.get_setting(retention.RETENTION_SETTING_KEY)
     assert RetentionConfig.model_validate_json(stored).max_vault_gb is None
 
     # A confirm token for different values does not count.
-    r = auth_client.post(
-        "/retention",
-        data={**form, "max_vault_gb": "2", "confirm": "None|1.0"},
-        headers={"X-CSRF-Token": csrf},
+    r = auth_client.put(
+        "/api/v1/retention", json={**body, "max_vault_gb": 2, "confirm": confirm["token"]}
     )
-    assert "permanently delete" in r.text
+    assert r.json()["saved"] is False
+    assert r.json()["confirm"] is not None
 
-    r = auth_client.post(
-        "/retention", data={**form, "confirm": "None|1.0"}, headers={"X-CSRF-Token": csrf}
-    )
-    assert "Saved." in r.text
+    r = auth_client.put("/api/v1/retention", json={**body, "confirm": confirm["token"]})
+    assert r.json()["saved"] is True
+    assert r.json()["confirm"] is None
+    assert r.json()["retention"]["max_vault_gb"] == 1
     stored = env.repository.get_setting(retention.RETENTION_SETTING_KEY)
     assert RetentionConfig.model_validate_json(stored).max_vault_gb == 1
+    assert auth_client.get("/api/v1/retention").json()["max_vault_gb"] == 1
 
 
 def test_retention_save_without_impact_saves_directly(env, auth_client):
-    csrf = extract_body_csrf(auth_client.get("/schedule").text)
-    r = auth_client.post(
-        "/retention",
-        data={"max_age_days": "90", "max_vault_gb": ""},
-        headers={"X-CSRF-Token": csrf},
-    )
-    assert "Saved." in r.text
+    r = auth_client.put("/api/v1/retention", json={"max_age_days": 90, "max_vault_gb": None})
+    assert r.json()["saved"] is True
+    assert r.json()["retention"]["max_age_days"] == 90
 
 
 def test_retention_rejects_zero(env, auth_client):
-    csrf = extract_body_csrf(auth_client.get("/schedule").text)
-    r = auth_client.post("/retention", data={"max_age_days": "0"}, headers={"X-CSRF-Token": csrf})
-    assert r.status_code == 200
-    assert "field-error" in r.text
+    r = auth_client.put("/api/v1/retention", json={"max_age_days": 0})
+    assert r.status_code == 422
 
 
 def test_retention_is_read_only_when_env_pinned(env, auth_client, monkeypatch):
     monkeypatch.setenv("REOVAULT_RETENTION__MAX_AGE_DAYS", "30")
-    csrf = extract_body_csrf(auth_client.get("/schedule").text)
 
-    r = auth_client.post("/retention", data={"max_age_days": "1"}, headers={"X-CSRF-Token": csrf})
+    assert auth_client.get("/api/v1/retention").json()["env_pinned"] is True
+    r = auth_client.put("/api/v1/retention", json={"max_age_days": 1})
 
-    assert "environment variables" in r.text
+    assert r.status_code == 409
+    assert "environment variables" in r.json()["detail"]
     assert env.repository.get_setting(retention.RETENTION_SETTING_KEY) is None

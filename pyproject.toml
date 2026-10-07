@@ -1,6 +1,6 @@
 [project]
 name = "reovault"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local-first, self-hosted archiving of Reolink camera recordings."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,7 +16,6 @@ dependencies = [
     "apscheduler>=3.10",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
-    "jinja2>=3.1",
     "structlog>=24.4",
 ]
 
@@ -42,7 +41,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["reovault"]
-artifacts = ["reovault/db/migrations/*.sql", "reovault/web/templates/**", "reovault/web/static/**"]
+# The built dashboard (`npm run build`, copied in by the Dockerfile) ships
+# inside the package; it is gitignored, so it must be listed explicitly.
+artifacts = ["reovault/db/migrations/*.sql", "reovault/web/dist/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

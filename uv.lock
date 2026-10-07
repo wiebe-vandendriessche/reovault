@@ -1371,13 +1371,12 @@ wheels = [
 
 [[package]]
 name = "reovault"
-version = "0.1.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
     { name = "cryptography" },
     { name = "fastapi" },
-    { name = "jinja2" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "structlog" },
@@ -1403,7 +1402,6 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "cryptography", specifier = ">=43.0" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "jinja2", specifier = ">=3.1" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.5" },
     { name = "structlog", specifier = ">=24.4" },

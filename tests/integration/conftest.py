@@ -17,6 +17,7 @@ from reovault.web.app import create_app
 from reovault.web.auth import write_password_file
 
 WEB_TEST_PASSWORD = "hunter2-hunter2"  # noqa: S105 - test fixture, not a real credential
+WEB_TEST_EMAIL = "owner@example.com"
 
 
 def make_recording(
@@ -134,6 +135,7 @@ def web_settings(env: Env) -> Settings:
         master_key_path=env.tmp_path / "master.key",
     )
     web = WebConfig(
+        email=WEB_TEST_EMAIL,
         password_file=env.tmp_path / "web_password",
         session_key_path=env.tmp_path / "web_session.key",
         cookie_secure=False,  # tests run over plain http
@@ -162,6 +164,7 @@ def make_web_app(
     provider: FakeProvider | None = None,
     scheduler=None,  # noqa: ANN001 - BackgroundScheduler | None, kept loose to avoid importing apscheduler here
     registry=None,  # noqa: ANN001 - CameraRegistry | None, kept loose for the same reason
+    dashboard_dir: Path | None = None,
 ):
     """`web_device` is kept as a parameter for every existing call site's
     sake, but create_app no longer takes it directly: the device's timezone
@@ -190,6 +193,7 @@ def make_web_app(
         repository=env.repository,
         scheduler=scheduler,
         registry=registry,
+        dashboard_dir=dashboard_dir,
     )
 
 
@@ -203,19 +207,27 @@ def client(web_app) -> TestClient:  # noqa: ANN001
     return TestClient(web_app)
 
 
+def csrf_token(client: TestClient) -> str:
+    """The token the dashboard reads from `GET /api/v1/session` and sends as
+    `X-CSRF-Token` on every mutating request."""
+    response = client.get("/api/v1/session")
+    assert response.status_code == 200, response.text
+    return response.json()["csrf_token"]
+
+
 def login(client: TestClient, password: str = WEB_TEST_PASSWORD) -> TestClient:
-    """Logs `client` in through the real `/login` flow; `TestClient` persists
-    cookies across requests, matching a real browser session. Used directly
-    by tests that need a custom app (e.g. a non-default registry/provider)
-    the `auth_client` fixture doesn't build."""
-    login_page = client.get("/login")
-    csrf = _extract_hidden_csrf(login_page.text)
+    """Logs `client` in through the real `/api/v1/login` flow and sets the
+    session's CSRF header as a default, matching what the dashboard does.
+    `TestClient` persists cookies across requests like a browser. Used
+    directly by tests that build a custom app the `auth_client` fixture
+    doesn't."""
     response = client.post(
-        "/login",
-        data={"password": password, "csrf_token": csrf, "next": "/"},
-        follow_redirects=False,
+        "/api/v1/login",
+        json={"email": WEB_TEST_EMAIL, "password": password},
+        headers={"X-CSRF-Token": csrf_token(client)},
     )
-    assert response.status_code == 303, response.text
+    assert response.status_code == 200, response.text
+    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
     return client
 
 
@@ -223,21 +235,3 @@ def login(client: TestClient, password: str = WEB_TEST_PASSWORD) -> TestClient:
 def auth_client(client: TestClient) -> TestClient:
     """A `TestClient` that has already logged in."""
     return login(client)
-
-
-def _extract_hidden_csrf(html: str) -> str:
-    import re
-
-    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
-    assert match is not None, "login page did not render a csrf_token field"
-    return match.group(1)
-
-
-def extract_body_csrf(html: str) -> str:
-    """The header-based CSRF token HTMX sends on every mutating request,
-    read out of the rendered `<body hx-headers='...'>` attribute."""
-    import re
-
-    match = re.search(r'hx-headers=\'\{"X-CSRF-Token": "([^"]+)"\}\'', html)
-    assert match is not None, "page did not render the hx-headers CSRF token"
-    return match.group(1)

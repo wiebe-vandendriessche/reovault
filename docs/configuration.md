@@ -7,8 +7,8 @@ default `./reovault.toml`), merged with `REOVAULT_*` environment variables.
 
 Start from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/reovault/blob/main/reovault.example.toml).
 
-The defaults below are for a bare-metal install. In Docker, the image points
-every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
+The path defaults below apply when running from a source checkout (a
+development setup). In Docker, the image points every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
 and `compose.yaml` mounts your `reovault.toml` read-only at
 `/etc/reovault/reovault.toml`, so leave the path fields out of it there.
 
@@ -28,8 +28,9 @@ One entry per camera. A list, so multi-camera setups just add more entries.
 | `name` | string | none | Display name shown in the dashboard instead of `alias`; auto-backfilled from the camera's own name once discovered if left unset. |
 
 Devices are seeded from `reovault.toml` on every startup (never deleted or
-disabled by a reseed); the dashboard's Devices tab can also add, rename,
-enable/disable, and schedule cameras at runtime.
+disabled by a reseed); the dashboard's Devices page can also add cameras and
+turn archiving on or off at runtime, and each camera's schedule is edited
+under Settings, Schedule.
 
 ## `[reolink_cli]`
 
@@ -80,10 +81,10 @@ ciphertext it unlocks.
 `timezone` unset (the default) means each device's cron jobs evaluate in
 that device's own `[[devices]] timezone`. Setting it forces every device
 onto one timezone. This table only seeds the dashboard's per-camera schedule
-on first boot. Once a camera's schedule has been saved from the Schedule
-tab, that camera's own saved schedule wins from then on. Setting any
+on first boot. Once a camera's schedule has been saved from Settings,
+Schedule, that camera's own saved schedule wins from then on. Setting any
 `REOVAULT_SCHEDULE__*` env var instead pins this schedule for every camera
-and takes the dashboard's Schedule tab out of the loop entirely.
+and makes the dashboard's schedule form read-only.
 
 ## `[retention]`
 
@@ -106,11 +107,53 @@ clip keeps its database row in state `pruned` and is never downloaded
 again, even while it is still on the camera's SD card.
 
 Like `[schedule]`, this table only seeds the dashboard on first boot; after
-that, the Retention card on the Schedule tab is authoritative. Saving a
+that, the Retention tab under Settings is authoritative. Saving a
 policy that would delete footage right away asks for confirmation first,
 showing how many clips and bytes would go. Setting any
-`REOVAULT_RETENTION__*` env var pins the policy and makes the card
+`REOVAULT_RETENTION__*` env var pins the policy and makes the tab
 read-only.
+
+## `[alerts]`
+
+Where alerts go. These fields are config-only, never stored in the database
+or editable from the dashboard: a webhook URL or an ntfy token is a
+credential, so anything secret is read from a file (mount it as a Docker
+secret).
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ntfy_url` | string or unset | unset | Full topic URL, e.g. `https://ntfy.sh/my-reovault`. Choose an unguessable topic on a public server. |
+| `ntfy_token_file` | path or unset | unset | Access token for a protected topic, sent as a Bearer token. |
+| `webhook_url_file` | path or unset | unset | File holding the URL. Receives a JSON POST with `title`, `message`, `resolved`, plus `text` and `content` so Slack and Discord incoming webhooks work as-is. |
+| `smtp_host` | string or unset | unset | Email is sent only when this and `smtp_to` are set. |
+| `smtp_port` | int | `587` | `465` uses implicit TLS; any other port uses STARTTLS when `smtp_starttls` is on. |
+| `smtp_starttls` | bool | `true` | |
+| `smtp_user` | string or unset | unset | |
+| `smtp_password_file` | path or unset | unset | |
+| `smtp_from` | string or unset | `smtp_user` | |
+| `smtp_to` | list of strings | `[]` | |
+
+### `[alerts.rules]`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `true` |
+| `run_failed` | bool | `true` |
+| `problems` | bool | `true` |
+| `coverage` | bool | `true` |
+| `gateway_down` | bool | `true` |
+| `gateway_down_minutes` | int, 1 to 1440 | `15` |
+| `renotify_hours` | int, 1 to 720 | `24` |
+| `notify_on_resolve` | bool | `true` |
+
+What to alert on: a run that failed or was stopped, recordings that failed
+or were quarantined, a camera falling behind its SD card (the same coverage
+margin the Health page shows), and the camera gateway staying down longer
+than `gateway_down_minutes`. An open alert is sent once, repeated every
+`renotify_hours` while it stays open, and followed by a "Resolved" message
+when it clears. A send that fails on every channel is retried on the next
+evaluation, once a minute. Like `[retention]`, this table only seeds the
+dashboard on first boot; any `REOVAULT_ALERTS__RULES__*` env var pins it.
 
 ## `[web]`
 
@@ -118,7 +161,7 @@ read-only.
 |---|---|---|---|
 | `host` | string | `127.0.0.1` | Bind `0.0.0.0` in a container. Loopback there is the container's own namespace, unreachable from a reverse proxy. |
 | `port` | int | `8080` | |
-| `password_hash` | string or unset | unset | Set via `REOVAULT_WEB__PASSWORD_HASH` (Docker secret) or the `password_file` below. App still starts and `/healthz` still works if unset; every UI route returns 503 until set. |
+| `password_hash` | string or unset | unset | Set via `REOVAULT_WEB__PASSWORD_HASH` (Docker secret) or the `password_file` below. App still starts and `/healthz` still works if unset; the API answers 503 until set. |
 | `email` | string or unset | unset | Login identity field (password-manager autofill, not an authorization boundary). `reovault web set-password` refuses to run without it. |
 | `password_file` | path | `./data/config/web_password` | |
 | `session_key_path` | path | `./data/config/web_session.key` | |

@@ -564,7 +564,7 @@ def reconcile(device: str | None = _DeviceOption) -> None:
 
 def _start_gateway(gateway: GatewaySupervisor) -> None:
     """Start the gateway at boot instead of waiting for the first camera
-    call, otherwise the Health tab reports it unreachable from every
+    call, otherwise the Health page reports it unreachable from every
     restart until the next scheduled run. Best-effort: the first camera
     call retries it anyway, so a failure here is logged and startup goes on."""
     try:
@@ -579,7 +579,7 @@ def daemon() -> None:
     device at once. This is the container's main process; one-shot
     `run`/`backfill` (still single-device, via `--device`) are for
     manual/testing use. Starting with zero devices configured is fine: the
-    dashboard's Devices tab can add the first camera without a restart."""
+    dashboard's Devices page can add the first camera without a restart."""
     from reovault.scheduler import build_scheduler, reschedule_all_devices
     from reovault.web.app import create_app
 
@@ -620,6 +620,10 @@ def daemon() -> None:
             proxy_headers=True,
             forwarded_allow_ips=settings.web.forwarded_allow_ips,
             log_config=None,
+            # Open dashboards hold an SSE stream that never completes on
+            # its own; without a cap, shutdown would wait on them until
+            # Docker's own stop timeout kills the process.
+            timeout_graceful_shutdown=3,
         )
     finally:
         scheduler.shutdown(wait=False)

@@ -74,6 +74,22 @@ integrity_scan_enabled = true
 # max_age_days = 90
 # max_vault_gb = 500
 
+# Where alerts go (see docs/configuration.md#alerts). Secrets live in files,
+# mounted as Docker secrets; never put a token or webhook URL in this file.
+[alerts]
+# ntfy_url = "https://ntfy.sh/an-unguessable-topic"
+# ntfy_token_file = "/run/secrets/ntfy_token"
+# webhook_url_file = "/run/secrets/alert_webhook"
+# smtp_host = "smtp.example.com"
+# smtp_user = "reovault@example.com"
+# smtp_password_file = "/run/secrets/smtp_password"
+# smtp_to = ["you@example.com"]
+
+# What to alert on. Seeds the dashboard's Settings > Alerts on first boot.
+[alerts.rules]
+# gateway_down_minutes = 15
+# renotify_hours = 24
+
 [web]
 host = "127.0.0.1"
 port = 8080

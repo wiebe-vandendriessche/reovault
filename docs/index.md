@@ -29,6 +29,9 @@ camera saw.
   elsewhere.
 * **Encrypted storage**: recordings are encrypted at rest with a
   passphrase-wrapped master key.
+* **No silent failure**: alerts (ntfy, webhook, email) when a run fails,
+  recordings need attention, a camera falls behind its SD card, or the
+  camera gateway is down.
 
 ## Architecture at a glance
 
@@ -42,18 +45,22 @@ dashboard. See [Architecture](architecture.md) for the full picture.
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-health.png" alt="Health overview: coverage margin, SD card usage, vault size, latest footage" /></td>
-<td width="50%"><img src="img/screenshot-recordings.png" alt="Recordings browser: date-first, grouped by hour, filterable by detection type" /></td>
+<td width="50%"><img src="img/screenshot-health.png" alt="Health: archive status, today's footage, manual runs, coverage margin, SD card usage, vault growth" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: month calendar with activity per day, clips grouped by hour, filterable by detection type, with export" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Schedule: archive, backfill, and integrity-scan cadence per camera" /></td>
+<td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: archive, deep catch-up, vault check and integrity-scan cadence per camera" /></td>
+</tr>
+<tr>
+<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, a test send, and which conditions alert" /></td>
 <td width="50%"><img src="img/screenshot-login.png" alt="Login screen" /></td>
 </tr>
 </table>
 
 ## Where to go next
 
-* [Installation](installation.md): Docker Compose or bare-metal setup
+* [Installation](installation.md): Docker Compose setup, upgrading, and alerts
 * [Configuration](configuration.md): every `reovault.toml` / env var option
 * [CLI reference](cli-reference.md): every `reovault` subcommand
 * [Architecture](architecture.md): how the pieces fit together

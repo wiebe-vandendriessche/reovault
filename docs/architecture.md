@@ -100,12 +100,37 @@ global override is set.
 
 ## Web dashboard
 
-Server-rendered: FastAPI + Jinja2 + HTMX, no separate frontend build step,
-no Node.js dependency (`reovault/web/`). Password-protected single-user
-login (Argon2id-hashed password, signed session cookie, CSRF via HTMX's
-`hx-headers`), installable as a PWA. Recordings play directly from the
-encrypted vault over HTTP `Range` requests. Only the bytes actually being
-watched or seeked to are ever decrypted.
+Two halves, one process, one origin:
+
+* **The API** (`reovault/web/`): a JSON API under `/api/v1`, one FastAPI
+  router per area in `reovault/web/api/`, with typed Pydantic models. Its
+  OpenAPI schema is exported to `dashboard/openapi.json` and turned into
+  TypeScript types, so the dashboard compiles against the real API.
+* **The dashboard** (`dashboard/`): a SvelteKit single-page app (Svelte 5,
+  Tailwind v4, shadcn-svelte components), built to static files in the
+  image's Node build stage. FastAPI serves those files and returns
+  `index.html` for every client-side route. There is no Node at runtime.
+
+Password-protected single-user login: Argon2id-hashed password, a signed
+session cookie that logout revokes server-side, and a CSRF token the
+dashboard sends as `X-CSRF-Token` on every mutating request. Installable as
+a PWA; the service worker caches only the app shell, never `/api`.
+
+**Live updates** come from one Server-Sent Events stream,
+`GET /api/v1/events`. Scheduler jobs and actions publish small hints
+("camera 3's activity changed") onto an in-process bus; the dashboard
+refetches whatever the hint concerns, and refetches everything after a
+reconnect, so a dropped event is never fatal. Nothing polls.
+
+**Alerts** (`reovault/notify.py`) are evaluated once a minute on their own
+scheduler executor, so a long archive run never delays them. Evaluation is
+state-based: what is wrong right now is diffed against the `alert_state`
+table, which opens, re-notifies and resolves alerts and survives restarts
+without losing or repeating one.
+
+**Export** streams a zip of decrypted clips straight from the vault, with no
+temp files; recordings play the same way over HTTP `Range` requests. Only
+the bytes actually being watched, seeked to or exported are ever decrypted.
 
 Behind a reverse proxy, bind `host = "0.0.0.0"` (loopback inside a container
 is unreachable from the proxy) and set `forwarded_allow_ips` to the proxy's
