@@ -103,8 +103,9 @@
 				<div class="ml-1 min-w-0">
 					<h2 class="truncate font-semibold">{dateLabel}</h2>
 					{#if day.data}
-						<p class="text-muted-foreground text-sm tabular-nums">
-							{plural(day.data.total, 'clip')}<span class="sep"></span>{bytes(day.data.total_bytes)}
+						<p class="text-muted-foreground flex gap-x-3 text-sm tabular-nums">
+							<span>{plural(day.data.total, 'clip')}</span>
+							<span>{bytes(day.data.total_bytes)}</span>
 						</p>
 					{/if}
 				</div>
@@ -139,7 +140,7 @@
 						<Empty.Description>
 							{types
 								? 'Clear the filter to see every clip from this day.'
-								: 'Nothing was recorded, or it hasn’t been archived yet.'}
+								: "Nothing was recorded, or it hasn't been archived yet."}
 						</Empty.Description>
 					</Empty.Header>
 					{#if types}

@@ -29,6 +29,9 @@ export type Alerts = S['AlertsOut'];
 export type AlertRules = S['AlertRules'];
 export type TestResult = S['TestResultOut'];
 export type ExportPreview = S['ExportPreviewOut'];
+export type Config = S['ConfigOut'];
+export type ConfigField = S['FieldOut'];
+export type ConfigSection = S['SectionOut'];
 
 export const API = '/api/v1';
 

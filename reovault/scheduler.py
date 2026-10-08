@@ -47,7 +47,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from reovault import health
 from reovault.archiver import AlreadyRunningError, Archiver
-from reovault.config import ScheduleConfig, Settings
+from reovault.config import DeviceConfig, ScheduleConfig, Settings
 from reovault.db.repository import Repository
 from reovault.fleet import Fleet
 from reovault.logging import get_logger
@@ -77,39 +77,31 @@ def is_schedule_env_pinned() -> bool:
     return any(k.startswith(_SCHEDULE_ENV_PREFIX) for k in os.environ)
 
 
-def _schedule_key(device_id: int | None) -> str:
-    return SCHEDULE_SETTING_KEY if device_id is None else f"{SCHEDULE_SETTING_KEY}:{device_id}"
+def device_config(
+    settings: Settings, repository: Repository, device_id: int
+) -> DeviceConfig | None:
+    """The `[[devices]]` entry for a device row, matched on alias + channel."""
+    row = repository.get_device(device_id)
+    if row is None:
+        return None
+    return next(
+        (d for d in settings.devices if d.alias == row.alias and d.channel == row.channel), None
+    )
 
 
 def load_effective_schedule(
     settings: Settings, repository: Repository, device_id: int | None = None
 ) -> ScheduleConfig:
-    """The schedule actually in effect for one camera (or the global
-    fallback, with `device_id=None`). Env-pinned always wins outright, for
-    every camera alike (see `is_schedule_env_pinned`'s docstring).
-    Otherwise: this device's own saved schedule if it has one, else the
-    global `schedule` key (seeded from `reovault.toml`'s `[schedule]` table
-    on first boot, logged once), so a camera that has never had its own
-    schedule edited still inherits the same effective schedule it always
-    had before per-device schedules existed."""
-    if is_schedule_env_pinned():
-        return settings.schedule
-    if device_id is not None:
-        stored = repository.get_setting(_schedule_key(device_id))
-        if stored is not None:
-            return ScheduleConfig.model_validate_json(stored)
-    stored = repository.get_setting(SCHEDULE_SETTING_KEY)
-    if stored is None:
-        repository.set_setting(SCHEDULE_SETTING_KEY, settings.schedule.model_dump_json())
-        logger.info("settings.schedule_seeded_from_toml")
-        return settings.schedule
-    return ScheduleConfig.model_validate_json(stored)
-
-
-def save_schedule(
-    repository: Repository, schedule: ScheduleConfig, device_id: int | None = None
-) -> None:
-    repository.set_setting(_schedule_key(device_id), schedule.model_dump_json())
+    """The schedule in effect for one camera (or the global one, with
+    `device_id=None`): its own `[devices.schedule]` from reovault.toml if
+    it has one, else the global `[schedule]`. A `REOVAULT_SCHEDULE__*` env
+    var pins the global schedule for every camera alike (see
+    `is_schedule_env_pinned`)."""
+    if device_id is not None and not is_schedule_env_pinned():
+        device = device_config(settings, repository, device_id)
+        if device is not None and device.schedule is not None:
+            return device.schedule
+    return settings.schedule
 
 
 def _job_id(base: str, device_id: int) -> str:

@@ -12,6 +12,7 @@
 	import StatusCard from '$lib/components/health/StatusCard.svelte';
 	import StorageCards from '$lib/components/health/StorageCards.svelte';
 	import GrowthCard from '$lib/components/health/GrowthCard.svelte';
+	import TypesChart from '$lib/components/health/TypesChart.svelte';
 	import ActivityCard from '$lib/components/health/ActivityCard.svelte';
 	import { bytes, plural } from '$lib/format';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -60,7 +61,7 @@
 			<a href="/footage?date={h.today.date}" class="group block">
 				<Card.Root class="group-hover:border-brand-text h-full transition-colors">
 					<Card.Header>
-						<Card.Description>Today’s footage</Card.Description>
+						<Card.Description>Today's footage</Card.Description>
 						<Card.Title class="text-3xl tabular-nums">{plural(h.today.count, 'clip')}</Card.Title>
 						<Card.Action><ArrowRight class="text-muted-foreground group-hover:text-foreground size-4 transition-colors" /></Card.Action>
 					</Card.Header>
@@ -73,6 +74,7 @@
 			<StorageCards health={h} />
 			{#if growth.data}
 				<GrowthCard growth={growth.data} />
+				<TypesChart device={devices.currentId!} />
 			{:else if growth.error}
 				<div class="md:col-span-2"><ErrorAlert message={growth.error} /></div>
 			{/if}

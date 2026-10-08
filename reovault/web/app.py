@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 from reovault import health
 from reovault.config import Settings
+from reovault.config_store import ConfigStore
 from reovault.db.repository import Repository
 from reovault.fleet import Fleet
 from reovault.logging import get_logger
@@ -39,9 +40,11 @@ from reovault.notify import Notifier
 from reovault.providers.base import CameraRegistry
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.scheduler import add_alerts_job
+from reovault.settings_apply import apply_change
 from reovault.web import security
 from reovault.web.activity import ActivityLog
 from reovault.web.api import actions, alerts, auth, devices, events, export, footage, runs
+from reovault.web.api import config as config_api
 from reovault.web.api import health as health_api
 from reovault.web.api import settings as settings_api
 from reovault.web.api.auth import SESSION_COOKIE
@@ -93,8 +96,12 @@ def create_app(
     scheduler: BackgroundScheduler | None = None,
     registry: CameraRegistry | None = None,
     dashboard_dir: Path | None = None,
+    config: ConfigStore | None = None,
 ) -> FastAPI:
+    """`config` is the daemon's live reovault.toml; without one (tests,
+    tools) the settings are fixed and every settings edit answers 409."""
     app = FastAPI(title="ReoVault", docs_url=None, redoc_url=None, openapi_url=None)
+    config = config or ConfigStore(None, settings)
     web = settings.web
 
     activity_log = ActivityLog()
@@ -106,7 +113,7 @@ def create_app(
 
     st = AppState(
         fleet=fleet,
-        settings=settings,
+        config=config,
         repo=repository,
         scheduler=scheduler,
         registry=registry,
@@ -119,11 +126,41 @@ def create_app(
         ),
         bus=bus,
         notifier=Notifier(
-            settings=settings, repository=repository, fleet=fleet, publish=bus.publish
+            settings=lambda: config.current, repository=repository, fleet=fleet, publish=bus.publish
         ),
     )
+    fleet.current_settings = lambda: config.current
+
+    def on_settings_change(old: Settings, new: Settings) -> None:
+        """A validated change from the dashboard or a hand edit of the file:
+        bring cameras and jobs in line, refresh the login limits, and tell
+        open dashboards to refetch (also sent when the file went invalid)."""
+        if new is not old:
+            apply_change(
+                old,
+                new,
+                repository=repository,
+                fleet=fleet,
+                scheduler=scheduler,
+                authoritative=config.writable,
+            )
+            limits = ("login_max_attempts", "login_window_secs", "login_lockout_secs")
+            if any(getattr(old.web, k) != getattr(new.web, k) for k in limits):
+                # Only on a real change: a rebuild forgets recent failures.
+                st.limiter = LoginLimiter(
+                    max_attempts=new.web.login_max_attempts,
+                    window_secs=new.web.login_window_secs,
+                    lockout_secs=new.web.login_lockout_secs,
+                )
+        bus.publish("settings", origin=config.last_origin)
+        bus.publish("devices")
+
+    config.subscribe(on_settings_change)
     if scheduler is not None:
         add_alerts_job(scheduler, st.notifier.evaluate)
+    # Live run progress: the archiver's throttled counter writes become the
+    # same `activity` hint scheduler events send, so open dashboards refetch.
+    fleet.set_progress_hook(lambda device_id: bus.publish("activity", device_id=device_id))
     app.state.rv = st
 
     dist = (dashboard_dir or DEFAULT_DASHBOARD_DIR).resolve()
@@ -244,6 +281,7 @@ def create_app(
         events,
         alerts,
         export,
+        config_api,
     ):
         app.include_router(module.router, prefix=API_PREFIX)
 

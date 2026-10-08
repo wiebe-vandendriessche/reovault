@@ -55,3 +55,18 @@ export function addDays(isoDate: string, days: number): string {
 	d.setUTCDate(d.getUTCDate() + days);
 	return d.toISOString().slice(0, 10);
 }
+
+/** "7 Oct" for a YYYY-MM-DD calendar date, never shifted by the browser's zone. */
+export function shortDay(isoDate: string): string {
+	return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
+		day: 'numeric',
+		month: 'short',
+		timeZone: 'UTC'
+	});
+}
+
+/** 1,234 with ASCII grouping whatever the browser locale (some locales group
+ * with a narrow no-break space, which the dashboard never shows). */
+export function count(n: number): string {
+	return new Intl.NumberFormat('en-US').format(n);
+}

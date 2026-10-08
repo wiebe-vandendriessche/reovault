@@ -14,7 +14,6 @@ from reovault.notify import (
     Notifier,
     NtfyChannel,
     build_channels,
-    save_rules,
 )
 from reovault.providers.fake import FakeProvider
 from tests.integration.conftest import make_recording
@@ -135,10 +134,19 @@ def test_one_failing_channel_does_not_block_the_other(env, web_settings, fleet):
 
 def test_disabling_rules_clears_open_alerts_without_a_resolve_message(env, web_settings, fleet):
     ch = Recorder()
-    n = _notifier(env, web_settings, fleet, ch)
+    live = {"settings": web_settings}
+    n = Notifier(
+        settings=lambda: live["settings"],
+        repository=env.repository,
+        fleet=fleet,
+        channels=[ch],
+        clock=Clock(),
+    )
     _fail_one(env)
     n.evaluate()
-    save_rules(env.repository, AlertRules(enabled=False))
+    # The rules are read live, as after an edit of reovault.toml.
+    alerts = web_settings.alerts.model_copy(update={"rules": AlertRules(enabled=False)})
+    live["settings"] = web_settings.model_copy(update={"alerts": alerts})
     n.evaluate()
     assert len(ch.sent) == 1
     assert env.repository.list_alerts() == []

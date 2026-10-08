@@ -15,6 +15,7 @@ from fastapi import Depends, HTTPException, Request
 
 from reovault.archiver import Archiver
 from reovault.config import Settings
+from reovault.config_store import ConfigStore
 from reovault.db.repository import Repository
 from reovault.fleet import Fleet
 from reovault.notify import Notifier
@@ -28,7 +29,7 @@ from reovault.web.views import redact_paths
 @dataclass
 class AppState:
     fleet: Fleet
-    settings: Settings
+    config: ConfigStore
     repo: Repository
     scheduler: BackgroundScheduler | None
     registry: CameraRegistry | None
@@ -37,6 +38,11 @@ class AppState:
     limiter: LoginLimiter
     bus: EventBus
     notifier: Notifier
+
+    @property
+    def settings(self) -> Settings:
+        """The live settings: reovault.toml as last validated, env applied."""
+        return self.config.current
 
     def redact(self, text: str | None) -> str | None:
         """Every error string leaving the API goes through this: an

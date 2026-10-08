@@ -1,12 +1,14 @@
-"""The schedule API: GET returns the simple-mode fields, PUT saves and
-reschedules the live scheduler, and an env-pinned schedule reports itself
-read-only and refuses a save.
+"""The schedule API: GET returns the simple-mode fields; PUT writes the
+camera's own `[devices.schedule]` (or the global `[schedule]`) into
+reovault.toml, keeping its comments, and reschedules the live scheduler; an
+env-pinned schedule reports itself read-only and refuses a save.
 """
+
+import tomllib
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.testclient import TestClient
 
-from reovault.scheduler import _schedule_key
 from tests.integration.conftest import login, make_web_app
 
 BODY = {
@@ -22,6 +24,10 @@ BODY = {
     "integrity_scan_enabled": True,
     "integrity_scan_sample_pct": 10,
 }
+
+
+def _toml(env) -> dict:
+    return tomllib.loads((env.tmp_path / "reovault.toml").read_text())
 
 
 def _scheduled_client(env, web_settings, web_device):
@@ -54,11 +60,11 @@ def test_schedule_save_persists_and_reschedules_live(
         assert r.json()["backfill_dow"] == 2
         assert client.get("/api/v1/schedule").json()["archive_time"] == "06:30"
 
-        stored = env.repository.get_setting(_schedule_key(env.device_id))
-        assert stored is not None
-        assert '"archive_cron":"30 6 * * *"' in stored
-        # Python Wednesday (2) is cron's 3.
-        assert '"backfill_cron":"0 3 * * 3"' in stored
+        own = _toml(env)["devices"][0]["schedule"]
+        assert own["archive_cron"] == "30 6 * * *"
+        assert own["backfill_cron"] == "0 3 * * 3"  # Python Wednesday (2) is cron's 3
+        assert (env.tmp_path / "reovault.toml").read_text().startswith("# test config")
+        assert r.json()["inherits"] is False
     finally:
         scheduler.shutdown(wait=False)
 
@@ -80,15 +86,14 @@ def test_schedule_disabling_a_job_removes_it_from_the_live_scheduler(
 
 def test_schedule_is_read_only_and_refuses_save_when_env_pinned(env, auth_client, monkeypatch):
     monkeypatch.setenv("REOVAULT_SCHEDULE__ARCHIVE_CRON", "0 3 * * *")
-    key = _schedule_key(env.device_id)
-    before = env.repository.get_setting(key)
+    before = (env.tmp_path / "reovault.toml").read_text()
 
     assert auth_client.get("/api/v1/schedule").json()["env_pinned"] is True
 
     r = auth_client.put("/api/v1/schedule", json={**BODY, "archive_time": "09:00"})
     assert r.status_code == 409
     assert "environment variables" in r.json()["detail"]
-    assert env.repository.get_setting(key) == before  # never written
+    assert (env.tmp_path / "reovault.toml").read_text() == before  # never written
 
 
 def test_schedule_save_with_bad_input_is_422_not_500(env, auth_client):
@@ -100,3 +105,20 @@ def test_schedule_save_with_bad_input_is_422_not_500(env, auth_client):
     ):
         r = auth_client.put("/api/v1/schedule", json={**BODY, **bad})
         assert r.status_code == 422, bad
+
+
+def test_inherit_drops_the_cameras_own_schedule(env, auth_client):
+    auth_client.put("/api/v1/schedule", json=BODY)
+    r = auth_client.put("/api/v1/schedule", json={**BODY, "inherit": True})
+    assert r.status_code == 200
+    assert r.json()["inherits"] is True
+    assert r.json()["archive_time"] == "05:00"  # back on the global default
+    assert "schedule" not in _toml(env)["devices"][0]
+
+
+def test_default_schedule_is_the_global_table(env, auth_client):
+    r = auth_client.put("/api/v1/schedule/default", json={**BODY, "archive_time": "07:15"})
+    assert r.status_code == 200
+    assert _toml(env)["schedule"]["archive_cron"] == "15 7 * * *"
+    # A camera without its own schedule follows it.
+    assert auth_client.get("/api/v1/schedule").json()["archive_time"] == "07:15"

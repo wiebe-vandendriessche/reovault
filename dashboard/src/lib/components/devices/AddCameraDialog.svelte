@@ -72,7 +72,7 @@
 		<Dialog.Header>
 			<Dialog.Title>Add a camera</Dialog.Title>
 			<Dialog.Description>
-				The password goes straight to reolink-cli’s encrypted credential store; ReoVault never
+				The password goes straight to reolink-cli's encrypted credential store; ReoVault never
 				keeps it.
 			</Dialog.Description>
 		</Dialog.Header>
@@ -91,9 +91,9 @@
 					disabled={d.already_registered}
 					class="hover:bg-muted flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm disabled:opacity-50"
 				>
-					<span>
+					<span class="flex flex-wrap gap-x-3">
 						<span class="font-medium">{d.name ?? d.model ?? 'Camera'}</span>
-						<span class="sep"></span><span class="text-muted-foreground">{d.host}</span>
+						<span class="text-muted-foreground">{d.host}</span>
 					</span>
 					<span class="text-subtle text-xs">{d.already_registered ? 'Already added' : 'Use'}</span>
 				</button>

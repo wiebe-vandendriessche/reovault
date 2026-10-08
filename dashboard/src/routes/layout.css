@@ -48,6 +48,14 @@
 	--idle: #6b7a94;
 	--on-warn: #221a05;
 
+	/* Categorical chart series (detection types). Non-text marks: each
+	   clears 3:1 against --surface-1 in its theme (test_design_tokens.py). */
+	--chart-1: #0080ff;
+	--chart-2: #34d399;
+	--chart-3: #fbbf24;
+	--chart-4: #a78bfa;
+	--chart-5: #f472b6;
+
 	--radius: 8px; /* controls; cards use --radius-xl (12px), panels --radius-sm (6px) */
 }
 
@@ -72,6 +80,11 @@
 	--on-warn: #ffffff; /* 7.09:1 on --warn */
 	--bad: #b91c1c;
 	--idle: #7a8698;
+	--chart-1: #0050e2;
+	--chart-2: #047857;
+	--chart-3: #b45309;
+	--chart-4: #7c3aed;
+	--chart-5: #db2777;
 }
 
 /* shadcn semantic layer: references only, no literals. */
@@ -158,17 +171,16 @@
 	--normal-border: var(--color-border);
 }
 
-/* An inline separator dot between facts, drawn by CSS: typed glyphs like a
-   middle dot are banned in markup (tests/unit/test_no_banned_glyphs.py). */
-.sep {
-	display: inline-block;
-	width: 3px;
-	height: 3px;
-	margin-inline: 0.5em;
-	border-radius: 9999px;
-	background: currentColor;
-	opacity: 0.6;
-	vertical-align: middle;
+/* Set on <html> for one frame while the theme flips (see toggleTheme), so
+   every element switches colors at the same instant instead of the ones
+   with `transition-colors` fading in late. A stylesheet class, not an
+   injected <style>: the CSP's `style-src 'self'` would block the latter. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+	transition: none !important;
+	animation: none !important;
 }
 
 /* SvelteKit's route announcer ships a hard-coded `style` attribute, which
@@ -192,6 +204,35 @@
 	}
 	body {
 		@apply bg-background text-foreground font-sans antialiased;
+	}
+	/* Tailwind v4's preflight leaves <button> at the default cursor, and the
+	   generated components don't add one, so only native links showed the
+	   hand. One rule here covers every button plus the ARIA roles bits-ui
+	   renders. In the base layer, so an explicit `cursor-*` utility wins. */
+	button:not(:disabled),
+	[role='button']:not([aria-disabled='true']),
+	[role='switch'],
+	[role='tab'],
+	[role='menuitem'],
+	[role='menuitemradio'],
+	[role='menuitemcheckbox'],
+	[role='option'],
+	[role='checkbox'],
+	[role='radio'],
+	select:not(:disabled),
+	summary,
+	label[for],
+	input[type='checkbox'],
+	input[type='radio'],
+	input[type='date'],
+	input[type='time'],
+	input[type='datetime-local'] {
+		cursor: pointer;
+	}
+	:disabled,
+	[aria-disabled='true'],
+	[data-disabled]:not([data-disabled='false']) {
+		cursor: not-allowed;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		*,

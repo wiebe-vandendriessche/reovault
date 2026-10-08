@@ -10,14 +10,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from reovault.config import AlertRules
+from reovault.config_store import set_fields, table_at
 from reovault.db.repository import parse_iso_utc
 from reovault.notify import (
     Message,
     channel_status,
     is_rules_env_pinned,
-    load_effective_rules,
-    save_rules,
 )
+from reovault.web.api.config import write
 from reovault.web.deps import AppState, State
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -52,7 +52,7 @@ class TestResultOut(BaseModel):
 
 def _alerts_out(st: AppState) -> AlertsOut:
     return AlertsOut(
-        rules=load_effective_rules(st.settings, st.repo),
+        rules=st.settings.alerts.rules,
         env_pinned=is_rules_env_pinned(),
         channels=[ChannelOut(**c) for c in channel_status(st.settings.alerts)],
         open=[
@@ -78,7 +78,10 @@ def get_alerts(st: State) -> AlertsOut:
 def put_rules(body: AlertRules, st: State) -> AlertsOut:
     if is_rules_env_pinned():
         raise HTTPException(409, "Alert rules are set by environment variables.")
-    save_rules(st.repo, body)
+    write(
+        st,
+        lambda doc: set_fields(table_at(doc, "alerts", "rules"), body.model_dump(), AlertRules()),
+    )
     st.notifier.evaluate()  # apply now, not at the next minute tick
     return _alerts_out(st)
 

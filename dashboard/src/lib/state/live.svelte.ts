@@ -9,6 +9,10 @@ export const live = $state({
 	problems: 0,
 	devices: 0,
 	alert: 0,
+	/** reovault.toml changed (dashboard save or a hand edit of the file). */
+	settings: 0,
+	/** Bumped only for edits made to reovault.toml outside the dashboard. */
+	fileEdits: 0,
 	connected: false
 });
 
@@ -19,6 +23,7 @@ function bumpAll() {
 	live.problems++;
 	live.devices++;
 	live.alert++;
+	live.settings++;
 }
 
 export function connectLive(onAlert?: () => void) {
@@ -35,6 +40,14 @@ export function connectLive(onAlert?: () => void) {
 	});
 	source.addEventListener('problems', () => live.problems++);
 	source.addEventListener('devices', () => live.devices++);
+	source.addEventListener('settings', (e) => {
+		live.settings++;
+		try {
+			if (JSON.parse(e.data).origin === 'file') live.fileEdits++;
+		} catch {
+			/* older server: no origin */
+		}
+	});
 	source.addEventListener('alert', () => {
 		live.alert++;
 		onAlert?.();

@@ -194,7 +194,27 @@ def make_web_app(
         scheduler=scheduler,
         registry=registry,
         dashboard_dir=dashboard_dir,
+        config=make_config(env, web_settings),
     )
+
+
+def make_config(env: Env, web_settings: Settings):  # noqa: ANN201 - ConfigStore
+    """A real, writable reovault.toml in the test's tmp dir, declaring the
+    `env` camera, as the daemon would have: dashboard edits are written to
+    it and applied through the same listener as a hand edit. Infrastructure
+    (storage, web) stays the in-memory `web_settings`."""
+    from reovault.config_store import ConfigStore
+
+    path = env.tmp_path / "reovault.toml"
+    if not path.exists():
+        path.write_text(
+            "# test config\n"
+            "[[devices]]\n"
+            f'alias = "{env.device_alias}"\n'
+            f"channel = {env.channel}\n"
+            'timezone = "Europe/Brussels"\n'
+        )
+    return ConfigStore(path, web_settings)
 
 
 @pytest.fixture

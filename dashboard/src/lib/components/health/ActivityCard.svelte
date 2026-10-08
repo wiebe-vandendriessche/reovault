@@ -11,7 +11,8 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import { localTime, relative } from '$lib/format';
+	import { bytes, localTime, plural, relative } from '$lib/format';
+	import { Progress } from '$lib/components/ui/progress';
 	import { toast } from 'svelte-sonner';
 	import Play from '@lucide/svelte/icons/play';
 	import Square from '@lucide/svelte/icons/square';
@@ -89,10 +90,30 @@
 			<Skeleton class="h-9 w-full" />
 		{:else}
 			{#if activity.data.running}
-				<p class="text-muted-foreground text-sm">
-					Started {localTime(activity.data.running.started_at, activity.data.timezone)}.
-					{#if activity.data.queued}{activity.data.queued} more queued behind it.{/if}
-				</p>
+				{@const r = activity.data.running}
+				{@const checked = r.downloaded + r.skipped_dup + r.failed}
+				<div class="flex flex-col gap-2">
+					<!-- Indeterminate until the camera has listed its clips. -->
+					<Progress
+						value={r.discovered ? Math.min(checked, r.discovered) : null}
+						max={Math.max(r.discovered, 1)}
+						aria-label="Run progress"
+					/>
+					<p class="text-muted-foreground flex flex-wrap gap-x-3 text-sm tabular-nums">
+						{#if r.discovered}
+							<span>{checked} of {plural(r.discovered, 'clip')} checked</span>
+							<span>{r.downloaded} new</span>
+							<span>{bytes(r.bytes_archived)}</span>
+							{#if r.failed}<span class="text-bad">{r.failed} failed</span>{/if}
+						{:else}
+							Asking the camera which clips it has
+						{/if}
+					</p>
+					<p class="text-subtle text-xs">
+						Started {localTime(r.started_at, activity.data.timezone)}.
+						{#if activity.data.queued}{activity.data.queued} more queued behind it.{/if}
+					</p>
+				</div>
 			{/if}
 			{#if !activity.data.scheduler_available}
 				<p class="text-warn text-sm">The scheduler isn't running on this server.</p>

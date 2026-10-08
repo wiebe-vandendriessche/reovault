@@ -77,6 +77,19 @@ def get_run(run_id: int, st: State) -> RunDetailOut:
     return RunDetailOut(run=run_out(st, row), timezone=device.timezone if device else "UTC")
 
 
+class RetriedOut(BaseModel):
+    count: int
+
+
+@router.post("/problems/retry")
+def retry_all_problems(dev: Device, st: State) -> RetriedOut:
+    """Re-queues every failed or quarantined recording of this camera for
+    the next run, the bulk form of `POST /recordings/{id}/retry`."""
+    count = st.repo.retry_all_problems(dev.device_id)
+    st.bus.publish("problems", device_id=dev.device_id)
+    return RetriedOut(count=count)
+
+
 @router.get("/problems")
 def list_problems(dev: Device, st: State, after: str = "") -> Page[RecordingOut]:
     size = st.settings.web.page_size

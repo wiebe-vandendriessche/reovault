@@ -162,6 +162,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_api_v1_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/{section}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Config
+         * @description Generic edit for the sections without a dedicated form. Only fields
+         *     the view marks editable are accepted: never an env-set or infrastructure
+         *     one, and never a nested table.
+         */
+        put: operations["put_config_api_v1_config__section__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/day": {
         parameters: {
             query?: never;
@@ -260,8 +299,29 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Set Enabled */
+        /**
+         * Set Enabled
+         * @description Writes `enabled` on the camera's `[[devices]]` entry; the config
+         *     listener then adds it to or removes it from the fleet and scheduler.
+         */
         put: operations["set_enabled_api_v1_devices__device_id__enabled_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Device Settings */
+        put: operations["put_device_settings_api_v1_devices__device_id__settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -426,6 +486,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/problems/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry All Problems
+         * @description Re-queues every failed or quarantined recording of this camera for
+         *     the next run, the bulk form of `POST /recordings/{id}/retry`.
+         */
+        post: operations["retry_all_problems_api_v1_problems_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recordings/{recording_id}": {
         parameters: {
             query?: never;
@@ -559,8 +640,34 @@ export interface paths {
         };
         /** Get Schedule */
         get: operations["get_schedule_api_v1_schedule_get"];
-        /** Put Schedule */
+        /**
+         * Put Schedule
+         * @description This camera's own `[devices.schedule]` in reovault.toml, or with
+         *     `inherit`, none (back to the default). The change is applied to the
+         *     scheduler by the config listener, like a hand edit of the file.
+         */
         put: operations["put_schedule_api_v1_schedule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Default Schedule
+         * @description The global `[schedule]` every camera follows unless it has its own.
+         */
+        get: operations["get_default_schedule_api_v1_schedule_default_get"];
+        /** Put Default Schedule */
+        put: operations["put_default_schedule_api_v1_schedule_default_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -577,6 +684,26 @@ export interface paths {
         };
         /** Get Session */
         get: operations["get_session_api_v1_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Type Stats
+         * @description Clips per day per detection type, for the Health page's chart.
+         */
+        get: operations["get_type_stats_api_v1_stats_types_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -765,12 +892,68 @@ export interface components {
             /** Today */
             today: string;
         };
+        /** CameraScheduleBody */
+        CameraScheduleBody: {
+            /** Archive Enabled */
+            archive_enabled: boolean;
+            /** Archive Overlap Hours */
+            archive_overlap_hours: number;
+            /** Archive Time */
+            archive_time: string;
+            /** Backfill Days */
+            backfill_days: number;
+            /** Backfill Dow */
+            backfill_dow: number;
+            /** Backfill Enabled */
+            backfill_enabled: boolean;
+            /** Backfill Time */
+            backfill_time: string;
+            /**
+             * Inherit
+             * @default false
+             */
+            inherit: boolean;
+            /** Integrity Scan Enabled */
+            integrity_scan_enabled: boolean;
+            /** Integrity Scan Sample Pct */
+            integrity_scan_sample_pct: number;
+            /** Reconcile Enabled */
+            reconcile_enabled: boolean;
+            /** Reconcile Interval Hours */
+            reconcile_interval_hours: number;
+            /** Timezone */
+            timezone?: string | null;
+        };
         /** ChannelOut */
         ChannelOut: {
             /** Configured */
             configured: boolean;
             /** Name */
             name: string;
+        };
+        /** ConfigOut */
+        ConfigOut: {
+            /** Error */
+            error: string | null;
+            /** Path */
+            path: string | null;
+            /** Restart Required */
+            restart_required: string[];
+            /** Sections */
+            sections: components["schemas"]["SectionOut"][];
+            /** Version */
+            version: string;
+            /** Writable */
+            writable: boolean;
+        };
+        /** ConfigUpdateIn */
+        ConfigUpdateIn: {
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: string;
         };
         /** ConfirmOut */
         ConfirmOut: {
@@ -824,6 +1007,8 @@ export interface components {
             enabled: boolean;
             /** Gateway Down */
             gateway_down: boolean | null;
+            /** Has Own Schedule */
+            has_own_schedule: boolean;
             /** Host */
             host: string | null;
             /** Id */
@@ -835,6 +1020,17 @@ export interface components {
             name: string | null;
             sample: components["schemas"]["StorageSampleOut"] | null;
             sd: components["schemas"]["SdBarOut"] | null;
+            /** Timezone */
+            timezone: string;
+        };
+        /**
+         * DeviceSettingsIn
+         * @description The editable part of a camera's `[[devices]]` entry. Alias and channel
+         *     are its identity (reolink-cli's and the database's), so not editable.
+         */
+        DeviceSettingsIn: {
+            /** Name */
+            name?: string | null;
             /** Timezone */
             timezone: string;
         };
@@ -889,6 +1085,31 @@ export interface components {
             bytes: number;
             /** Count */
             count: number;
+        };
+        /** FieldOut */
+        FieldOut: {
+            /** Default */
+            default: unknown;
+            /** Editable */
+            editable: boolean;
+            /** Env Var */
+            env_var: string | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bool" | "int" | "float" | "str" | "path" | "list";
+            /** Restart */
+            restart: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "file" | "env" | "default";
+            /** Value */
+            value: unknown;
         };
         /** GrowthDayOut */
         GrowthDayOut: {
@@ -1058,6 +1279,11 @@ export interface components {
             /** Saved */
             saved: boolean;
         };
+        /** RetriedOut */
+        RetriedOut: {
+            /** Count */
+            count: number;
+        };
         /** RunDetailOut */
         RunDetailOut: {
             run: components["schemas"]["RunOut"];
@@ -1154,6 +1380,11 @@ export interface components {
             backfill_time: string;
             /** Env Pinned */
             env_pinned: boolean;
+            /**
+             * Inherits
+             * @default true
+             */
+            inherits: boolean;
             /** Integrity Scan Enabled */
             integrity_scan_enabled: boolean;
             /** Integrity Scan Sample Pct */
@@ -1189,6 +1420,13 @@ export interface components {
             total_gb: number;
             /** Used Gb */
             used_gb: number;
+        };
+        /** SectionOut */
+        SectionOut: {
+            /** Fields */
+            fields: components["schemas"]["FieldOut"][];
+            /** Path */
+            path: string[];
         };
         /** SessionOut */
         SessionOut: {
@@ -1234,6 +1472,22 @@ export interface components {
             count: number;
             /** Date */
             date: string;
+        };
+        /** TypeDayOut */
+        TypeDayOut: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Day */
+            day: string;
+        };
+        /** TypeStatsOut */
+        TypeStatsOut: {
+            /** Days */
+            days: components["schemas"]["TypeDayOut"][];
+            /** Types */
+            types: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1541,6 +1795,66 @@ export interface operations {
             };
         };
     };
+    get_config_api_v1_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+        };
+    };
+    put_config_api_v1_config__section__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_day_api_v1_day_get: {
         parameters: {
             query?: {
@@ -1767,6 +2081,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    put_device_settings_api_v1_devices__device_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicesOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2039,6 +2393,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_all_problems_api_v1_problems_retry_post: {
+        parameters: {
+            query?: {
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetriedOut"];
                 };
             };
             /** @description Validation Error */
@@ -2341,6 +2726,66 @@ export interface operations {
         };
         requestBody: {
             content: {
+                "application/json": components["schemas"]["CameraScheduleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_default_schedule_api_v1_schedule_default_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+        };
+    };
+    put_default_schedule_api_v1_schedule_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
                 "application/json": components["schemas"]["ScheduleBody"];
             };
         };
@@ -2388,6 +2833,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+        };
+    };
+    get_type_stats_api_v1_stats_types_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypeStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

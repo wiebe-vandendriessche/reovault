@@ -49,10 +49,12 @@ services:
       # Alert channel secrets (see docs/installation.md#alerts), e.g.:
       # - ntfy_token
     volumes:
-      # Your settings. Read-only: ReoVault never writes its own config. Create
-      # it before the first `docker compose` command, or Docker makes a
-      # directory here instead.
-      - ./reovault.toml:/etc/reovault/reovault.toml:ro
+      # Your settings: ./config/reovault.toml. Read-write, and a folder rather
+      # than the single file: the dashboard's Settings page writes changes
+      # back into the file (atomically, via a temp file in this folder), and
+      # hand edits are picked up live. Create it before the first
+      # `docker compose` command and `chown 1000` it.
+      - ./config:/etc/reovault
       # config/DB/master.key: kept outside the vault tree so a backup tool
       # watching the vault never replicates the key alongside it.
       - ./data/config:/config

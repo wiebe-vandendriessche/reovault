@@ -9,8 +9,30 @@ Start from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/re
 
 The path defaults below apply when running from a source checkout (a
 development setup). In Docker, the image points every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
-and `compose.yaml` mounts your `reovault.toml` read-only at
-`/etc/reovault/reovault.toml`, so leave the path fields out of it there.
+and `compose.yaml` mounts the folder holding your `reovault.toml` at
+`/etc/reovault`, so leave the path fields out of it there.
+
+## The file is the source of truth
+
+Every setting lives in `reovault.toml`, and the dashboard's Settings page is
+just another editor of it:
+
+* **Dashboard to file.** Saving a setting rewrites the file with your
+  comments and layout intact. The whole new file is validated first and
+  replaces the old one atomically; the previous version is kept as
+  `reovault.toml.bak`. If the file changed on disk since the page loaded,
+  the save is refused instead of overwriting that edit.
+* **File to dashboard.** Edits to the file are picked up within about a
+  second, no restart needed, and open dashboards refresh. A file that
+  doesn't validate is reported on the Settings page while ReoVault keeps
+  running on the last valid settings.
+* **Precedence.** `REOVAULT_*` env vars win over the file, which wins over
+  the defaults. A field set by an env var shows a lock in the dashboard.
+* **Restart-only settings.** `[storage]`, `[reolink_cli]` and the `[web]`
+  bind, port, cookie, origin, proxy and login-identity fields are read once
+  at startup and shown read-only in the dashboard; a change to them in the
+  file is flagged "restart required". Only `[web]`'s session length, login
+  attempt limits and page size apply live.
 
 Nothing in config is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the
 camera password are deliberately not config fields. See
@@ -27,10 +49,14 @@ One entry per camera. A list, so multi-camera setups just add more entries.
 | `timezone` | string | required | IANA tz name the camera's clock runs in, e.g. `America/New_York`. |
 | `name` | string | none | Display name shown in the dashboard instead of `alias`; auto-backfilled from the camera's own name once discovered if left unset. |
 
-Devices are seeded from `reovault.toml` on every startup (never deleted or
-disabled by a reseed); the dashboard's Devices page can also add cameras and
-turn archiving on or off at runtime, and each camera's schedule is edited
-under Settings, Schedule.
+| `enabled` | bool | `true` | `false` stops archiving this camera; its archived footage stays browsable. |
+| `schedule` | table | none | The camera's own `[devices.schedule]` (same fields as `[schedule]`); unset means it follows `[schedule]`. |
+
+The `[[devices]]` list is the set of cameras. Adding a camera on the Devices
+page appends an entry, and turning one off writes `enabled = false`. A
+camera removed from the file is disabled, never deleted, so its footage
+stays. Cameras are matched to their archive by `alias` and `channel`, which
+is why those two can't be changed from the dashboard.
 
 ## `[reolink_cli]`
 
@@ -80,11 +106,10 @@ ciphertext it unlocks.
 
 `timezone` unset (the default) means each device's cron jobs evaluate in
 that device's own `[[devices]] timezone`. Setting it forces every device
-onto one timezone. This table only seeds the dashboard's per-camera schedule
-on first boot. Once a camera's schedule has been saved from Settings,
-Schedule, that camera's own saved schedule wins from then on. Setting any
-`REOVAULT_SCHEDULE__*` env var instead pins this schedule for every camera
-and makes the dashboard's schedule form read-only.
+onto one timezone. This table is the default every camera follows unless it has its own
+`[devices.schedule]`. Setting any `REOVAULT_SCHEDULE__*` env var instead pins
+this schedule for every camera and makes the dashboard's schedule form
+read-only.
 
 ## `[retention]`
 
@@ -106,9 +131,7 @@ so even a long backfill overshoots the cap by at most one clip. A pruned
 clip keeps its database row in state `pruned` and is never downloaded
 again, even while it is still on the camera's SD card.
 
-Like `[schedule]`, this table only seeds the dashboard on first boot; after
-that, the Retention tab under Settings is authoritative. Saving a
-policy that would delete footage right away asks for confirmation first,
+The Retention tab under Settings edits this table. Saving a policy that would delete footage right away asks for confirmation first,
 showing how many clips and bytes would go. Setting any
 `REOVAULT_RETENTION__*` env var pins the policy and makes the tab
 read-only.
@@ -152,8 +175,9 @@ margin the Health page shows), and the camera gateway staying down longer
 than `gateway_down_minutes`. An open alert is sent once, repeated every
 `renotify_hours` while it stays open, and followed by a "Resolved" message
 when it clears. A send that fails on every channel is retried on the next
-evaluation, once a minute. Like `[retention]`, this table only seeds the
-dashboard on first boot; any `REOVAULT_ALERTS__RULES__*` env var pins it.
+evaluation, once a minute. Settings, Alerts edits this table and the
+channel fields above; any `REOVAULT_ALERTS__RULES__*` env var pins the
+rules.
 
 ## `[web]`
 

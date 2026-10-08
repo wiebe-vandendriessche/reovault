@@ -227,6 +227,11 @@ __marimo__/
 /data/
 /secrets/
 reovault.toml
+# Written next to reovault.toml by every dashboard settings save (see
+# reovault/config_store.py): the previous version, and the temp file that
+# atomically replaces it. Same contents as the real config, so never in git.
+reovault.toml.bak
+.reovault.toml.tmp
 *.db
 *.db-wal
 *.db-shm

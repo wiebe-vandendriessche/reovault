@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
 	import { api, apiUrl, type Recording, type Verify } from '$lib/api';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -6,7 +7,7 @@
 	import * as AspectRatio from '$lib/components/ui/aspect-ratio';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import { bytes, duration } from '$lib/format';
+	import { bytes, duration, plural, relative } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 	import { cn } from '$lib/utils';
 	import Play from '@lucide/svelte/icons/play';
@@ -15,7 +16,24 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import X from '@lucide/svelte/icons/x';
 
-	let { rec: initial, problemView = false }: { rec: Recording; problemView?: boolean } = $props();
+	let {
+		rec: initial,
+		problemView = false,
+		onopen
+	}: {
+		rec: Recording;
+		problemView?: boolean;
+		/** Set by the hour list: on phones, Play opens its bottom-sheet player. */
+		onopen?: () => void;
+	} = $props();
+
+	const phone = new MediaQuery('max-width: 767px');
+
+	function play() {
+		if (phone.current && onopen) return onopen();
+		open = !open;
+		unsupported = false;
+	}
 
 	// Follows the prop, and is overwritten locally by retry/verify results.
 	let rec = $derived(initial);
@@ -72,15 +90,16 @@
 		{#if !archived}
 			<StatusBadge level={isProblem ? 'bad' : rec.state === 'pruned' ? 'idle' : 'warn'}>{rec.state}</StatusBadge>
 		{/if}
-		<span class="text-muted-foreground ml-auto text-sm tabular-nums">
-			{duration(rec.duration_s)}<span class="sep"></span>{bytes(rec.plaintext_size ?? rec.remote_size)}
+		<span class="text-muted-foreground ml-auto flex gap-x-3 text-sm tabular-nums">
+			<span>{duration(rec.duration_s)}</span>
+			<span>{bytes(rec.plaintext_size ?? rec.remote_size)}</span>
 		</span>
 		<div class="flex gap-1">
 			{#if archived}
 				<Button
 					size="sm"
 					variant={open ? 'secondary' : 'outline'}
-					onclick={() => ((open = !open), (unsupported = false))}
+					onclick={play}
 					aria-expanded={open}
 				>
 					{#if open}<X /> Close{:else}<Play /> Play{/if}
@@ -120,9 +139,9 @@
 			{#if rec.last_error}
 				<p class="text-muted-foreground mt-1 font-mono text-xs break-all">{rec.last_error}</p>
 			{/if}
-			<p class="text-subtle mt-1 text-xs">
-				{rec.attempts} attempt{rec.attempts === 1 ? '' : 's'}
-				{#if rec.next_attempt_at}<span class="sep"></span>next try {new Date(rec.next_attempt_at).toLocaleString()}{/if}
+			<p class="text-subtle mt-1 flex flex-wrap gap-x-3 text-xs">
+				<span>{plural(rec.attempts, 'attempt')}</span>
+				{#if rec.next_attempt_at}<span>Next try {relative(rec.next_attempt_at)}</span>{/if}
 			</p>
 		</div>
 	{/if}

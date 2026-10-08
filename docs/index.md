@@ -50,7 +50,7 @@ dashboard. See [Architecture](architecture.md) for the full picture.
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: archive, deep catch-up, vault check and integrity-scan cadence per camera" /></td>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, a test send, and which conditions alert" /></td>

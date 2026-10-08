@@ -4,7 +4,7 @@ vault growth, the manual-run activity card, and the problems count."""
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter
@@ -92,6 +92,16 @@ class GrowthOut(BaseModel):
     days_headroom: int | None
     vault_cap_bytes: int | None
     vault_used_bytes: int
+
+
+class TypeDayOut(BaseModel):
+    day: str
+    counts: dict[str, int]  # rec_type -> clips that day
+
+
+class TypeStatsOut(BaseModel):
+    types: list[str]  # every type seen in the window, busiest first
+    days: list[TypeDayOut]  # one entry per local day, oldest first, zeros included
 
 
 class ActivityEventOut(BaseModel):
@@ -241,18 +251,16 @@ def get_health(dev: Device, st: State) -> HealthOut:
 def get_growth(dev: Device, st: State, days: int = 30) -> GrowthOut:
     days = max(1, min(days, 366))
     repo = st.repo
-    policy = retention_policy.load_effective_retention(st.settings, repo)
+    policy = st.settings.retention
     totals = repo.totals(dev.device_id)
-    # The last `days` camera-local days, today included. Both the window and
-    # the labels are local: `runs_per_day` buckets by local date, so UTC
+    # Local days and labels: `runs_per_day` buckets by local date, so UTC
     # labels would shift every bar by a day around midnight.
-    first = local_today(dev.tz) - timedelta(days=days - 1)
-    from_utc, _ = local_day_bounds(first, dev.tz)
+    local_days, from_utc = _local_window(dev, days)
     series = repo.runs_per_day(
         device_id=dev.device_id, from_utc=from_utc, to_utc=utcnow(), tz=dev.tz
     )
     by_day = {r.day: r.bytes_archived for r in series}
-    day_list = [(first + timedelta(days=i)).isoformat() for i in range(days)]
+    day_list = [d.isoformat() for d in local_days]
     values = [by_day.get(d, 0) for d in day_list]
     avg = sum(values) / days
     try:
@@ -271,6 +279,32 @@ def get_growth(dev: Device, st: State, days: int = 30) -> GrowthOut:
             int(policy.max_vault_gb * retention_policy.GB) if policy.max_vault_gb else None
         ),
         vault_used_bytes=repo.archived_ciphertext_total(),
+    )
+
+
+def _local_window(dev: DeviceCtx, days: int) -> tuple[list[date], datetime]:
+    """The last `days` camera-local days, today included, and the UTC
+    instant the first one starts."""
+    first = local_today(dev.tz) - timedelta(days=days - 1)
+    return [first + timedelta(days=i) for i in range(days)], local_day_bounds(first, dev.tz)[0]
+
+
+@router.get("/stats/types")
+def get_type_stats(dev: Device, st: State, days: int = 30) -> TypeStatsOut:
+    """Clips per day per detection type, for the Health page's chart."""
+    day_list, from_utc = _local_window(dev, max(1, min(days, 366)))
+    per_day = st.repo.type_counts_per_day(
+        device_id=dev.device_id, from_utc=from_utc, to_utc=utcnow(), tz=dev.tz
+    )
+    totals: dict[str, int] = {}
+    for counts in per_day.values():
+        for t, n in counts.items():
+            totals[t] = totals.get(t, 0) + n
+    return TypeStatsOut(
+        types=sorted(totals, key=lambda t: (-totals[t], t)),
+        days=[
+            TypeDayOut(day=d.isoformat(), counts=per_day.get(d.isoformat(), {})) for d in day_list
+        ],
     )
 
 

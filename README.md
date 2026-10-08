@@ -24,7 +24,7 @@ Full docs (installation, configuration reference, CLI reference, architecture): 
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: archive, deep catch-up, vault check and integrity-scan cadence per camera" /></td>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, a test send, and which conditions alert" /></td>
@@ -43,10 +43,10 @@ Signed images for `linux/amd64` and `linux/arm64` are published at `ghcr.io/wieb
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-# edit reovault.toml: your [[devices]], and set [web] email (set-password needs it)
+mkdir -p config data/config data/vault data/staging data/reolink-cli secrets
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+# edit config/reovault.toml: your [[devices]], and set [web] email (set-password needs it)
 
-mkdir -p data/config data/vault data/staging data/reolink-cli secrets
 echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
 
 docker compose run --rm reovault key init
@@ -54,7 +54,9 @@ docker compose up -d
 docker compose exec reovault reovault web set-password
 ```
 
-Create `reovault.toml` and the `data/` folders before the first `docker compose` command: otherwise Docker creates them as root, and the container (uid 1000) can't write to them. Upgrade with `docker compose pull && docker compose up -d`.
+Create `config/reovault.toml` and the `data/` folders before the first `docker compose` command: otherwise Docker creates them as root, and the container (uid 1000) can't write to them. Upgrade with `docker compose pull && docker compose up -d`; coming from 0.3, see [Upgrading](https://wiebe-vandendriessche.github.io/reovault/installation/#upgrading).
+
+Everything in `reovault.toml` is editable on the dashboard's Settings page, which writes your changes back into the file (comments kept), and edits you make to the file show up in the dashboard within seconds.
 
 `compose.yaml` supports two deployment modes: behind a reverse proxy (Nginx Proxy Manager, Traefik, ...) with no port published by default, or a direct port publish for LAN/VPN access. See the comments at the top of `compose.yaml` and [Security](https://wiebe-vandendriessche.github.io/reovault/security/#deployment-modes) for what each needs.
 
@@ -66,11 +68,11 @@ Create `reovault.toml` and the `data/` folders before the first `docker compose`
 
 The container serves the dashboard on port 8080: a Svelte single-page app on a typed JSON API, updated live over Server-Sent Events, installable as a PWA (Add to Home Screen) on a phone. It's password-protected (`reovault web set-password`) and covers:
 
-* **Health**: is everything archived, is there room for it, and run now, backfill or check the vault on demand.
-* **Footage**: date-first browsing (a month calendar drills into a day grouped by hour), filtered by detection type. Clips play straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to, and a date range downloads as one zip.
-* **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry.
-* **Devices**: every camera, adding one from LAN discovery, and turning archiving on or off.
-* **Settings**: the schedule per camera, retention for the whole vault, and alerts.
+* **Health**: is everything archived, is there room for it, vault growth and detections per type over the last 30 days, and run now, backfill or check the vault on demand, with live progress while a run is going.
+* **Footage**: date-first browsing (a month calendar drills into a day grouped by hour), filtered by detection type, with per-day counts on hover. On a phone, clips open in a bottom-sheet player that steps through the hour. Clips play straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to, and a date range downloads as one zip.
+* **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry for one or all of them.
+* **Devices**: every camera with its status, adding one from LAN discovery, turning archiving on or off, and editing its name, timezone and (optionally) its own schedule.
+* **Settings**: the app-wide part of `reovault.toml`: the default schedule, retention, alerts, and the web and system settings.
 
 **Alerts** go out over ntfy, a webhook (Slack and Discord URLs work as-is) or email when a run fails, recordings need attention, a camera falls behind its SD card, or the camera gateway is down. See [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/#alerts).
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type Retention, type RetentionSave } from '$lib/api';
 	import { query } from '$lib/state/query.svelte';
+	import { live } from '$lib/state/live.svelte';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as InputGroup from '$lib/components/ui/input-group';
@@ -12,7 +13,10 @@
 	import { bytes, plural } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 
-	const loaded = query(() => api<Retention>('/retention'));
+	const loaded = query(() => {
+		void live.settings; // also a hand edit of reovault.toml
+		return api<Retention>('/retention');
+	});
 	let age = $state<number | null>(null);
 	let cap = $state<number | null>(null);
 	$effect(() => {

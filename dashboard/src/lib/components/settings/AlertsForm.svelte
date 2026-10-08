@@ -17,11 +17,19 @@
 
 	const loaded = query(() => {
 		void live.alert;
+		void live.settings;
 		return api<Alerts>('/alerts');
 	});
 	let rules = $state<AlertRules | null>(null);
+	let lastSaved = '';
 	$effect(() => {
-		if (loaded.data && !rules) rules = { ...loaded.data.rules };
+		// Reset the form only when the saved rules changed (a save, or an edit
+		// of reovault.toml), not on every alert event, so typing isn't lost.
+		const saved = JSON.stringify(loaded.data?.rules ?? null);
+		if (loaded.data && saved !== lastSaved) {
+			lastSaved = saved;
+			rules = { ...loaded.data.rules };
+		}
 	});
 	let busy = $state<'save' | 'test' | null>(null);
 	let error = $state<string | null>(null);
@@ -76,7 +84,7 @@
 			<Card.Header>
 				<Card.Title>Channels</Card.Title>
 				<Card.Description>
-					Configured in compose.yaml / reovault.toml, with secrets in files. See the configuration docs.
+					Which channels are set up. Tokens and webhook URLs stay in files you point to below.
 				</Card.Description>
 				<Card.Action>
 					<Button variant="outline" size="sm" onclick={test} disabled={!anyChannel || busy === 'test'}>
@@ -103,8 +111,9 @@
 						<div class="flex flex-col gap-0.5">
 							<span class="text-sm font-medium">{a.title}</span>
 							<span class="text-muted-foreground text-sm">{a.message}</span>
-							<span class="text-subtle text-xs">
-								Since {relative(a.first_seen_at)}<span class="sep"></span>{a.last_sent_at ? `notified ${relative(a.last_sent_at)}` : 'not sent yet'}
+							<span class="text-subtle flex flex-wrap gap-x-3 text-xs">
+								<span>Since {relative(a.first_seen_at)}</span>
+								<span>{a.last_sent_at ? `Notified ${relative(a.last_sent_at)}` : 'Not sent yet'}</span>
 							</span>
 						</div>
 					{/each}
@@ -127,7 +136,7 @@
 							<Switch id="al-on" bind:checked={rules.enabled} />
 							<Field.Content>
 								<Field.Label for="al-on">Alerts on</Field.Label>
-								<Field.Description>Turning this off clears open alerts without a “resolved” message.</Field.Description>
+								<Field.Description>Turning this off clears open alerts without a "resolved" message.</Field.Description>
 							</Field.Content>
 						</Field.Field>
 						<fieldset disabled={!rules.enabled} class="flex flex-col gap-5 pl-12 disabled:opacity-60">
@@ -159,7 +168,7 @@
 							<Field.Field orientation="horizontal">
 								<Switch id="al-resolve" bind:checked={rules.notify_on_resolve} />
 								<Field.Content>
-									<Field.Label for="al-resolve">Say when it’s fixed</Field.Label>
+									<Field.Label for="al-resolve">Say when it's fixed</Field.Label>
 								</Field.Content>
 							</Field.Field>
 						</fieldset>

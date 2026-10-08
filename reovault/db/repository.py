@@ -446,6 +446,13 @@ class Repository:
         with self.transaction() as conn:
             conn.execute("DELETE FROM alert_state WHERE key = ?", (key,))
 
+    def setting_keys(self) -> list[str]:
+        return [str(r["key"]) for r in self._fetchall("SELECT key FROM app_settings")]
+
+    def delete_setting(self, key: str) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+
     # -- recordings / dedup ----------------------------------------------
 
     def discover_recording(
@@ -737,6 +744,29 @@ class Repository:
             assert cur.lastrowid is not None
             return cur.lastrowid
 
+    def update_run_progress(
+        self,
+        run_id: int,
+        *,
+        discovered: int,
+        downloaded: int,
+        skipped_dup: int,
+        failed: int,
+        bytes_archived: int,
+    ) -> None:
+        """Live counters on a still-running run (`finished_at` stays NULL);
+        `finish_run` writes the final values."""
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                UPDATE archive_runs SET
+                    discovered = ?, downloaded = ?, skipped_dup = ?, failed = ?,
+                    bytes_archived = ?
+                WHERE id = ? AND finished_at IS NULL
+                """,
+                (discovered, downloaded, skipped_dup, failed, bytes_archived, run_id),
+            )
+
     def finish_run(
         self,
         run_id: int,
@@ -915,6 +945,32 @@ class Repository:
                     bytes=(prev.bytes if prev else 0) + r["bytes"],
                 )
         return sorted(merged.values(), key=lambda row: row.day)
+
+    def type_counts_per_day(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str
+    ) -> dict[str, dict[str, int]]:
+        """`{local_day: {rec_type: clips}}` over `[from_utc, to_utc)`, same
+        DST segmentation as `day_buckets`. A clip tagged with several types
+        ("people,md") counts once toward each; untagged clips count as
+        "other". Grouped in SQL by the raw tag string, so the rows out are
+        bounded by days times distinct tag combinations, not by clips."""
+        out: dict[str, dict[str, int]] = {}
+        for seg_start, seg_end, offset_minutes in offset_segments(from_utc, to_utc, tz):
+            rows = self._fetchall(
+                """
+                SELECT date(start_utc, ?) AS day, COALESCE(rec_type, '') AS tags,
+                       COUNT(*) AS n
+                FROM recordings
+                WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+                GROUP BY day, tags
+                """,
+                (sqlite_offset_modifier(offset_minutes), device_id, _iso(seg_start), _iso(seg_end)),
+            )
+            for r in rows:
+                day = out.setdefault(r["day"], {})
+                for tag in [t for t in r["tags"].split(",") if t] or ["other"]:
+                    day[tag] = day.get(tag, 0) + r["n"]
+        return out
 
     def hour_buckets(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str
@@ -1253,6 +1309,20 @@ class Repository:
                 (now_iso, recording_id),
             )
             return cur.rowcount > 0
+
+    def retry_all_problems(self, device_id: int, *, now: datetime | None = None) -> int:
+        """`retry_recording` for every failed/quarantined recording of one
+        device, as a single statement. Returns how many were re-queued."""
+        now_iso = _iso(now) if now else _now()
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET state = 'failed', attempts = 0, next_attempt_at = ?
+                WHERE device_id = ? AND state IN ('failed', 'quarantined')
+                """,
+                (now_iso, device_id),
+            )
+            return cur.rowcount
 
     def distinct_rec_types(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime

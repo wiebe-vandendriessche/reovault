@@ -7,6 +7,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
 	import RecordingRow from './RecordingRow.svelte';
+	import PlayerSheet from './PlayerSheet.svelte';
 	import { bytes, plural } from '$lib/format';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
@@ -33,6 +34,7 @@
 	let next = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let loadingMore = $state(false);
+	let playing = $state<number | null>(null);
 
 	async function load(after: string | null) {
 		const page = await api<RecordingsPage>('/day/hour', {
@@ -78,7 +80,8 @@
 		{:else if rows === null}
 			{#each Array(Math.min(total, 3)) as _, i (i)}<Skeleton class="h-11 w-full" />{/each}
 		{:else}
-			{#each rows as rec (rec.id)}<RecordingRow {rec} />{/each}
+			{#each rows as rec, i (rec.id)}<RecordingRow {rec} onopen={() => (playing = i)} />{/each}
+			<PlayerSheet clips={rows} bind:index={playing} />
 			{#if next}
 				<Button variant="ghost" size="sm" onclick={more} disabled={loadingMore} class="self-center">
 					{#if loadingMore}<Spinner />{/if} Load more

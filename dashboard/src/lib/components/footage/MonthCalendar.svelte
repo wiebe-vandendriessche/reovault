@@ -5,6 +5,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { cn } from '$lib/utils';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { plural } from '$lib/format';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
@@ -83,25 +85,44 @@
 			{#each cells as c, i (c?.date ?? `blank-${i}`)}
 				{#if c}
 					{@const future = !!today && c.date > today}
-					<button
-						type="button"
-						disabled={future}
-						onclick={() => onselect(c.date)}
-						aria-pressed={c.date === selected}
-						aria-label="{c.date}: {c.count} clips{c.problems ? `, ${c.problems} problems` : ''}"
-						class={cn(
-							'hover:bg-muted relative flex aspect-square flex-col items-center justify-center gap-1 rounded-md text-sm tabular-nums transition-colors disabled:opacity-35',
-							c.date === selected && 'bg-muted ring-brand-text ring-2 ring-inset',
-							c.date === today && 'font-semibold text-brand-text',
-							!c.count && 'text-muted-foreground'
-						)}
-					>
-						{c.day}
-						<span class={cn('h-1 w-5 rounded-full', heat[c.density])}></span>
-						{#if c.problems}
-							<span class="bg-bad absolute top-1 right-1 size-1.5 rounded-full" aria-hidden="true"></span>
-						{/if}
-					</button>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<button
+									{...props}
+									type="button"
+									disabled={future}
+									onclick={() => onselect(c.date)}
+									aria-pressed={c.date === selected}
+									aria-label="{c.date}: {c.count} clips{c.problems ? `, ${c.problems} problems` : ''}"
+									class={cn(
+										'hover:bg-muted relative flex aspect-square flex-col items-center justify-center gap-1 rounded-md text-sm tabular-nums transition-colors disabled:opacity-35',
+										c.date === selected && 'bg-muted ring-brand-text ring-2 ring-inset',
+										c.date === today && 'font-semibold text-brand-text',
+										!c.count && 'text-muted-foreground'
+									)}
+								>
+									{c.day}
+									<span class={cn('h-1 w-5 rounded-full', heat[c.density])}></span>
+									{#if c.problems}
+										<span class="bg-bad absolute top-1 right-1 size-1.5 rounded-full" aria-hidden="true"></span>
+									{/if}
+								</button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							{#if future}
+								Still to come
+							{:else if c.count}
+								<span class="flex gap-x-3">
+									<span>{plural(c.count, 'clip')}</span>
+									{#if c.problems}<span>{plural(c.problems, 'problem')}</span>{/if}
+								</span>
+							{:else}
+								No clips
+							{/if}
+						</Tooltip.Content>
+					</Tooltip.Root>
 				{:else}
 					<span></span>
 				{/if}

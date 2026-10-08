@@ -66,9 +66,10 @@
 			</div>
 		{/if}
 		{#if health.sample}
-			<p class="text-subtle text-xs">
-				{health.sample.mounted === false ? 'Not mounted' : 'Mounted'}<span class="sep"></span>{health.sample.formatted === false ? 'not formatted' : 'formatted'}<span class="sep"></span>sampled
-				{relative(health.sample.sampled_at)}
+			<p class="text-subtle flex flex-wrap gap-x-3 text-xs">
+				<span>{health.sample.mounted === false ? 'Not mounted' : 'Mounted'}</span>
+				<span>{health.sample.formatted === false ? 'Not formatted' : 'Formatted'}</span>
+				<span>Sampled {relative(health.sample.sampled_at)}</span>
 			</p>
 		{/if}
 	</Card.Content>

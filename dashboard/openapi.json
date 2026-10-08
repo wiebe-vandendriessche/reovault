@@ -355,6 +355,95 @@
         "title": "CalendarOut",
         "type": "object"
       },
+      "CameraScheduleBody": {
+        "properties": {
+          "archive_enabled": {
+            "title": "Archive Enabled",
+            "type": "boolean"
+          },
+          "archive_overlap_hours": {
+            "maximum": 720.0,
+            "minimum": 1.0,
+            "title": "Archive Overlap Hours",
+            "type": "integer"
+          },
+          "archive_time": {
+            "title": "Archive Time",
+            "type": "string"
+          },
+          "backfill_days": {
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Backfill Days",
+            "type": "integer"
+          },
+          "backfill_dow": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Backfill Dow",
+            "type": "integer"
+          },
+          "backfill_enabled": {
+            "title": "Backfill Enabled",
+            "type": "boolean"
+          },
+          "backfill_time": {
+            "title": "Backfill Time",
+            "type": "string"
+          },
+          "inherit": {
+            "default": false,
+            "title": "Inherit",
+            "type": "boolean"
+          },
+          "integrity_scan_enabled": {
+            "title": "Integrity Scan Enabled",
+            "type": "boolean"
+          },
+          "integrity_scan_sample_pct": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Integrity Scan Sample Pct",
+            "type": "number"
+          },
+          "reconcile_enabled": {
+            "title": "Reconcile Enabled",
+            "type": "boolean"
+          },
+          "reconcile_interval_hours": {
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Reconcile Interval Hours",
+            "type": "integer"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "archive_enabled",
+          "archive_time",
+          "archive_overlap_hours",
+          "backfill_enabled",
+          "backfill_dow",
+          "backfill_time",
+          "backfill_days",
+          "reconcile_enabled",
+          "reconcile_interval_hours",
+          "integrity_scan_enabled",
+          "integrity_scan_sample_pct"
+        ],
+        "title": "CameraScheduleBody",
+        "type": "object"
+      },
       "ChannelOut": {
         "properties": {
           "configured": {
@@ -371,6 +460,83 @@
           "configured"
         ],
         "title": "ChannelOut",
+        "type": "object"
+      },
+      "ConfigOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "restart_required": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restart Required",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "writable": {
+            "title": "Writable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "version",
+          "writable",
+          "error",
+          "restart_required",
+          "sections"
+        ],
+        "title": "ConfigOut",
+        "type": "object"
+      },
+      "ConfigUpdateIn": {
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "values"
+        ],
+        "title": "ConfigUpdateIn",
         "type": "object"
       },
       "ConfirmOut": {
@@ -533,6 +699,10 @@
             ],
             "title": "Gateway Down"
           },
+          "has_own_schedule": {
+            "title": "Has Own Schedule",
+            "type": "boolean"
+          },
           "host": {
             "anyOf": [
               {
@@ -618,9 +788,38 @@
           "sample",
           "sd",
           "last_run",
-          "gateway_down"
+          "gateway_down",
+          "has_own_schedule"
         ],
         "title": "DeviceOut",
+        "type": "object"
+      },
+      "DeviceSettingsIn": {
+        "description": "The editable part of a camera's `[[devices]]` entry. Alias and channel\nare its identity (reolink-cli's and the database's), so not editable.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timezone"
+        ],
+        "title": "DeviceSettingsIn",
         "type": "object"
       },
       "DeviceSummaryOut": {
@@ -792,6 +991,72 @@
           "bytes"
         ],
         "title": "ExportPreviewOut",
+        "type": "object"
+      },
+      "FieldOut": {
+        "properties": {
+          "default": {
+            "title": "Default"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env Var"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bool",
+              "int",
+              "float",
+              "str",
+              "path",
+              "list"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "restart": {
+            "title": "Restart",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "file",
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "value",
+          "default",
+          "source",
+          "env_var",
+          "editable",
+          "restart"
+        ],
+        "title": "FieldOut",
         "type": "object"
       },
       "GrowthDayOut": {
@@ -1434,6 +1699,19 @@
         "title": "RetentionSaveOut",
         "type": "object"
       },
+      "RetriedOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "RetriedOut",
+        "type": "object"
+      },
       "RunDetailOut": {
         "properties": {
           "run": {
@@ -1740,6 +2018,11 @@
             "title": "Env Pinned",
             "type": "boolean"
           },
+          "inherits": {
+            "default": true,
+            "title": "Inherits",
+            "type": "boolean"
+          },
           "integrity_scan_enabled": {
             "title": "Integrity Scan Enabled",
             "type": "boolean"
@@ -1852,6 +2135,30 @@
           "other_gb"
         ],
         "title": "SdBarOut",
+        "type": "object"
+      },
+      "SectionOut": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "fields"
+        ],
+        "title": "SectionOut",
         "type": "object"
       },
       "SessionOut": {
@@ -1995,6 +2302,51 @@
           "archived_bytes"
         ],
         "title": "TodayOut",
+        "type": "object"
+      },
+      "TypeDayOut": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "counts"
+        ],
+        "title": "TypeDayOut",
+        "type": "object"
+      },
+      "TypeStatsOut": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/TypeDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "types",
+          "days"
+        ],
+        "title": "TypeStatsOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2469,6 +2821,76 @@
         ]
       }
     },
+    "/api/v1/config": {
+      "get": {
+        "operationId": "get_config_api_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/config/{section}": {
+      "put": {
+        "description": "Generic edit for the sections without a dedicated form. Only fields\nthe view marks editable are accepted: never an env-set or infrastructure\none, and never a nested table.",
+        "operationId": "put_config_api_v1_config__section__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "title": "Section",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Put Config",
+        "tags": [
+          "config"
+        ]
+      }
+    },
     "/api/v1/day": {
       "get": {
         "description": "`date_` defaults to the camera's own local today, so the dashboard\ncan open Footage without first knowing the camera's timezone.",
@@ -2754,6 +3176,7 @@
     },
     "/api/v1/devices/{device_id}/enabled": {
       "put": {
+        "description": "Writes `enabled` on the camera's `[[devices]]` entry; the config\nlistener then adds it to or removes it from the fleet and scheduler.",
         "operationId": "set_enabled_api_v1_devices__device_id__enabled_put",
         "parameters": [
           {
@@ -2799,6 +3222,54 @@
           }
         },
         "summary": "Set Enabled",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{device_id}/settings": {
+      "put": {
+        "operationId": "put_device_settings_api_v1_devices__device_id__settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Put Device Settings",
         "tags": [
           "devices"
         ]
@@ -3246,6 +3717,56 @@
         ]
       }
     },
+    "/api/v1/problems/retry": {
+      "post": {
+        "description": "Re-queues every failed or quarantined recording of this camera for\nthe next run, the bulk form of `POST /recordings/{id}/retry`.",
+        "operationId": "retry_all_problems_api_v1_problems_retry_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetriedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry All Problems",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/api/v1/recordings/{recording_id}": {
       "get": {
         "operationId": "get_recording_api_v1_recordings__recording_id__get",
@@ -3637,6 +4158,7 @@
         ]
       },
       "put": {
+        "description": "This camera's own `[devices.schedule]` in reovault.toml, or with\n`inherit`, none (back to the default). The change is applied to the\nscheduler by the config listener, like a hand edit of the file.",
         "operationId": "put_schedule_api_v1_schedule_put",
         "parameters": [
           {
@@ -3660,7 +4182,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScheduleBody"
+                "$ref": "#/components/schemas/CameraScheduleBody"
               }
             }
           },
@@ -3697,6 +4219,70 @@
         ]
       }
     },
+    "/api/v1/schedule/default": {
+      "get": {
+        "description": "The global `[schedule]` every camera follows unless it has its own.",
+        "operationId": "get_default_schedule_api_v1_schedule_default_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Default Schedule",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_default_schedule_api_v1_schedule_default_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Default Schedule",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/v1/session": {
       "get": {
         "operationId": "get_session_api_v1_session_get",
@@ -3715,6 +4301,66 @@
         "summary": "Get Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/stats/types": {
+      "get": {
+        "description": "Clips per day per detection type, for the Health page's chart.",
+        "operationId": "get_type_stats_api_v1_stats_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypeStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Type Stats",
+        "tags": [
+          "health"
         ]
       }
     },

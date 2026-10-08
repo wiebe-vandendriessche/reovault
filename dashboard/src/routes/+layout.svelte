@@ -32,7 +32,7 @@
 	let { children } = $props();
 
 	const scoped = [
-		{ href: '/', label: 'Health', icon: Activity, desc: 'Status, coverage, and today’s footage.' },
+		{ href: '/', label: 'Health', icon: Activity, desc: "Status, coverage, and today's footage." },
 		{ href: '/footage', label: 'Footage', icon: Video, desc: 'Browse and play archived clips.' },
 		{ href: '/runs', label: 'Runs', icon: ListChecks, desc: 'History of every archive run.' },
 		{
@@ -43,8 +43,8 @@
 		}
 	];
 	const fleet = [
-		{ href: '/devices', label: 'Devices', icon: Cctv, desc: 'Cameras, and adding a new one.' },
-		{ href: '/settings', label: 'Settings', icon: Settings, desc: 'Schedule, retention, alerts.' }
+		{ href: '/devices', label: 'Devices', icon: Cctv, desc: 'Cameras, their settings, and adding one.' },
+		{ href: '/settings', label: 'Settings', icon: Settings, desc: 'Schedule, retention, alerts, system.' }
 	];
 
 	let menuOpen = $state(false);
@@ -114,7 +114,7 @@
 {:else if session.blocked}
 	<main class="mx-auto grid min-h-dvh max-w-md place-items-center p-6 text-center">
 		<div>
-			<h1 class="text-xl font-semibold">ReoVault isn’t ready yet</h1>
+			<h1 class="text-xl font-semibold">ReoVault isn't ready yet</h1>
 			<p class="text-muted-foreground mt-2 text-sm">{session.blocked}</p>
 		</div>
 	</main>
@@ -256,12 +256,12 @@
 			{@render children()}
 		</main>
 
-		<footer class="text-subtle border-t px-4 py-4 text-center text-xs sm:px-6">
-			ReoVault {session.version}
-			<span class="sep"></span>
-			reolink-cli {session.pinnedCli}
+		<footer
+			class="text-subtle flex flex-wrap justify-center gap-x-4 gap-y-1 border-t px-4 py-4 text-xs sm:px-6"
+		>
+			<span>ReoVault {session.version}</span>
+			<span>reolink-cli {session.pinnedCli}</span>
 			{#if !live.connected}
-				<span class="sep"></span>
 				<span class="text-warn">Live updates reconnecting</span>
 			{/if}
 		</footer>

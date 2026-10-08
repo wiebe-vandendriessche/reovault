@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -43,6 +44,10 @@ _MAX_ATTEMPTS: dict[ErrorClass, int] = {
     ErrorClass.NETWORK: 8,
     ErrorClass.DEVICE: 2,
 }
+
+# Live progress is written at most this often: once per clip would be one
+# extra SQLite write per file on a fast LAN for no visible benefit.
+_PROGRESS_INTERVAL_SECS = 1.0
 
 _VAULT_FILENAME_RE = re.compile(r"^(?P<start>\d{8}T\d{6}Z)_(?P<remote_name>.+)\.enc$")
 
@@ -145,6 +150,11 @@ class Archiver:
     # `fleet.build_archiver`. Called before a run and after every finalized
     # clip, so a long backfill overshoots the size cap by at most one clip.
     retention: Callable[[], object] | None = None
+    # Live-progress hook, wired by `Fleet` (the dashboard turns it into an
+    # SSE hint). Gets this archiver's device id after the run's counters
+    # have been written; never allowed to fail a run.
+    on_progress: Callable[[int], None] | None = None
+    _last_progress: float = field(default=0.0, init=False, repr=False)
     processed_ids: set[int] = field(default_factory=set, init=False, repr=False)
     # Cooperative cancellation for the dashboard's Stop button: a plain flag,
     # not a hard kill, so cancellation can only ever land *between*
@@ -193,11 +203,13 @@ class Archiver:
             return self._finish(run_id, result, outcome="failed", error=exc)
 
         result.discovered = len(recordings)
+        self._report_progress(run_id, result, force=True)
         try:
             for rec in recordings:
                 if self.cancel_requested.is_set():
                     raise _AbortRun("canceled")
                 self._maybe_process_discovered(rec, result, staging_run_dir)
+                self._report_progress(run_id, result)
             for row in self.repository.pending(device_id=self.device_id):
                 if row.id in self.processed_ids:
                     continue
@@ -206,12 +218,37 @@ class Archiver:
                 self._process_one(
                     row.id, self._row_to_remote_recording(row), result, staging_run_dir
                 )
+                self._report_progress(run_id, result)
         except _AbortRun as exc:
             return self._finish(run_id, result, outcome="aborted", error=exc)
 
         shutil.rmtree(staging_run_dir, ignore_errors=True)
         outcome = "success" if result.failed == 0 else "partial"
         return self._finish(run_id, result, outcome=outcome)
+
+    def _report_progress(
+        self, run_id: int, result: ArchiveRunResult, *, force: bool = False
+    ) -> None:
+        """Writes the running counters so the dashboard can show progress
+        before `finish_run`, throttled to `_PROGRESS_INTERVAL_SECS`. Purely
+        informational: any failure is logged and the run carries on."""
+        now = time.monotonic()
+        if not force and now - self._last_progress < _PROGRESS_INTERVAL_SECS:
+            return
+        self._last_progress = now
+        try:
+            self.repository.update_run_progress(
+                run_id,
+                discovered=result.discovered,
+                downloaded=result.downloaded,
+                skipped_dup=result.skipped_dup,
+                failed=result.failed,
+                bytes_archived=result.bytes_archived,
+            )
+            if self.on_progress is not None:
+                self.on_progress(self.device_id)
+        except Exception as exc:  # noqa: BLE001 - progress must never fail a run
+            logger.warning("archiver.progress_report_failed", error=str(exc))
 
     def _maybe_process_discovered(
         self, rec: RemoteRecording, result: ArchiveRunResult, staging_run_dir: Path

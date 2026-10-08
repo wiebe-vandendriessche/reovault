@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type Device, type Devices } from '$lib/api';
+	import { api, type Config, type Device, type Devices } from '$lib/api';
 	import { live } from '$lib/state/live.svelte';
 	import { query } from '$lib/state/query.svelte';
 	import { deviceLabel } from '$lib/state/devices.svelte';
@@ -15,9 +15,12 @@
 	import Meter from '$lib/components/app/Meter.svelte';
 	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
 	import AddCameraDialog from '$lib/components/devices/AddCameraDialog.svelte';
-	import { bytes, relative } from '$lib/format';
+	import { bytes, count, relative } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 	import Cctv from '@lucide/svelte/icons/cctv';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import { Button } from '$lib/components/ui/button';
+	import EditCameraSheet from '$lib/components/devices/EditCameraSheet.svelte';
 
 	const fleet = query(() => {
 		void live.devices;
@@ -25,6 +28,13 @@
 	});
 
 	let confirmDisable = $state<Device | null>(null);
+	let editingId = $state<number | null>(null);
+	const editing = $derived(fleet.data?.devices.find((d) => d.id === editingId) ?? null);
+	// Only whether reovault.toml can be written: camera edits go into it.
+	const config = query(() => {
+		void live.settings;
+		return api<Config>('/config');
+	});
 
 	async function setEnabled(d: Device, enabled: boolean) {
 		try {
@@ -90,11 +100,15 @@
 							<StatusBadge level="ok">Archiving</StatusBadge>
 						{/if}
 						{#if d.sample?.mounted === false}<StatusBadge level="bad">SD card not mounted</StatusBadge>{/if}
+						{#if d.has_own_schedule}<StatusBadge level="idle">Own schedule</StatusBadge>{/if}
 					</div>
 					<dl class="grid grid-cols-2 gap-3 text-sm">
 						<div>
 							<dt class="text-subtle text-xs">Archived</dt>
-							<dd class="font-medium tabular-nums">{d.archived_count.toLocaleString()} clips<span class="sep"></span>{bytes(d.archived_bytes)}</dd>
+							<dd class="flex flex-wrap gap-x-3 font-medium tabular-nums">
+								<span>{count(d.archived_count)} clips</span>
+								<span>{bytes(d.archived_bytes)}</span>
+							</dd>
 						</div>
 						<div>
 							<dt class="text-subtle text-xs">Last run</dt>
@@ -124,6 +138,11 @@
 						</div>
 					{/if}
 				</Card.Content>
+				<Card.Footer class="justify-end">
+					<Button variant="ghost" size="sm" onclick={() => (editingId = d.id)}>
+						<Pencil /> Edit
+					</Button>
+				</Card.Footer>
 			</Card.Root>
 		{/each}
 	</div>
@@ -151,3 +170,10 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+<EditCameraSheet
+	device={editing}
+	writable={config.data?.writable ?? false}
+	onclose={() => (editingId = null)}
+	onsaved={(d) => (fleet.data = d)}
+/>

@@ -14,7 +14,14 @@ export function initTheme() {
 
 export function toggleTheme() {
 	const next: Theme = theme.value === 'dark' ? 'light' : 'dark';
-	document.documentElement.dataset.theme = next;
+	const root = document.documentElement;
+	// Transitions off while the colors flip, so nothing fades into the new
+	// theme on its own schedule; back on after the next frame, so hover and
+	// press transitions keep working.
+	root.classList.add('theme-switching');
+	root.dataset.theme = next;
+	void root.offsetHeight; // apply the new colors now, with transitions off
+	requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
 	theme.value = next;
 	try {
 		localStorage.setItem('rv-theme', next);

@@ -47,7 +47,13 @@ class DeviceConfig(BaseModel):
     """The camera's own configured display name (e.g. "Front door"), shown
     throughout the dashboard instead of `alias`. Optional: when unset, the
     dashboard shows `alias` until `device_info` backfills it from the camera
-    itself (see reovault/web/app.py's `_backfill_device_identity`)."""
+    itself (see reovault/web/api/devices.py's `_backfill_identity`)."""
+    enabled: bool = True
+    """False stops archiving this camera; its archived footage stays. A
+    camera removed from the file entirely is treated the same way."""
+    schedule: ScheduleConfig | None = None
+    """This camera's own `[devices.schedule]`; unset means it follows the
+    global `[schedule]`."""
 
 
 class ReolinkCliConfig(BaseModel):
@@ -90,6 +96,9 @@ class ScheduleConfig(BaseModel):
     # schedule onto one timezone regardless of where each camera actually
     # is.
     timezone: str | None = None
+
+
+DeviceConfig.model_rebuild()  # resolves the forward reference to ScheduleConfig
 
 
 class RetentionConfig(BaseModel):

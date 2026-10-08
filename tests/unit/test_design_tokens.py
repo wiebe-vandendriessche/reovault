@@ -97,6 +97,12 @@ _NON_TEXT_PAIRS = [
     ("ok", "surface-1"),
     ("warn", "surface-1"),
     ("bad", "surface-1"),
+    # Chart series (detection types) on the card surface.
+    ("chart-1", "surface-1"),
+    ("chart-2", "surface-1"),
+    ("chart-3", "surface-1"),
+    ("chart-4", "surface-1"),
+    ("chart-5", "surface-1"),
 ]
 
 

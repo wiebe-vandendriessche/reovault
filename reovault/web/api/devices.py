@@ -11,11 +11,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, SecretStr
 
 from reovault.archiver import Archiver
+from reovault.config_store import upsert_device_entry
 from reovault.db.repository import DeviceRow, StorageSampleRow, parse_iso_utc
 from reovault.providers.base import ProviderError
 from reovault.providers.reolink_cli import ReolinkCliProvider
-from reovault.scheduler import add_device_jobs, load_effective_schedule, remove_device_jobs
 from reovault.web.api.common import RunOut, run_out
+from reovault.web.api.config import write
 from reovault.web.api.health import SdBarOut, StorageSampleOut, on_card, sample_out, sd_bar
 from reovault.web.deps import AppState, State
 
@@ -46,6 +47,9 @@ class DeviceOut(BaseModel):
     sd: SdBarOut | None
     last_run: RunOut | None
     gateway_down: bool | None  # None: not a reolink-cli device, or disabled
+    # True when the camera has its own [devices.schedule] instead of
+    # following the default [schedule].
+    has_own_schedule: bool
 
 
 class DevicesOut(BaseModel):
@@ -78,6 +82,14 @@ class AddDeviceIn(BaseModel):
 
 class EnabledIn(BaseModel):
     enabled: bool
+
+
+class DeviceSettingsIn(BaseModel):
+    """The editable part of a camera's `[[devices]]` entry. Alias and channel
+    are its identity (reolink-cli's and the database's), so not editable."""
+
+    name: str | None = Field(default=None, max_length=100)
+    timezone: str = Field(min_length=1, max_length=64)
 
 
 def _backfill_identity(st: AppState, d: DeviceRow) -> tuple[str | None, str | None, str | None]:
@@ -168,6 +180,14 @@ def _devices_out(st: AppState) -> DevicesOut:
                 sd=sd_bar(sample, on_card(st, d.id, totals.first_start_utc)),
                 last_run=run_out(st, last_run) if last_run else None,
                 gateway_down=down,
+                has_own_schedule=next(
+                    (
+                        c.schedule is not None
+                        for c in st.settings.devices
+                        if c.alias == d.alias and c.channel == d.channel
+                    ),
+                    False,
+                ),
             )
         )
     return DevicesOut(devices=out, registry_available=st.registry is not None)
@@ -220,20 +240,14 @@ def discover(st: State) -> list[DiscoveredOut]:
     ]
 
 
-def _enable_in_fleet(st: AppState, device_id: int) -> None:
-    row = st.repo.get_device(device_id)
-    if row is None:
-        return
-    archiver = st.fleet.add(row)
-    if st.scheduler is not None:
-        schedule = load_effective_schedule(st.settings, st.repo, device_id=device_id)
-        add_device_jobs(st.scheduler, archiver, schedule, device_timezone=row.timezone)
-
-
 @router.post("", status_code=201, responses={409: {}, 422: {}, 502: {}, 503: {}})
 def add_device(body: AddDeviceIn, st: State) -> DevicesOut:
     if st.registry is None:
         raise HTTPException(503, "Adding a camera isn't available on this server.")
+    if not st.config.writable:
+        # Checked before reolink-cli is touched, so a refusal never leaves a
+        # camera registered there but missing from ReoVault.
+        raise HTTPException(409, "The config file is read-only, so cameras can't be added here.")
     try:
         ZoneInfo(body.timezone)
     except Exception:  # noqa: BLE001 - any zoneinfo failure is the same user-facing error
@@ -255,7 +269,9 @@ def add_device(body: AddDeviceIn, st: State) -> DevicesOut:
         )
     except ProviderError as exc:
         raise HTTPException(502, f"Could not add the camera: {st.redact(str(exc))}") from None
-    device_id = st.repo.upsert_device(
+    # Informational host/user on the row; the camera itself is declared in
+    # reovault.toml, and the config listener brings it into the fleet.
+    st.repo.upsert_device(
         alias=body.alias,
         channel=body.channel or 0,
         timezone=body.timezone,
@@ -263,23 +279,61 @@ def add_device(body: AddDeviceIn, st: State) -> DevicesOut:
         user=body.user,
         name=body.name,
     )
-    _enable_in_fleet(st, device_id)
-    st.bus.publish("devices")
+    write(
+        st,
+        lambda doc: upsert_device_entry(
+            doc,
+            body.alias,
+            channel=body.channel or 0,
+            timezone=body.timezone,
+            name=body.name,
+        ),
+    )
     return _devices_out(st)
 
 
 @router.put("/{device_id}/enabled")
 def set_enabled(device_id: int, body: EnabledIn, st: State) -> DevicesOut:
+    """Writes `enabled` on the camera's `[[devices]]` entry; the config
+    listener then adds it to or removes it from the fleet and scheduler."""
     row = st.repo.get_device(device_id)
     if row is None:
         raise HTTPException(404, "Unknown camera.")
-    if body.enabled != row.enabled:
-        st.repo.set_device_enabled(device_id, body.enabled)
-        if body.enabled:
-            _enable_in_fleet(st, device_id)
-        else:
-            st.fleet.remove(device_id)
-            if st.scheduler is not None:
-                remove_device_jobs(st.scheduler, device_id)
-        st.bus.publish("devices")
+    write(
+        st,
+        lambda doc: upsert_device_entry(
+            doc,
+            row.alias,
+            channel=row.channel,
+            timezone=row.timezone,
+            enabled=None if body.enabled else False,  # true is the default: drop the key
+        ),
+    )
+    return _devices_out(st)
+
+
+@router.put("/{device_id}/settings", responses={409: {}, 422: {}})
+def put_device_settings(device_id: int, body: DeviceSettingsIn, st: State) -> DevicesOut:
+    row = st.repo.get_device(device_id)
+    if row is None:
+        raise HTTPException(404, "Unknown camera.")
+    try:
+        ZoneInfo(body.timezone)
+    except Exception:  # noqa: BLE001 - any zoneinfo failure is the same user-facing error
+        raise HTTPException(422, f"Unknown timezone: {body.timezone!r}") from None
+    write(
+        st,
+        lambda doc: upsert_device_entry(
+            doc,
+            row.alias,
+            channel=row.channel,
+            timezone=body.timezone,
+            name=body.name or None,
+        ),
+    )
+    if body.name:
+        # The row's display name only ever grows (COALESCE); set it directly.
+        st.repo.upsert_device(
+            alias=row.alias, channel=row.channel, timezone=body.timezone, name=body.name
+        )
     return _devices_out(st)

@@ -14,10 +14,10 @@ repository, two files are enough:
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-# edit reovault.toml: your [[devices]], and set [web] email (set-password needs it)
+mkdir -p config data/config data/vault data/staging data/reolink-cli secrets
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+# edit config/reovault.toml: your [[devices]], and set [web] email (set-password needs it)
 
-mkdir -p data/config data/vault data/staging data/reolink-cli secrets
 echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
 
 docker compose run --rm reovault key init
@@ -25,10 +25,10 @@ docker compose up -d
 docker compose exec reovault reovault web set-password
 ```
 
-Create `reovault.toml` and the `data/` folders yourself before the first
+Create `config/reovault.toml` and the `data/` folders yourself before the first
 `docker compose` command, as above. If Docker has to create a missing bind
 mount itself, it makes a root-owned folder, which the container (running as
-uid 1000) can't write to, and for `reovault.toml` a folder instead of a file.
+uid 1000) can't write to.
 If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
 
 `compose.yaml` supports two deployment modes. Pick one, both are first-class:
@@ -46,8 +46,10 @@ If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
   `REOVAULT_WEB__FORWARDED_ALLOW_IPS` to the proxy's own address (never
   `"*"`, see [Security](security.md)).
 
-`./reovault.toml` is mounted read-only (ReoVault never writes its own
-config). `./data/{config,vault,staging}` and `./data/reolink-cli`
+`./config/` holds `reovault.toml` and is mounted read-write: the dashboard's
+Settings page writes changes back into the file (comments and layout kept,
+the previous version saved as `reovault.toml.bak`), and edits made to the
+file by hand are applied live. `./data/{config,vault,staging}` and `./data/reolink-cli`
 (reolink-cli's own credential registry, written to when a camera is added
 from the Devices page) are bind mounts holding everything that must survive an
 upgrade: database, master key, dashboard password, and the archive itself.
@@ -72,6 +74,22 @@ instead, pin a version in `compose.yaml` (for example
 [release notes](https://github.com/wiebe-vandendriessche/reovault/releases).
 Before 1.0 the config schema can still change between releases.
 
+
+#### From 0.3 to 0.4
+
+`reovault.toml` moves into a folder that is mounted read-write, so the
+dashboard can write settings back into it:
+
+```bash
+mkdir -p config && mv reovault.toml config/ && sudo chown -R 1000:1000 config
+```
+
+Then update `compose.yaml` (the `volumes:` line is now `- ./config:/etc/reovault`)
+and `docker compose up -d`. On first start, settings you changed in the 0.3
+dashboard (schedules, retention, alert rules, cameras added from the
+dashboard) are written into `reovault.toml` once; from then on the file is
+the single source of truth. Until the folder is writable, the dashboard shows
+settings read-only and nothing is migrated.
 ### Verifying the image
 
 Release images are signed keylessly with [cosign](https://docs.sigstore.dev/)

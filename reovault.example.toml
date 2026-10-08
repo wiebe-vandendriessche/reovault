@@ -3,12 +3,13 @@
 # secrets in source control). The camera password lives in reolink-cli's own
 # encrypted aliases.toml, never here.
 #
-# Devices are seeded from here on every startup (never deleted or disabled
-# by a reseed, see cli.py's `_seed_devices_from_toml`), but the dashboard's
-# Devices tab can add, rename, enable/disable and schedule cameras too --
-# TOML is a convenience for a scripted deploy, not the only way in. Two
-# entries below to show the fleet shape; a single-camera setup just deletes
-# the second one.
+# This file is the source of truth: the dashboard's Settings page writes its
+# changes back into it (keeping these comments), and edits made here are
+# picked up live. [[devices]] is the set of cameras: adding one in the
+# dashboard appends an entry, turning one off writes `enabled = false`, and
+# removing an entry disables that camera (its footage stays). Two entries
+# below to show the fleet shape; a single-camera setup just deletes the
+# second one.
 
 [[devices]]
 alias = "front-door"     # must match `reolink-cli device add <alias> ...`
@@ -23,6 +24,10 @@ alias = "back-yard"
 channel = 0
 timezone = "America/New_York"
 name = "Back yard"
+# enabled = false        # stop archiving this camera; its footage stays
+# This camera's own schedule; without it, it follows [schedule] below.
+# [devices.schedule]
+# archive_cron = "30 6 * * *"
 
 [reolink_cli]
 binary = "reolink-cli"

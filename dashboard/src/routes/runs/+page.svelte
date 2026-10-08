@@ -89,7 +89,7 @@
 				<Empty.Header>
 					<Empty.Media variant="icon"><ListChecks /></Empty.Media>
 					<Empty.Title>No runs yet</Empty.Title>
-					<Empty.Description>The first scheduled run, or a “Run now” from Health, shows up here.</Empty.Description>
+					<Empty.Description>The first scheduled run, or a "Run now" from Health, shows up here.</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{:else}

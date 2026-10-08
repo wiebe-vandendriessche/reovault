@@ -218,17 +218,12 @@ def test_reschedule_all_devices_replaces_jobs_for_every_device(env):
     add_device_jobs(scheduler, archiver_b, ScheduleConfig(), device_timezone="Europe/Brussels")
     assert len(scheduler.get_jobs()) == 8
 
-    # Disabling backfill and rescheduling must drop it for BOTH devices.
-    # `reschedule_all_devices` loads each device's own effective schedule
-    # (see `load_effective_schedule`), so with no per-device schedule saved
-    # yet, both devices fall back to the same global/TOML-seeded one --
-    # saving it here as the global schedule is what "new" schedule means.
+    # Disabling backfill in the global [schedule] and rescheduling must drop
+    # it for BOTH devices: neither has a [devices.schedule] of its own.
     from reovault.config import Settings
-    from reovault.scheduler import save_schedule
 
-    new_schedule = ScheduleConfig(backfill_enabled=False)
-    save_schedule(env.repository, new_schedule)
-    reschedule_all_devices(scheduler, fleet, env.repository, Settings())
+    settings = Settings(schedule=ScheduleConfig(backfill_enabled=False))
+    reschedule_all_devices(scheduler, fleet, env.repository, settings)
 
     job_ids = {job.id for job in scheduler.get_jobs()}
     assert len(job_ids) == 6
@@ -238,51 +233,46 @@ def test_reschedule_all_devices_replaces_jobs_for_every_device(env):
     assert f"scheduled_archive:{device_b_id}" in job_ids
 
 
-# -- effective schedule: env pin, DB seed/persist --
+# -- effective schedule: a camera's own, else the global one; env pins --
 
 
-def test_load_effective_schedule_seeds_db_from_toml_on_first_boot(env, monkeypatch):
-    from reovault.config import Settings
-    from reovault.scheduler import SCHEDULE_SETTING_KEY, load_effective_schedule
+def _settings_with(env, own: ScheduleConfig | None = None, **global_kw):
+    from reovault.config import DeviceConfig, Settings
 
-    monkeypatch.delenv("REOVAULT_SCHEDULE__ARCHIVE_CRON", raising=False)
-    settings = Settings(schedule=ScheduleConfig(archive_cron="0 6 * * *"))
-    assert env.repository.get_setting(SCHEDULE_SETTING_KEY) is None
-
-    effective = load_effective_schedule(settings, env.repository)
-
-    assert effective.archive_cron == "0 6 * * *"
-    assert env.repository.get_setting(SCHEDULE_SETTING_KEY) is not None
+    device = DeviceConfig(alias=env.device_alias, timezone="Europe/Brussels", schedule=own)
+    return Settings(devices=[device], schedule=ScheduleConfig(**global_kw))
 
 
-def test_load_effective_schedule_db_wins_once_seeded(env):
-    from reovault.config import Settings
-    from reovault.scheduler import save_schedule
-
-    save_schedule(env.repository, ScheduleConfig(archive_cron="0 9 * * *"))
-    settings = Settings(schedule=ScheduleConfig(archive_cron="0 6 * * *"))  # different TOML value
-
+def test_a_camera_without_its_own_schedule_follows_the_global_one(env):
     from reovault.scheduler import load_effective_schedule
 
-    effective = load_effective_schedule(settings, env.repository)
-    assert effective.archive_cron == "0 9 * * *"  # DB wins, not TOML
+    settings = _settings_with(env, archive_cron="0 6 * * *")
+    assert load_effective_schedule(settings, env.repository).archive_cron == "0 6 * * *"
+    camera = load_effective_schedule(settings, env.repository, device_id=env.device_id)
+    assert camera.archive_cron == "0 6 * * *"
 
 
-def test_env_pinned_schedule_always_wins_even_over_the_db(env, monkeypatch):
-    from reovault.config import Settings
-    from reovault.scheduler import (
-        is_schedule_env_pinned,
-        load_effective_schedule,
-        save_schedule,
+def test_a_cameras_own_schedule_wins_over_the_global_one(env):
+    from reovault.scheduler import load_effective_schedule
+
+    settings = _settings_with(
+        env, ScheduleConfig(archive_cron="0 9 * * *"), archive_cron="0 6 * * *"
+    )
+    camera = load_effective_schedule(settings, env.repository, device_id=env.device_id)
+    assert camera.archive_cron == "0 9 * * *"
+
+
+def test_env_pinned_schedule_wins_over_a_cameras_own(env, monkeypatch):
+    from reovault.scheduler import is_schedule_env_pinned, load_effective_schedule
+
+    monkeypatch.setenv("REOVAULT_SCHEDULE__ARCHIVE_CRON", "0 3 * * *")
+    settings = _settings_with(
+        env, ScheduleConfig(archive_cron="0 9 * * *"), archive_cron="0 3 * * *"
     )
 
-    save_schedule(env.repository, ScheduleConfig(archive_cron="0 9 * * *"))
-    monkeypatch.setenv("REOVAULT_SCHEDULE__ARCHIVE_CRON", "0 3 * * *")
-    settings = Settings(schedule=ScheduleConfig(archive_cron="0 3 * * *"))
-
     assert is_schedule_env_pinned() is True
-    effective = load_effective_schedule(settings, env.repository)
-    assert effective.archive_cron == "0 3 * * *"  # env wins over the DB
+    camera = load_effective_schedule(settings, env.repository, device_id=env.device_id)
+    assert camera.archive_cron == "0 3 * * *"
 
 
 def test_is_schedule_env_pinned_false_with_no_matching_env(monkeypatch):
@@ -293,23 +283,23 @@ def test_is_schedule_env_pinned_false_with_no_matching_env(monkeypatch):
 
 
 def test_per_device_schedules_are_independent(env):
-    """Two cameras, different cron times: each device's own
-    `load_effective_schedule(device_id=...)` returns its own, saving one
-    leaves the other on the global/TOML fallback untouched."""
-    from reovault.config import Settings
-    from reovault.scheduler import load_effective_schedule, save_schedule
+    """Two cameras: one with its own [devices.schedule], one without. The
+    first gets its own, the second stays on the global schedule."""
+    from reovault.config import DeviceConfig, Settings
+    from reovault.scheduler import load_effective_schedule
 
     device_b_id = env.repository.upsert_device(alias="cam-b", channel=0, timezone="Europe/Brussels")
-    settings = Settings()
-
-    # Neither device has its own schedule yet: both see the same fallback.
-    fallback = load_effective_schedule(settings, env.repository, device_id=env.device_id)
-    assert load_effective_schedule(settings, env.repository, device_id=device_b_id) == fallback
-
-    # Saving device A's own schedule must not touch device B's.
-    save_schedule(env.repository, ScheduleConfig(archive_cron="0 9 * * *"), device_id=env.device_id)
+    settings = Settings(
+        devices=[
+            DeviceConfig(
+                alias=env.device_alias,
+                timezone="Europe/Brussels",
+                schedule=ScheduleConfig(archive_cron="0 9 * * *"),
+            ),
+            DeviceConfig(alias="cam-b", timezone="Europe/Brussels"),
+        ]
+    )
     a_schedule = load_effective_schedule(settings, env.repository, device_id=env.device_id)
     b_schedule = load_effective_schedule(settings, env.repository, device_id=device_b_id)
     assert a_schedule.archive_cron == "0 9 * * *"
-    assert b_schedule.archive_cron == fallback.archive_cron
-    assert b_schedule.archive_cron != "0 9 * * *"
+    assert b_schedule == settings.schedule

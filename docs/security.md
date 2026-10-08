@@ -42,6 +42,15 @@ URL is itself the credential.
 
 ## Dashboard and API
 
+* **Settings write the config file.** A logged-in user can change anything
+  in `reovault.toml` that isn't infrastructure or env-set, and the change is
+  written to the file. Storage paths, the reolink-cli binary and the
+  web bind, cookie, origin and proxy settings are never writable from the
+  browser, so a stolen session can't redirect the vault or loosen the login
+  protections. Secrets are never written either: alert channels hold *paths*
+  to secret files, and the master passphrase and camera passwords are not
+  config fields. Pin anything you want out of the dashboard's reach with an
+  env var.
 * **Sessions:** a signed, `HttpOnly` cookie. Logout revokes sessions
   server-side by bumping a session epoch, so a copied cookie stops working
   too (single user, so every open session is signed out at once).

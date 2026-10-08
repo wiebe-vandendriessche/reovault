@@ -31,6 +31,12 @@ def _provider(*days: int) -> FakeProvider:
     return FakeProvider(recordings=recs)
 
 
+def _toml(env) -> dict:
+    import tomllib
+
+    return tomllib.loads((env.tmp_path / "reovault.toml").read_text())
+
+
 def _states(env) -> dict[str, str]:
     rows = env.repository.conn.execute("SELECT remote_name, state FROM recordings").fetchall()
     return {r["remote_name"]: r["state"] for r in rows}
@@ -181,8 +187,7 @@ def test_retention_save_requires_confirmation_when_it_would_delete(env, auth_cli
     confirm = r.json()["confirm"]
     assert confirm["count"] == 2
     assert confirm["bytes"] > 0
-    stored = env.repository.get_setting(retention.RETENTION_SETTING_KEY)
-    assert RetentionConfig.model_validate_json(stored).max_vault_gb is None
+    assert "retention" not in _toml(env)  # nothing written before the confirm
 
     # A confirm token for different values does not count.
     r = auth_client.put(
@@ -195,8 +200,7 @@ def test_retention_save_requires_confirmation_when_it_would_delete(env, auth_cli
     assert r.json()["saved"] is True
     assert r.json()["confirm"] is None
     assert r.json()["retention"]["max_vault_gb"] == 1
-    stored = env.repository.get_setting(retention.RETENTION_SETTING_KEY)
-    assert RetentionConfig.model_validate_json(stored).max_vault_gb == 1
+    assert _toml(env)["retention"]["max_vault_gb"] == 1
     assert auth_client.get("/api/v1/retention").json()["max_vault_gb"] == 1
 
 

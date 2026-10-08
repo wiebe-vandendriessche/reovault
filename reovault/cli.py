@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ import uvicorn
 from reovault import __version__, health, retention
 from reovault.archiver import Archiver, assert_pinned_cli_version, assert_same_filesystem
 from reovault.config import DeviceConfig, Settings, load_settings
+from reovault.config_store import ConfigStore, migrate_db_settings
 from reovault.crypto import keyring
 from reovault.db.repository import RecordingRow, Repository
 from reovault.fleet import Fleet, build_fleet
@@ -32,6 +34,7 @@ from reovault.providers.base import LocalError
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.providers.reolink_cli_registry import ReolinkCliRegistry
+from reovault.settings_apply import sync_devices
 from reovault.storage.vault import EncryptedFsVault
 
 app = typer.Typer(add_completion=False, help="ReoVault: archive Reolink recordings locally.")
@@ -336,7 +339,7 @@ def _bootstrap(device_alias: str | None) -> _Context:
         # in-flight download away.
         staging_dir=settings.storage.staging_dir / str(device_id),
         lock_path=settings.storage.config_dir / f"reovault-{device_id}.lock",
-        retention=retention.archiver_hook(settings, repository, vault),
+        retention=retention.archiver_hook(lambda: settings, repository, vault),
     )
     return _Context(settings=settings, device=device, archiver=archiver)
 
@@ -353,21 +356,7 @@ class _Runtime:
     gateway: GatewaySupervisor
     fleet: Fleet
     registry: ReolinkCliRegistry
-
-
-def _seed_devices_from_toml(settings: Settings, repository: Repository) -> None:
-    """Each `[[devices]]` entry is upserted on every startup: TOML stays a
-    valid way to declare cameras for a scripted deploy, but never deletes
-    or disables a device the dashboard has since added or turned off,
-    since `upsert_device` only sets `enabled`/`created_at` on first
-    insert."""
-    for device in settings.devices:
-        repository.upsert_device(
-            alias=device.alias,
-            channel=device.channel,
-            timezone=device.timezone,
-            name=device.name,
-        )
+    config: ConfigStore
 
 
 def _load_runtime() -> _Runtime:
@@ -378,14 +367,27 @@ def _load_runtime() -> _Runtime:
     settings, master_key = _preflight()
 
     repository = Repository(settings.storage.db_path)
-    _seed_devices_from_toml(settings, repository)
+    # reovault.toml is the source of truth and the dashboard writes it back
+    # (see reovault.config_store). Pre-0.4 dashboard state is moved into the
+    # file once, then the device rows are brought in line with it.
+    config = ConfigStore(Path(os.environ.get("REOVAULT_CONFIG_FILE", "reovault.toml")), settings)
+    migrate_db_settings(config, repository)
+    settings = config.current
+    sync_devices(settings, repository, authoritative=config.writable)
     vault = EncryptedFsVault(settings.storage.vault_dir, master_key)
     gateway = GatewaySupervisor(
         binary=settings.reolink_cli.binary, addr=settings.reolink_cli.gateway_addr
     )
-    fleet = build_fleet(settings=settings, repository=repository, vault=vault, gateway=gateway)
+    fleet = build_fleet(
+        settings=settings,
+        repository=repository,
+        vault=vault,
+        gateway=gateway,
+        current_settings=lambda: config.current,
+    )
     registry = ReolinkCliRegistry(binary=settings.reolink_cli.binary, gateway=gateway)
     return _Runtime(
+        config=config,
         settings=settings,
         repository=repository,
         vault=vault,
@@ -605,6 +607,9 @@ def daemon() -> None:
     reschedule_all_devices(scheduler, runtime.fleet, runtime.repository, settings)
     scheduler.start()
     logger.info("daemon.started", device_count=len(runtime.fleet.ids()))
+    # Hand edits of reovault.toml are applied live (see reovault.config_store).
+    stop_watching = threading.Event()
+    runtime.config.watch(stop_watching)
 
     try:
         uvicorn.run(
@@ -614,6 +619,7 @@ def daemon() -> None:
                 repository=runtime.repository,
                 scheduler=scheduler,
                 registry=runtime.registry,
+                config=runtime.config,
             ),
             host=settings.web.host,
             port=settings.web.port,
@@ -626,6 +632,7 @@ def daemon() -> None:
             timeout_graceful_shutdown=3,
         )
     finally:
+        stop_watching.set()
         scheduler.shutdown(wait=False)
 
 

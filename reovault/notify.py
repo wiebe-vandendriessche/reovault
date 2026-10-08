@@ -36,30 +36,16 @@ from reovault.providers.reolink_cli import ReolinkCliProvider
 
 logger = get_logger(__name__)
 
-RULES_SETTING_KEY = "alert_rules"
+RULES_SETTING_KEY = "alert_rules"  # pre-0.4 app_settings key, migrated by config_store
 _RULES_ENV_PREFIX = "REOVAULT_ALERTS__RULES__"
 _TIMEOUT_SECS = 10
 
 
-# -- rules: dashboard-editable, same seeding scheme as retention ------------
+# -- rules: `[alerts.rules]` in reovault.toml, editable from the dashboard --
 
 
 def is_rules_env_pinned() -> bool:
     return any(k.startswith(_RULES_ENV_PREFIX) for k in os.environ)
-
-
-def load_effective_rules(settings: Settings, repository: Repository) -> AlertRules:
-    if is_rules_env_pinned():
-        return settings.alerts.rules
-    stored = repository.get_setting(RULES_SETTING_KEY)
-    if stored is None:
-        repository.set_setting(RULES_SETTING_KEY, settings.alerts.rules.model_dump_json())
-        return settings.alerts.rules
-    return AlertRules.model_validate_json(stored)
-
-
-def save_rules(repository: Repository, rules: AlertRules) -> None:
-    repository.set_setting(RULES_SETTING_KEY, rules.model_dump_json())
 
 
 # -- channels --------------------------------------------------------------
@@ -281,19 +267,36 @@ class Notifier:
     def __init__(
         self,
         *,
-        settings: Settings,
+        settings: Settings | Callable[[], Settings],
         repository: Repository,
         fleet: Fleet,
         publish: Callable[..., None] | None = None,
         channels: list[Channel] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self.settings = settings
+        # A callable gives the live settings (the daemon's ConfigStore), so
+        # rule and channel edits apply at the next evaluation.
+        self._settings = settings if callable(settings) else (lambda: settings)
         self.repo = repository
         self.fleet = fleet
         self.publish = publish or (lambda *_a, **_k: None)
-        self.channels = channels if channels is not None else build_channels(settings.alerts)
+        self._fixed_channels = channels
         self.clock = clock
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings()
+
+    @property
+    def channels(self) -> list[Channel]:
+        """Built from the live `[alerts]` table unless fixed (tests)."""
+        if self._fixed_channels is not None:
+            return self._fixed_channels
+        return build_channels(self.settings.alerts)
+
+    @channels.setter
+    def channels(self, value: list[Channel]) -> None:
+        self._fixed_channels = value
 
     def send(self, msg: Message) -> list[SendResult]:
         results = []
@@ -317,7 +320,7 @@ class Notifier:
             logger.error("notify.evaluate_failed", error=str(exc), exc_info=exc)
 
     def _evaluate(self) -> None:
-        rules = load_effective_rules(self.settings, self.repo)
+        rules = self.settings.alerts.rules
         now = self.clock()
         current = (
             {c.key: c for c in current_conditions(self.fleet, self.repo, rules)}

@@ -12,7 +12,7 @@ from reovault.models import RemoteRecording
 from reovault.providers.fake import FakeProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.web.app import create_app
-from tests.integration.conftest import login
+from tests.integration.conftest import login, make_config
 
 
 def _two_device_app(env, web_settings):
@@ -35,7 +35,16 @@ def _two_device_app(env, web_settings):
     )
     fleet.archivers[env.device_id] = env.archiver(FakeProvider())
     fleet.archivers[device_b_id] = archiver_b
-    app = create_app(fleet, settings=web_settings, repository=env.repository)
+    (env.tmp_path / "reovault.toml").write_text(
+        f'[[devices]]\nalias = "{env.device_alias}"\ntimezone = "Europe/Brussels"\n\n'
+        '[[devices]]\nalias = "cam-b"\ntimezone = "America/New_York"\n'
+    )
+    app = create_app(
+        fleet,
+        settings=web_settings,
+        repository=env.repository,
+        config=make_config(env, web_settings),
+    )
     return app, device_b_id
 
 

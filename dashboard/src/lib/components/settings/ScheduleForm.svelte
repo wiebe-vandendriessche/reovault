@@ -13,14 +13,32 @@
 	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
 	import { toast } from 'svelte-sonner';
 
-	let { device, label }: { device: number; label: string } = $props();
+	import { live } from '$lib/state/live.svelte';
 
-	const loaded = query(() => api<Schedule>('/schedule', { query: { device } }));
-	let form = $state<ScheduleBody | null>(null);
+	/** `device` null edits the global default `[schedule]`; a camera id edits
+	 * that camera's own `[devices.schedule]` (or switches it back to the
+	 * default with "Use the default schedule"). */
+	let {
+		device,
+		label,
+		bare = false
+	}: {
+		device: number | null;
+		label: string;
+		/** No card chrome or title: for embedding (the camera edit panel). */
+		bare?: boolean;
+	} = $props();
+
+	const path = $derived(device == null ? '/schedule/default' : '/schedule');
+	const loaded = query(() => {
+		void live.settings;
+		return api<Schedule>(path, { query: { device: device ?? undefined } });
+	});
+	let form = $state<(ScheduleBody & { inherit: boolean }) | null>(null);
 	$effect(() => {
 		if (loaded.data) {
-			const { env_pinned: _, ...body } = loaded.data;
-			form = body;
+			const { env_pinned: _, inherits, ...body } = loaded.data;
+			form = { ...body, inherit: device != null && !!inherits };
 		}
 	});
 	let busy = $state(false);
@@ -34,8 +52,13 @@
 		busy = true;
 		error = null;
 		try {
-			loaded.data = await api<Schedule>('/schedule', { method: 'PUT', query: { device }, body: form });
-			toast.success(`Schedule for ${label} saved.`);
+			const body = device == null ? { ...form, inherit: undefined } : form;
+			loaded.data = await api<Schedule>(path, {
+				method: 'PUT',
+				query: { device: device ?? undefined },
+				body
+			});
+			toast.success(`Schedule for ${label} saved to reovault.toml.`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -50,16 +73,33 @@
 	<Skeleton class="h-96 w-full rounded-xl" />
 {:else}
 	<form onsubmit={save}>
-		<Card.Root>
+		<Card.Root class={bare ? 'gap-4 border-0 bg-transparent py-0 shadow-none ring-0 [--card-spacing:0px]' : ''}>
+			{#if !bare}
 			<Card.Header>
-				<Card.Title>Schedule for {label}</Card.Title>
+				<Card.Title>{device == null ? 'Default schedule' : `Schedule for ${label}`}</Card.Title>
 				<Card.Description>
-					Times are in the camera’s own timezone{form.timezone ? ` (overridden: ${form.timezone})` : ''}.
+					{device == null
+						? 'Every camera follows this unless it has a schedule of its own.'
+						: "Times are in the camera's own timezone"}{form.timezone
+						? ` (overridden: ${form.timezone})`
+						: ''}.
 					{#if pinned}<span class="text-warn">Set by environment variables, so read-only here.</span>{/if}
 				</Card.Description>
 			</Card.Header>
+			{/if}
+			{#if device != null}
+				<Card.Content class="pb-0">
+					<Field.Field orientation="horizontal">
+						<Switch id="sched-inherit" bind:checked={form.inherit} disabled={pinned} />
+						<Field.Content>
+							<Field.Label for="sched-inherit">Use the default schedule</Field.Label>
+							<Field.Description>Off gives this camera its own schedule below.</Field.Description>
+						</Field.Content>
+					</Field.Field>
+				</Card.Content>
+			{/if}
 			<Card.Content>
-				<fieldset disabled={pinned} class="flex flex-col gap-6">
+				<fieldset disabled={pinned || form.inherit} class="flex flex-col gap-6 disabled:opacity-60">
 					<Field.Set>
 						<Field.Field orientation="horizontal">
 							<Switch id="arch-on" bind:checked={form.archive_enabled} />
@@ -151,7 +191,7 @@
 					</Field.Set>
 				</fieldset>
 			</Card.Content>
-			<Card.Footer class="flex items-center gap-3 border-t">
+			<Card.Footer class={bare ? 'flex items-center gap-3' : 'flex items-center gap-3 border-t'}>
 				<Button type="submit" disabled={busy || pinned}>{#if busy}<Spinner />{/if} Save schedule</Button>
 				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 			</Card.Footer>

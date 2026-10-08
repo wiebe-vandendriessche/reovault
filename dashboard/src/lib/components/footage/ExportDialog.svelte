@@ -57,7 +57,7 @@
 			<Dialog.Title>Export clips</Dialog.Title>
 			<Dialog.Description>
 				Download decrypted clips as a zip, organized by day. Up to {MAX_DAYS} days at a time{types
-					? `, only “${types === '__problems__' ? 'problems' : types}”`
+					? `, only "${types === '__problems__' ? 'problems' : types}"`
 					: ''}.
 			</Dialog.Description>
 		</Dialog.Header>

@@ -12,6 +12,11 @@
 	import NoDevice from '$lib/components/app/NoDevice.svelte';
 	import RecordingRow from '$lib/components/footage/RecordingRow.svelte';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { buttonVariants } from '$lib/components/ui/button';
+	import { plural } from '$lib/format';
+	import { toast } from 'svelte-sonner';
 
 	const first = query(() => {
 		void live.problems;
@@ -32,6 +37,31 @@
 	const next = $derived(cursor === undefined ? first.data?.next : cursor);
 	const rows = $derived([...(first.data?.items ?? []), ...older]);
 
+	// Header count: the nav badge's endpoint, so it covers every page, not
+	// just the rows loaded so far.
+	const count = query(() => {
+		void live.problems;
+		const device = devices.currentId;
+		return device == null ? null : api<{ count: number }>('/problems/count', { query: { device } });
+	});
+	let retrying = $state(false);
+
+	async function retryAll() {
+		if (devices.currentId == null) return;
+		retrying = true;
+		try {
+			const r = await api<{ count: number }>('/problems/retry', {
+				method: 'POST',
+				query: { device: devices.currentId }
+			});
+			toast.success(`${plural(r.count, 'clip')} queued for the next run.`);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+		} finally {
+			retrying = false;
+		}
+	}
+
 	async function more() {
 		if (!next || devices.currentId == null) return;
 		loadingMore = true;
@@ -50,7 +80,30 @@
 <PageHeader
 	title="Problems"
 	description="Recordings that failed or were quarantined. Retry queues one for the next run."
-/>
+>
+	{#snippet actions()}
+		{#if count.data?.count}
+			<AlertDialog.Root>
+				<AlertDialog.Trigger class={buttonVariants({ variant: 'outline' })} disabled={retrying}>
+					{#if retrying}<Spinner />{:else}<RotateCcw />{/if} Retry all
+				</AlertDialog.Trigger>
+				<AlertDialog.Content>
+					<AlertDialog.Header>
+						<AlertDialog.Title>Queue {plural(count.data.count, 'clip')} for the next run?</AlertDialog.Title>
+						<AlertDialog.Description>
+							Every failed or quarantined recording of this camera gets a fresh set of attempts. Clips
+							the camera no longer has will fail again.
+						</AlertDialog.Description>
+					</AlertDialog.Header>
+					<AlertDialog.Footer>
+						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Action onclick={retryAll}>Retry all</AlertDialog.Action>
+					</AlertDialog.Footer>
+				</AlertDialog.Content>
+			</AlertDialog.Root>
+		{/if}
+	{/snippet}
+</PageHeader>
 
 {#if devices.loaded && devices.currentId == null}
 	<NoDevice />
