@@ -85,7 +85,7 @@ def test_healthz_verbose_reports_coverage_alarm_state(
     env.repository.record_storage_sample(
         device_id=env.device_id,
         total_gb=1.0,
-        remain_gb=1.0,
+        remain_gb=0.0,  # full: the card is looping
         formatted=True,
         mounted=True,
         oldest_recording_utc=oldest_on_card,

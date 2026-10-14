@@ -444,6 +444,100 @@
         "title": "CameraScheduleBody",
         "type": "object"
       },
+      "CardOut": {
+        "description": "One camera's SD card, as `health.card_status` sees it, plus clip\ncounts across the card's window for the timeline strip.",
+        "properties": {
+          "lost_count": {
+            "title": "Lost Count",
+            "type": "integer"
+          },
+          "oldest_waiting_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Waiting Utc"
+          },
+          "safe_for_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe For Seconds"
+          },
+          "state": {
+            "enum": [
+              "not_mounted",
+              "at_risk",
+              "waiting",
+              "all_archived",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineBucketOut"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "used_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Fraction"
+          },
+          "waiting_count": {
+            "title": "Waiting Count",
+            "type": "integer"
+          },
+          "window_estimated": {
+            "title": "Window Estimated",
+            "type": "boolean"
+          },
+          "window_start_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start Utc"
+          }
+        },
+        "required": [
+          "state",
+          "waiting_count",
+          "lost_count",
+          "oldest_waiting_utc",
+          "window_start_utc",
+          "window_estimated",
+          "safe_for_seconds",
+          "used_fraction",
+          "timeline"
+        ],
+        "title": "CardOut",
+        "type": "object"
+      },
       "ChannelOut": {
         "properties": {
           "configured": {
@@ -573,57 +667,6 @@
           "count"
         ],
         "title": "CountOut",
-        "type": "object"
-      },
-      "CoverageOut": {
-        "properties": {
-          "alarm": {
-            "title": "Alarm",
-            "type": "boolean"
-          },
-          "margin_fraction": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Margin Fraction"
-          },
-          "oldest_on_card_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Oldest On Card Utc"
-          },
-          "oldest_unarchived_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Oldest Unarchived Utc"
-          }
-        },
-        "required": [
-          "oldest_on_card_utc",
-          "oldest_unarchived_utc",
-          "margin_fraction",
-          "alarm"
-        ],
-        "title": "CoverageOut",
         "type": "object"
       },
       "DayOut": {
@@ -1059,10 +1102,103 @@
         "title": "FieldOut",
         "type": "object"
       },
+      "FleetCardOut": {
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/CardOut"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "gateway_down": {
+            "title": "Gateway Down",
+            "type": "boolean"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "next_archive_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Archive Utc"
+          },
+          "problems_count": {
+            "title": "Problems Count",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageSampleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "device_id",
+          "alias",
+          "name",
+          "enabled",
+          "card",
+          "sample",
+          "running",
+          "last_run",
+          "next_archive_utc",
+          "gateway_down",
+          "problems_count"
+        ],
+        "title": "FleetCardOut",
+        "type": "object"
+      },
       "GrowthDayOut": {
         "properties": {
           "bytes": {
             "title": "Bytes",
+            "type": "integer"
+          },
+          "clips": {
+            "title": "Clips",
             "type": "integer"
           },
           "day": {
@@ -1072,21 +1208,15 @@
         },
         "required": [
           "day",
-          "bytes"
+          "bytes",
+          "clips"
         ],
         "title": "GrowthDayOut",
         "type": "object"
       },
       "GrowthOut": {
+        "description": "One camera's archived footage over the last N local days, by the day\nit was *recorded* (not the day a run fetched it, so a backfill doesn't\npile a week into one bar). The vault's disk lives on `/overview`.",
         "properties": {
-          "archived_bytes": {
-            "title": "Archived Bytes",
-            "type": "integer"
-          },
-          "archived_count": {
-            "title": "Archived Count",
-            "type": "integer"
-          },
           "avg_per_day": {
             "title": "Avg Per Day",
             "type": "number"
@@ -1098,41 +1228,12 @@
             "title": "Days",
             "type": "array"
           },
-          "days_headroom": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Days Headroom"
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
           },
-          "vault_cap_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vault Cap Bytes"
-          },
-          "vault_free_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vault Free Bytes"
-          },
-          "vault_used_bytes": {
-            "title": "Vault Used Bytes",
+          "total_clips": {
+            "title": "Total Clips",
             "type": "integer"
           },
           "yearly_projection": {
@@ -1141,15 +1242,11 @@
           }
         },
         "required": [
-          "archived_count",
-          "archived_bytes",
           "days",
+          "total_bytes",
+          "total_clips",
           "avg_per_day",
-          "yearly_projection",
-          "vault_free_bytes",
-          "days_headroom",
-          "vault_cap_bytes",
-          "vault_used_bytes"
+          "yearly_projection"
         ],
         "title": "GrowthOut",
         "type": "object"
@@ -1179,8 +1276,8 @@
               }
             ]
           },
-          "coverage": {
-            "$ref": "#/components/schemas/CoverageOut"
+          "card": {
+            "$ref": "#/components/schemas/CardOut"
           },
           "gateway_down": {
             "title": "Gateway Down",
@@ -1232,16 +1329,6 @@
               }
             ]
           },
-          "sd": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SdBarOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "status": {
             "enum": [
               "ok",
@@ -1261,9 +1348,8 @@
           "running",
           "last_run",
           "next_archive_utc",
-          "coverage",
+          "card",
           "sample",
-          "sd",
           "gateway_down",
           "problems_count",
           "banner",
@@ -1367,6 +1453,37 @@
           "last_sent_at"
         ],
         "title": "OpenAlertOut",
+        "type": "object"
+      },
+      "OverviewOut": {
+        "properties": {
+          "banner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BannerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/FleetCardOut"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "vault": {
+            "$ref": "#/components/schemas/VaultOut"
+          }
+        },
+        "required": [
+          "banner",
+          "vault",
+          "cards"
+        ],
+        "title": "OverviewOut",
         "type": "object"
       },
       "Page_RecordingOut_": {
@@ -2281,6 +2398,35 @@
         "title": "TestResultOut",
         "type": "object"
       },
+      "TimelineBucketOut": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "integer"
+          },
+          "quarantined": {
+            "title": "Quarantined",
+            "type": "integer"
+          },
+          "start_utc": {
+            "format": "date-time",
+            "title": "Start Utc",
+            "type": "string"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_utc",
+          "archived",
+          "waiting",
+          "quarantined"
+        ],
+        "title": "TimelineBucketOut",
+        "type": "object"
+      },
       "TodayOut": {
         "properties": {
           "archived_bytes": {
@@ -2387,6 +2533,133 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VaultOut": {
+        "description": "The archive's volume (the disk/mount `vault_dir` lives on).",
+        "properties": {
+          "archive_bytes": {
+            "title": "Archive Bytes",
+            "type": "integer"
+          },
+          "avg_per_day": {
+            "title": "Avg Per Day",
+            "type": "number"
+          },
+          "cap_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Bytes"
+          },
+          "clip_bytes": {
+            "title": "Clip Bytes",
+            "type": "integer"
+          },
+          "clip_count": {
+            "title": "Clip Count",
+            "type": "integer"
+          },
+          "days_headroom": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Headroom"
+          },
+          "first_start_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Start Utc"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "last_start_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Start Utc"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bytes"
+          },
+          "used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Bytes"
+          }
+        },
+        "required": [
+          "total_bytes",
+          "used_bytes",
+          "free_bytes",
+          "archive_bytes",
+          "cap_bytes",
+          "max_age_days",
+          "clip_count",
+          "clip_bytes",
+          "first_start_utc",
+          "last_start_utc",
+          "avg_per_day",
+          "days_headroom"
+        ],
+        "title": "VaultOut",
         "type": "object"
       },
       "VerifyOut": {
@@ -3606,6 +3879,28 @@
         "summary": "Logout",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/overview": {
+      "get": {
+        "description": "The fleet home page: the archive's volume plus every enabled camera's\nSD card. Reads stored samples only, so a page load never calls a camera.",
+        "operationId": "get_overview_api_v1_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Overview",
+        "tags": [
+          "health"
         ]
       }
     },

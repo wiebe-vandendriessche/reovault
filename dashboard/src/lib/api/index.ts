@@ -6,6 +6,7 @@ import type { components } from './schema';
 type S = components['schemas'];
 export type Session = S['SessionOut'];
 export type Health = S['HealthOut'];
+export type Overview = S['OverviewOut'];
 export type Growth = S['GrowthOut'];
 export type Activity = S['ActivityOut'];
 export type Recording = S['RecordingOut'];

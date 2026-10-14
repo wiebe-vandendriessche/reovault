@@ -452,6 +452,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description The fleet home page: the archive's volume plus every enabled camera's
+         *     SD card. Reads stored samples only, so a page load never calls a camera.
+         */
+        get: operations["get_overview_api_v1_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/problems": {
         parameters: {
             query?: never;
@@ -924,6 +945,34 @@ export interface components {
             /** Timezone */
             timezone?: string | null;
         };
+        /**
+         * CardOut
+         * @description One camera's SD card, as `health.card_status` sees it, plus clip
+         *     counts across the card's window for the timeline strip.
+         */
+        CardOut: {
+            /** Lost Count */
+            lost_count: number;
+            /** Oldest Waiting Utc */
+            oldest_waiting_utc: string | null;
+            /** Safe For Seconds */
+            safe_for_seconds: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_mounted" | "at_risk" | "waiting" | "all_archived" | "unknown";
+            /** Timeline */
+            timeline: components["schemas"]["TimelineBucketOut"][];
+            /** Used Fraction */
+            used_fraction: number | null;
+            /** Waiting Count */
+            waiting_count: number;
+            /** Window Estimated */
+            window_estimated: boolean;
+            /** Window Start Utc */
+            window_start_utc: string | null;
+        };
         /** ChannelOut */
         ChannelOut: {
             /** Configured */
@@ -968,17 +1017,6 @@ export interface components {
         CountOut: {
             /** Count */
             count: number;
-        };
-        /** CoverageOut */
-        CoverageOut: {
-            /** Alarm */
-            alarm: boolean;
-            /** Margin Fraction */
-            margin_fraction: number | null;
-            /** Oldest On Card Utc */
-            oldest_on_card_utc: string | null;
-            /** Oldest Unarchived Utc */
-            oldest_unarchived_utc: string | null;
         };
         /** DayOut */
         DayOut: {
@@ -1111,31 +1149,52 @@ export interface components {
             /** Value */
             value: unknown;
         };
+        /** FleetCardOut */
+        FleetCardOut: {
+            /** Alias */
+            alias: string;
+            card: components["schemas"]["CardOut"];
+            /** Device Id */
+            device_id: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Gateway Down */
+            gateway_down: boolean;
+            last_run: components["schemas"]["RunOut"] | null;
+            /** Name */
+            name: string | null;
+            /** Next Archive Utc */
+            next_archive_utc: string | null;
+            /** Problems Count */
+            problems_count: number;
+            /** Running */
+            running: boolean;
+            sample: components["schemas"]["StorageSampleOut"] | null;
+        };
         /** GrowthDayOut */
         GrowthDayOut: {
             /** Bytes */
             bytes: number;
+            /** Clips */
+            clips: number;
             /** Day */
             day: string;
         };
-        /** GrowthOut */
+        /**
+         * GrowthOut
+         * @description One camera's archived footage over the last N local days, by the day
+         *     it was *recorded* (not the day a run fetched it, so a backfill doesn't
+         *     pile a week into one bar). The vault's disk lives on `/overview`.
+         */
         GrowthOut: {
-            /** Archived Bytes */
-            archived_bytes: number;
-            /** Archived Count */
-            archived_count: number;
             /** Avg Per Day */
             avg_per_day: number;
             /** Days */
             days: components["schemas"]["GrowthDayOut"][];
-            /** Days Headroom */
-            days_headroom: number | null;
-            /** Vault Cap Bytes */
-            vault_cap_bytes: number | null;
-            /** Vault Free Bytes */
-            vault_free_bytes: number | null;
-            /** Vault Used Bytes */
-            vault_used_bytes: number;
+            /** Total Bytes */
+            total_bytes: number;
+            /** Total Clips */
+            total_clips: number;
             /** Yearly Projection */
             yearly_projection: number;
         };
@@ -1147,7 +1206,7 @@ export interface components {
         /** HealthOut */
         HealthOut: {
             banner: components["schemas"]["BannerOut"] | null;
-            coverage: components["schemas"]["CoverageOut"];
+            card: components["schemas"]["CardOut"];
             /** Gateway Down */
             gateway_down: boolean;
             last_run: components["schemas"]["RunOut"] | null;
@@ -1157,7 +1216,6 @@ export interface components {
             problems_count: number;
             running: components["schemas"]["RunOut"] | null;
             sample: components["schemas"]["StorageSampleOut"] | null;
-            sd: components["schemas"]["SdBarOut"] | null;
             /**
              * Status
              * @enum {string}
@@ -1198,6 +1256,13 @@ export interface components {
             message: string;
             /** Title */
             title: string;
+        };
+        /** OverviewOut */
+        OverviewOut: {
+            banner: components["schemas"]["BannerOut"] | null;
+            /** Cards */
+            cards: components["schemas"]["FleetCardOut"][];
+            vault: components["schemas"]["VaultOut"];
         };
         /** Page[RecordingOut] */
         Page_RecordingOut_: {
@@ -1464,6 +1529,20 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** TimelineBucketOut */
+        TimelineBucketOut: {
+            /** Archived */
+            archived: number;
+            /** Quarantined */
+            quarantined: number;
+            /**
+             * Start Utc
+             * Format: date-time
+             */
+            start_utc: string;
+            /** Waiting */
+            waiting: number;
+        };
         /** TodayOut */
         TodayOut: {
             /** Archived Bytes */
@@ -1501,6 +1580,36 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VaultOut
+         * @description The archive's volume (the disk/mount `vault_dir` lives on).
+         */
+        VaultOut: {
+            /** Archive Bytes */
+            archive_bytes: number;
+            /** Avg Per Day */
+            avg_per_day: number;
+            /** Cap Bytes */
+            cap_bytes: number | null;
+            /** Clip Bytes */
+            clip_bytes: number;
+            /** Clip Count */
+            clip_count: number;
+            /** Days Headroom */
+            days_headroom: number | null;
+            /** First Start Utc */
+            first_start_utc: string | null;
+            /** Free Bytes */
+            free_bytes: number | null;
+            /** Last Start Utc */
+            last_start_utc: string | null;
+            /** Max Age Days */
+            max_age_days: number | null;
+            /** Total Bytes */
+            total_bytes: number | null;
+            /** Used Bytes */
+            used_bytes: number | null;
         };
         /** VerifyOut */
         VerifyOut: {
@@ -2339,6 +2448,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
                 };
             };
         };

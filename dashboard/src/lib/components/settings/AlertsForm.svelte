@@ -69,7 +69,7 @@
 	const toggles: { key: keyof AlertRules; label: string; desc: string }[] = [
 		{ key: 'run_failed', label: 'An archive run fails', desc: 'Or is stopped before it finishes.' },
 		{ key: 'problems', label: 'Recordings need attention', desc: 'Failed or quarantined clips.' },
-		{ key: 'coverage', label: 'Falling behind the SD card', desc: 'Unarchived clips are close to being overwritten.' },
+		{ key: 'coverage', label: 'Clips at risk on an SD card', desc: 'The card is about to overwrite clips that aren\'t archived yet.' },
 		{ key: 'gateway_down', label: 'The camera gateway is down', desc: 'After the grace period below.' }
 	];
 </script>

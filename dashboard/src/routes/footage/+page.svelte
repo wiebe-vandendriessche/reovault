@@ -148,7 +148,7 @@
 					{/if}
 				</Empty.Root>
 			{:else}
-				{#each day.data.hours as h, i (`${day.data.date}-${h.hour}-${types}`)}
+				{#each day.data.hours as h (`${day.data.date}-${h.hour}-${types}`)}
 					<HourGroup
 						device={devices.currentId}
 						date={day.data.date}
@@ -156,7 +156,7 @@
 						total={h.total}
 						size={h.bytes}
 						{types}
-						initiallyOpen={i === 0}
+						initiallyOpen={false}
 					/>
 				{/each}
 			{/if}

@@ -30,7 +30,8 @@ from reovault.db.repository import RecordingRow, Repository
 from reovault.fleet import Fleet, build_fleet
 from reovault.logging import configure_logging, get_logger
 from reovault.models import ArchiveRunResult
-from reovault.providers.base import LocalError
+from reovault.providers.base import CameraProvider, LocalError
+from reovault.providers.fake import DemoProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.providers.reolink_cli_registry import ReolinkCliRegistry
@@ -318,13 +319,17 @@ def _bootstrap(device_alias: str | None) -> _Context:
     gateway = GatewaySupervisor(
         binary=settings.reolink_cli.binary, addr=settings.reolink_cli.gateway_addr
     )
-    provider = ReolinkCliProvider(
-        alias=device.alias,
-        timezone=device.timezone,
-        binary=settings.reolink_cli.binary,
-        gateway=gateway,
-        search_timeout_secs=settings.reolink_cli.search_timeout_secs,
-        download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+    provider: CameraProvider = (
+        DemoProvider()
+        if device.provider == "fake"
+        else ReolinkCliProvider(
+            alias=device.alias,
+            timezone=device.timezone,
+            binary=settings.reolink_cli.binary,
+            gateway=gateway,
+            search_timeout_secs=settings.reolink_cli.search_timeout_secs,
+            download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+        )
     )
     archiver = Archiver(
         repository=repository,

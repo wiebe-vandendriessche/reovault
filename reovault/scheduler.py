@@ -151,14 +151,14 @@ def _run_and_sample(
         logger.exception("scheduler.storage_sample_failed", device_id=archiver.device_id)
         return
 
-    status = health.coverage_margin(repository=archiver.repository, device_id=archiver.device_id)
+    status = health.card_status(repository=archiver.repository, device_id=archiver.device_id)
     if status.alarm:
         logger.error(
             "scheduler.coverage_alarm",
             device_id=archiver.device_id,
-            margin_fraction=status.margin_fraction,
+            safe_for_seconds=status.safe_for.total_seconds() if status.safe_for else None,
             oldest_on_card_utc=status.oldest_on_card_utc,
-            oldest_unarchived_utc=status.oldest_unarchived_utc,
+            oldest_waiting_utc=status.oldest_waiting_utc,
         )
 
 

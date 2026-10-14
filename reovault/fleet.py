@@ -20,6 +20,8 @@ from reovault.archiver import Archiver
 from reovault.config import Settings
 from reovault.db.repository import DeviceRow, Repository
 from reovault.logging import get_logger
+from reovault.providers.base import CameraProvider
+from reovault.providers.fake import DemoProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.storage.vault import VaultStore
@@ -49,14 +51,22 @@ def build_archiver(
         logger.warning(
             "fleet.aborted_stale_running_run", device_id=device.id, device_alias=device.alias
         )
-    provider = ReolinkCliProvider(
-        alias=device.alias,
-        timezone=device.timezone,
-        binary=settings.reolink_cli.binary,
-        gateway=gateway,
-        search_timeout_secs=settings.reolink_cli.search_timeout_secs,
-        download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+    config = next(
+        (c for c in settings.devices if c.alias == device.alias and c.channel == device.channel),
+        None,
     )
+    provider: CameraProvider
+    if config is not None and config.provider == "fake":
+        provider = DemoProvider()
+    else:
+        provider = ReolinkCliProvider(
+            alias=device.alias,
+            timezone=device.timezone,
+            binary=settings.reolink_cli.binary,
+            gateway=gateway,
+            search_timeout_secs=settings.reolink_cli.search_timeout_secs,
+            download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+        )
     return Archiver(
         repository=repository,
         provider=provider,

@@ -222,16 +222,16 @@ def current_conditions(fleet: Fleet, repository: Repository, rules: AlertRules) 
                 )
 
         if rules.coverage:
-            cov = health.coverage_margin(repository=repository, device_id=device_id)
-            if cov.alarm:
-                pct = round((cov.margin_fraction or 0) * 100)
+            card = health.card_status(repository=repository, device_id=device_id)
+            if card.alarm:
                 out.append(
                     Condition(
                         "coverage",
                         device_id,
-                        f"{label}: falling behind the SD card",
-                        f"Only {pct}% of the card's retention window is left before "
-                        "clips that aren't archived yet get overwritten.",
+                        f"{label}: clips at risk on the SD card",
+                        f"{card.waiting_count} clip{'s' if card.waiting_count != 1 else ''} "
+                        f"not archived yet; the oldest is overwritten in about "
+                        f"{health.human_duration(card.safe_for)}.",
                     )
                 )
 

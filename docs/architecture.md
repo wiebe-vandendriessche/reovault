@@ -98,6 +98,24 @@ configurable per device or globally via `[schedule]`/`REOVAULT_SCHEDULE__*`.
 Cron expressions evaluate in each device's own configured timezone unless a
 global override is set.
 
+After every archive run the scheduler samples the camera's SD card
+(capacity, free space, mounted, and the oldest clip still on it).
+`reovault/health.py`'s `card_status` turns that sample plus the
+`recordings` table into one verdict per card, which the dashboard, the
+`coverage` alert and `/healthz?verbose=1` all share:
+
+* **Waiting**: clips on the card that aren't archived yet.
+* **Lost**: unarchived clips older than the card's oldest clip, so the card
+  has already overwritten them. Counted, never alarmed on: nothing can
+  bring them back.
+* **At risk**: the card is nearly full (under 10% free, so it's looping)
+  and the oldest waiting clip will be overwritten within 20% of the card's
+  window. Time left is `oldest waiting clip + window - now`, where the
+  window is how much footage the card holds (`now - oldest clip on the
+  card`, or capacity divided by the recent daily recording rate when the
+  oldest clip isn't known).
+* **Not mounted**: the camera reports no mounted card.
+
 ## Web dashboard
 
 Two halves, one process, one origin:
@@ -110,6 +128,12 @@ Two halves, one process, one origin:
   Tailwind v4, shadcn-svelte components), built to static files in the
   image's Node build stage. FastAPI serves those files and returns
   `index.html` for every client-side route. There is no Node at runtime.
+
+The home page (**Overview**, `GET /api/v1/overview`) is fleet-wide: the
+archive's disk and one SD card tile per camera, built only from stored
+samples so loading it never calls a camera. Every other page (Health,
+Footage, Runs, Problems) is scoped to the camera picked in the header with
+`?device=`.
 
 Password-protected single-user login: Argon2id-hashed password, a signed
 session cookie that logout revokes server-side, and a CSRF token the

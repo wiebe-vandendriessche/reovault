@@ -263,7 +263,7 @@ def create_app(
         devices_status: dict[str, Any] = {}
         for did in fleet.ids():
             try:
-                cov = health.coverage_margin(repository=repository, device_id=did)
+                cov = health.card_status(repository=repository, device_id=did)
                 devices_status[str(did)] = {"coverage_alarm": cov.alarm}
             except Exception as exc:  # noqa: BLE001
                 devices_status[str(did)] = {"coverage_alarm": f"error: {exc}"}

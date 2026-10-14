@@ -10,7 +10,7 @@
 
 	// No `color` in the config: ChartStyle would inject a <style> element for
 	// it, which the CSP refuses. Series get their color directly instead.
-	const config = { bytes: { label: 'Archived' } } satisfies Chart.ChartConfig;
+	const config = { bytes: { label: 'Footage' } } satisfies Chart.ChartConfig;
 	// Every 5th date under the bars, plus the last (today); the tooltip has all.
 	const tick = (day: string) => {
 		const i = growth.days.findIndex((d) => d.day === day);
@@ -20,10 +20,10 @@
 
 <Card.Root class="md:col-span-2">
 	<Card.Header>
-		<Card.Description>Vault growth, last {growth.days.length} days</Card.Description>
-		<Card.Title class="text-3xl tabular-nums">{bytes(growth.archived_bytes)}</Card.Title>
+		<Card.Description>Footage archived, last {growth.days.length} days</Card.Description>
+		<Card.Title class="text-3xl tabular-nums">{bytes(growth.total_bytes)}</Card.Title>
 		<Card.Action class="text-muted-foreground text-sm tabular-nums">
-			{count(growth.archived_count)} clips
+			{count(growth.total_clips)} clips
 		</Card.Action>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
@@ -35,7 +35,7 @@
 				axis="x"
 				rule={false}
 				grid={false}
-				series={[{ key: 'bytes', label: 'Archived', color: 'var(--brand)' }]}
+				series={[{ key: 'bytes', label: 'Footage', color: 'var(--brand)' }]}
 				props={{ bars: { stroke: 'none', rounded: 'top' }, xAxis: { format: tick } }}
 			>
 				{#snippet tooltip()}
@@ -47,7 +47,7 @@
 				{/snippet}
 			</BarChart>
 		</Chart.Container>
-		<dl class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+		<dl class="grid grid-cols-2 gap-4 text-sm">
 			<div>
 				<dt class="text-subtle text-xs">Per day</dt>
 				<dd class="font-medium tabular-nums">{bytes(growth.avg_per_day)}</dd>
@@ -56,21 +56,7 @@
 				<dt class="text-subtle text-xs">Per year, projected</dt>
 				<dd class="font-medium tabular-nums">{bytes(growth.yearly_projection)}</dd>
 			</div>
-			<div>
-				<dt class="text-subtle text-xs">Disk free</dt>
-				<dd class="font-medium tabular-nums">
-					{growth.vault_free_bytes == null ? '-' : bytes(growth.vault_free_bytes)}
-					{#if growth.days_headroom != null}
-						<span class="text-muted-foreground font-normal">(~{count(growth.days_headroom)} days)</span>
-					{/if}
-				</dd>
-			</div>
-			<div>
-				<dt class="text-subtle text-xs">Vault vs. retention cap</dt>
-				<dd class="font-medium tabular-nums">
-					{bytes(growth.vault_used_bytes)}{growth.vault_cap_bytes ? ` / ${bytes(growth.vault_cap_bytes)}` : ''}
-				</dd>
-			</div>
 		</dl>
+		<p class="text-subtle text-xs">By the day it was recorded. Disk space for the whole archive is on the Overview.</p>
 	</Card.Content>
 </Card.Root>

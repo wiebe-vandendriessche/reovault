@@ -48,15 +48,31 @@ One entry per camera. A list, so multi-camera setups just add more entries.
 | `channel` | int | `0` | Camera channel (multi-channel NVR-style devices). |
 | `timezone` | string | required | IANA tz name the camera's clock runs in, e.g. `America/New_York`. |
 | `name` | string | none | Display name shown in the dashboard instead of `alias`; auto-backfilled from the camera's own name once discovered if left unset. |
-
 | `enabled` | bool | `true` | `false` stops archiving this camera; its archived footage stays browsable. |
 | `schedule` | table | none | The camera's own `[devices.schedule]` (same fields as `[schedule]`); unset means it follows `[schedule]`. |
+| `provider` | `"reolink-cli"` or `"fake"` | `"reolink-cli"` | `"fake"` replaces the camera with a built-in pretend one, for trying the dashboard with several cameras. See below. |
 
 The `[[devices]]` list is the set of cameras. Adding a camera on the Devices
 page appends an entry, and turning one off writes `enabled = false`. A
 camera removed from the file is disabled, never deleted, so its footage
 stays. Cameras are matched to their archive by `alias` and `channel`, which
 is why those two can't be changed from the dashboard.
+
+A `provider = "fake"` entry needs no `reolink-cli` alias. Its "SD card" is
+a nearly full card holding a sliding week of tiny clips, one every 15
+minutes, so new clips appear and old ones roll off like on a real camera.
+About one clip in a hundred "rotates off" before it can be archived, so the
+at-risk and lost states have something to show. Its clips go through the
+real download, verification and encryption into your vault; removing the
+entry stops it, and what it archived stays like any other camera's footage.
+
+```toml
+[[devices]]
+alias = "fake"
+provider = "fake"
+timezone = "Europe/Brussels"
+name = "Test cam"
+```
 
 ## `[reolink_cli]`
 
@@ -170,8 +186,9 @@ secret).
 | `notify_on_resolve` | bool | `true` |
 
 What to alert on: a run that failed or was stopped, recordings that failed
-or were quarantined, a camera falling behind its SD card (the same coverage
-margin the Health page shows), and the camera gateway staying down longer
+or were quarantined, clips at risk of being overwritten on a camera's SD
+card before they're archived (the same "At risk" state its SD card shows
+on the Overview and Health pages), and the camera gateway staying down longer
 than `gateway_down_minutes`. An open alert is sent once, repeated every
 `renotify_hours` while it stays open, and followed by a "Resolved" message
 when it clears. A send that fails on every channel is retried on the next

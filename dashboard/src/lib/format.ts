@@ -70,3 +70,12 @@ export function shortDay(isoDate: string): string {
 export function count(n: number): string {
 	return new Intl.NumberFormat('en-US').format(n);
 }
+
+/** "2 days" / "5 hours" / "20 minutes": the one unit a reader needs. */
+export function span(secs: number | null | undefined): string {
+	if (secs == null) return '-';
+	for (const [unit, size] of [['day', 86400], ['hour', 3600], ['minute', 60]] as const) {
+		if (secs >= size) return plural(Math.round(secs / size), unit);
+	}
+	return 'under a minute';
+}

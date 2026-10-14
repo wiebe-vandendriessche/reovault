@@ -9,7 +9,7 @@ import structlog
 
 from reovault.db.repository import Repository, parse_iso_utc
 from reovault.health import (
-    coverage_margin,
+    card_status,
     record_storage_sample,
     run_integrity_scan,
 )
@@ -72,94 +72,142 @@ def test_record_storage_sample_handles_empty_card(repo, device_id):
     assert sample.oldest_recording_utc is None
 
 
-def test_coverage_margin_no_alarm_with_no_sample(repo, device_id):
-    status = coverage_margin(repository=repo, device_id=device_id)
-    assert status.alarm is False
-    assert status.margin_fraction is None
-
-
-def test_coverage_margin_no_alarm_when_fully_caught_up(repo, device_id):
-    now = datetime.now(UTC)
+def _sample(repo, device_id, *, oldest_on_card, remain_gb=0.0, mounted=True):
     repo.record_storage_sample(
         device_id=device_id,
         total_gb=1.0,
-        remain_gb=1.0,
+        remain_gb=remain_gb,
         formatted=True,
-        mounted=True,
-        oldest_recording_utc=now - timedelta(days=10),
-    )
-    # No unarchived recordings at all: nothing to be behind on.
-    status = coverage_margin(repository=repo, device_id=device_id)
-    assert status.alarm is False
-    assert status.margin_fraction is None
-
-
-def test_coverage_margin_alarms_when_backlog_close_to_horizon(repo, device_id):
-    now = datetime.now(UTC)
-    oldest_on_card = now - timedelta(days=10)
-    repo.record_storage_sample(
-        device_id=device_id,
-        total_gb=1.0,
-        remain_gb=1.0,
-        formatted=True,
-        mounted=True,
+        mounted=mounted,
         oldest_recording_utc=oldest_on_card,
     )
-    # Our oldest unarchived recording is only 1 day newer than the card's
-    # own horizon, out of a 10-day coverage span: well under the 20% margin.
-    rec = _rec("stuck", oldest_on_card + timedelta(days=1))
-    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=rec)
+
+
+def _quarantine(repo, device_id, name, start):
+    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=_rec(name, start))
     repo.mark_quarantined(rec_id, error="test", error_class=ErrorClass.PROTOCOL)
-
-    status = coverage_margin(repository=repo, device_id=device_id)
-    assert status.alarm is True
-    assert status.margin_fraction is not None
-    assert status.margin_fraction < 0.20
+    return rec_id
 
 
-def test_coverage_margin_no_alarm_when_backlog_has_headroom(repo, device_id):
+def test_card_status_unknown_for_a_fresh_camera(repo, device_id):
+    status = card_status(repository=repo, device_id=device_id)
+    assert status.state == "unknown"
+    assert status.alarm is False
+
+
+def test_card_status_all_archived_when_caught_up(repo, device_id):
+    _sample(repo, device_id, oldest_on_card=datetime.now(UTC) - timedelta(days=10))
+    status = card_status(repository=repo, device_id=device_id)
+    assert status.state == "all_archived"
+    assert status.safe_for is None
+
+
+def test_card_status_alarms_when_backlog_close_to_horizon(repo, device_id):
     now = datetime.now(UTC)
     oldest_on_card = now - timedelta(days=10)
-    repo.record_storage_sample(
-        device_id=device_id,
-        total_gb=1.0,
-        remain_gb=1.0,
-        formatted=True,
-        mounted=True,
-        oldest_recording_utc=oldest_on_card,
-    )
-    # Backlog is 9 of the 10-day span away from the horizon: plenty of margin.
-    rec = _rec("fine", oldest_on_card + timedelta(days=9))
-    repo.discover_recording(device_id=device_id, channel=0, recording=rec)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card)
+    # Our oldest unarchived clip is 1 day newer than the card's horizon on a
+    # full, 10-day card: it's overwritten in ~1 day, under the 20% margin.
+    _quarantine(repo, device_id, "stuck", oldest_on_card + timedelta(days=1))
 
-    status = coverage_margin(repository=repo, device_id=device_id)
+    status = card_status(repository=repo, device_id=device_id, now=now)
+    assert status.state == "at_risk"
+    assert status.alarm is True
+    assert status.waiting_count == 1
+    assert status.safe_for == timedelta(days=1)
+
+
+def test_card_status_waiting_with_headroom(repo, device_id):
+    now = datetime.now(UTC)
+    oldest_on_card = now - timedelta(days=10)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card)
+    repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("fine", oldest_on_card + timedelta(days=9))
+    )
+    status = card_status(repository=repo, device_id=device_id, now=now)
+    assert status.state == "waiting"
+    assert status.safe_for == timedelta(days=9)
+
+
+def test_card_status_no_deadline_on_a_card_that_isnt_full(repo, device_id):
+    """A card with room left isn't overwriting anything yet."""
+    oldest_on_card = datetime.now(UTC) - timedelta(days=10)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card, remain_gb=0.5)
+    _quarantine(repo, device_id, "stuck", oldest_on_card + timedelta(days=1))
+    status = card_status(repository=repo, device_id=device_id)
+    assert status.state == "waiting"
+    assert status.safe_for is None
+
+
+def test_card_status_counts_overwritten_clips_as_lost_not_alarm(repo, device_id):
+    """Regression: a quarantined clip the card already overwrote used to pin
+    the coverage margin at 0% and alarm forever."""
+    oldest_on_card = datetime.now(UTC) - timedelta(days=10)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card)
+    _quarantine(repo, device_id, "gone", oldest_on_card - timedelta(days=2))
+    status = card_status(repository=repo, device_id=device_id)
+    assert status.state == "all_archived"
     assert status.alarm is False
-    assert status.margin_fraction > 0.20
+    assert status.lost_count == 1
+    assert status.waiting_count == 0
+
+
+def test_card_status_estimates_window_without_oldest_clip(repo, device_id):
+    now = datetime.now(UTC)
+    _sample(repo, device_id, oldest_on_card=None)
+    # 2**30 bytes/day recorded over the last week on a 1 GiB card: ~1 day.
+    for d in range(7):
+        rec = make_recording(f"r{d}", now - timedelta(days=d, hours=1), size=2**30, raw_metadata={})
+        repo.discover_recording(device_id=device_id, channel=0, recording=rec)
+    status = card_status(repository=repo, device_id=device_id, now=now)
+    assert status.window_estimated is True
+    assert status.window == timedelta(days=1)
+
+
+def test_card_status_not_mounted(repo, device_id):
+    _sample(repo, device_id, oldest_on_card=None, mounted=False)
+    assert card_status(repository=repo, device_id=device_id).state == "not_mounted"
+
+
+def test_card_timeline_buckets_by_state(repo, device_id):
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    archived, _ = repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("a", start + timedelta(minutes=10))
+    )
+    repo.finalize_archived(
+        archived, vault_path="x.enc", plaintext_sha256="0", plaintext_size=1, ciphertext_size=1
+    )
+    repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("w", start + timedelta(hours=3))
+    )
+    _quarantine(repo, device_id, "q", start + timedelta(hours=3, minutes=59))
+
+    rows = repo.card_timeline(
+        device_id=device_id, from_utc=start, to_utc=start + timedelta(hours=4), buckets=4
+    )
+    assert [(r.archived, r.waiting, r.quarantined) for r in rows] == [
+        (1, 0, 0),
+        (0, 0, 0),
+        (0, 0, 0),
+        (0, 1, 1),
+    ]
+    assert rows[1].start_utc == start + timedelta(hours=1)
 
 
 def test_coverage_alarm_logs_on_state_change_not_every_poll(repo, device_id, monkeypatch):
     monkeypatch.setattr("reovault.health._logged_alarm", {})
     oldest_on_card = datetime.now(UTC) - timedelta(days=10)
-    repo.record_storage_sample(
-        device_id=device_id,
-        total_gb=1.0,
-        remain_gb=1.0,
-        formatted=True,
-        mounted=True,
-        oldest_recording_utc=oldest_on_card,
-    )
-    rec = _rec("stuck", oldest_on_card + timedelta(days=1))
-    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=rec)
-    repo.mark_quarantined(rec_id, error="test", error_class=ErrorClass.PROTOCOL)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card)
+    rec_id = _quarantine(repo, device_id, "stuck", oldest_on_card + timedelta(days=1))
 
     with structlog.testing.capture_logs() as logs:
         for _ in range(3):  # dashboard/healthz polling
-            assert coverage_margin(repository=repo, device_id=device_id).alarm is True
+            assert card_status(repository=repo, device_id=device_id).alarm is True
         repo.finalize_archived(
             rec_id, vault_path="x.enc", plaintext_sha256="0", plaintext_size=1, ciphertext_size=1
         )
-        assert coverage_margin(repository=repo, device_id=device_id).alarm is False
-        coverage_margin(repository=repo, device_id=device_id)
+        assert card_status(repository=repo, device_id=device_id).alarm is False
+        card_status(repository=repo, device_id=device_id)
 
     assert [e["event"] for e in logs] == [
         "health.coverage_alarm",

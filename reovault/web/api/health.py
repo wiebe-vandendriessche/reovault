@@ -44,11 +44,26 @@ class SdBarOut(BaseModel):
     other_gb: float
 
 
-class CoverageOut(BaseModel):
-    oldest_on_card_utc: datetime | None
-    oldest_unarchived_utc: datetime | None
-    margin_fraction: float | None
-    alarm: bool
+class TimelineBucketOut(BaseModel):
+    start_utc: datetime
+    archived: int
+    waiting: int
+    quarantined: int
+
+
+class CardOut(BaseModel):
+    """One camera's SD card, as `health.card_status` sees it, plus clip
+    counts across the card's window for the timeline strip."""
+
+    state: health.CardState
+    waiting_count: int
+    lost_count: int
+    oldest_waiting_utc: datetime | None
+    window_start_utc: datetime | None
+    window_estimated: bool
+    safe_for_seconds: float | None
+    used_fraction: float | None
+    timeline: list[TimelineBucketOut]
 
 
 class BannerOut(BaseModel):
@@ -68,9 +83,8 @@ class HealthOut(BaseModel):
     running: RunOut | None
     last_run: RunOut | None
     next_archive_utc: datetime | None
-    coverage: CoverageOut
+    card: CardOut
     sample: StorageSampleOut | None
-    sd: SdBarOut | None
     gateway_down: bool
     problems_count: int
     banner: BannerOut | None
@@ -80,18 +94,56 @@ class HealthOut(BaseModel):
 class GrowthDayOut(BaseModel):
     day: str
     bytes: int
+    clips: int
 
 
 class GrowthOut(BaseModel):
-    archived_count: int
-    archived_bytes: int
+    """One camera's archived footage over the last N local days, by the day
+    it was *recorded* (not the day a run fetched it, so a backfill doesn't
+    pile a week into one bar). The vault's disk lives on `/overview`."""
+
     days: list[GrowthDayOut]
+    total_bytes: int
+    total_clips: int
     avg_per_day: float
     yearly_projection: float
-    vault_free_bytes: int | None
+
+
+class VaultOut(BaseModel):
+    """The archive's volume (the disk/mount `vault_dir` lives on)."""
+
+    total_bytes: int | None
+    used_bytes: int | None  # everything on the volume, ReoVault included
+    free_bytes: int | None
+    archive_bytes: int  # ReoVault's encrypted clips
+    cap_bytes: int | None  # retention.max_vault_gb
+    max_age_days: int | None
+    clip_count: int
+    clip_bytes: int  # plaintext, what the clips play back as
+    first_start_utc: datetime | None
+    last_start_utc: datetime | None
+    avg_per_day: float  # archived bytes/day over the last 30 days, fleet-wide
     days_headroom: int | None
-    vault_cap_bytes: int | None
-    vault_used_bytes: int
+
+
+class FleetCardOut(BaseModel):
+    device_id: int
+    alias: str
+    name: str | None
+    enabled: bool
+    card: CardOut
+    sample: StorageSampleOut | None
+    running: bool
+    last_run: RunOut | None
+    next_archive_utc: datetime | None
+    gateway_down: bool
+    problems_count: int
+
+
+class OverviewOut(BaseModel):
+    banner: BannerOut | None
+    vault: VaultOut
+    cards: list[FleetCardOut]
 
 
 class TypeDayOut(BaseModel):
@@ -135,6 +187,41 @@ def sample_out(sample: StorageSampleRow | None) -> StorageSampleOut | None:
         formatted=sample.formatted,
         mounted=sample.mounted,
         sampled_at=parse_iso_utc(sample.sampled_at),
+    )
+
+
+TIMELINE_BUCKETS = 48
+
+
+def card_out(st: AppState, device_id: int) -> tuple[health.CardStatus, CardOut]:
+    now = utcnow()
+    card = health.card_status(repository=st.repo, device_id=device_id, now=now)
+    start = card.oldest_on_card_utc or (now - card.window if card.window else None)
+    timeline = (
+        st.repo.card_timeline(
+            device_id=device_id, from_utc=start, to_utc=now, buckets=TIMELINE_BUCKETS
+        )
+        if start
+        else []
+    )
+    return card, CardOut(
+        state=card.state,
+        waiting_count=card.waiting_count,
+        lost_count=card.lost_count,
+        oldest_waiting_utc=card.oldest_waiting_utc,
+        window_start_utc=start,
+        window_estimated=card.window_estimated,
+        safe_for_seconds=card.safe_for.total_seconds() if card.safe_for is not None else None,
+        used_fraction=card.used_fraction,
+        timeline=[
+            TimelineBucketOut(
+                start_utc=b.start_utc,
+                archived=b.archived,
+                waiting=b.waiting,
+                quarantined=b.quarantined,
+            )
+            for b in timeline
+        ],
     )
 
 
@@ -186,18 +273,18 @@ def _status(last_run: RunRow | None, running: RunRow | None) -> Level:
 
 
 def _banner(
-    sample: StorageSampleRow | None,
-    coverage: health.CoverageStatus,
+    card: health.CardStatus,
     is_gateway_down: bool,
     problems: int,
 ) -> BannerOut | None:
-    if sample is not None and sample.mounted is False:
+    if card.state == "not_mounted":
         return BannerOut(level="bad", text="The SD card is not mounted.")
-    if coverage.alarm:
-        pct = round((coverage.margin_fraction or 0) * 100)
+    if card.alarm:
+        n = card.waiting_count
         return BannerOut(
             level="warn",
-            text=f"Falling behind: only {pct}% of the card's retention window is left.",
+            text=f"{n} clip{'s' if n != 1 else ''} not archived yet; the oldest is overwritten "
+            f"in about {health.human_duration(card.safe_for)}.",
         )
     if is_gateway_down:
         return BannerOut(level="warn", text="The camera gateway is unreachable.")
@@ -215,7 +302,7 @@ def _banner(
 def get_health(dev: Device, st: State) -> HealthOut:
     repo = st.repo
     totals = repo.totals(dev.device_id)
-    coverage = health.coverage_margin(repository=repo, device_id=dev.device_id)
+    card, card_o = card_out(st, dev.device_id)
     sample = repo.latest_storage_sample(dev.device_id)
     running = repo.running_run(dev.device_id)
     last_run = repo.last_finished_run(dev.device_id)
@@ -232,53 +319,122 @@ def get_health(dev: Device, st: State) -> HealthOut:
         running=run_out(st, running) if running else None,
         last_run=run_out(st, last_run) if last_run else None,
         next_archive_utc=times.get("scheduled_archive"),
-        coverage=CoverageOut(
-            oldest_on_card_utc=coverage.oldest_on_card_utc,
-            oldest_unarchived_utc=coverage.oldest_unarchived_utc,
-            margin_fraction=coverage.margin_fraction,
-            alarm=coverage.alarm,
-        ),
+        card=card_o,
         sample=sample_out(sample),
-        sd=sd_bar(sample, on_card(st, dev.device_id, totals.first_start_utc)),
         gateway_down=is_down,
         problems_count=problems,
-        banner=_banner(sample, coverage, is_down, problems),
+        banner=_banner(card, is_down, problems),
         today=TodayOut(date=today.isoformat(), count=count, archived_bytes=archived_bytes),
+    )
+
+
+@router.get("/overview")
+def get_overview(st: State) -> OverviewOut:
+    """The fleet home page: the archive's volume plus every enabled camera's
+    SD card. Reads stored samples only, so a page load never calls a camera."""
+    repo = st.repo
+    now = utcnow()
+    times = next_run_times(st.scheduler) if st.scheduler else {}
+    cards: list[FleetCardOut] = []
+    banners: list[BannerOut] = []
+    clip_count = clip_bytes = recent_bytes = 0
+    first: str | None = None
+    last: str | None = None
+    for d in repo.list_devices(enabled_only=True):
+        totals = repo.totals(d.id)
+        clip_count += totals.archived_count
+        clip_bytes += totals.archived_plaintext_bytes
+        first = min(filter(None, (first, totals.first_start_utc)), default=None)
+        last = max(filter(None, (last, totals.last_start_utc)), default=None)
+        recent_bytes += sum(
+            r.bytes_archived
+            for r in repo.runs_per_day(
+                device_id=d.id, from_utc=now - timedelta(days=30), to_utc=now, tz=d.timezone
+            )
+        )
+        archiver = st.fleet.get(d.id)
+        is_down = (
+            archiver is not None
+            and isinstance(archiver.provider, ReolinkCliProvider)
+            and not archiver.provider.gateway.is_listening()
+        )
+        card, card_o = card_out(st, d.id)
+        running = repo.running_run(d.id)
+        last_run = repo.last_finished_run(d.id)
+        problems = totals.failed_count + totals.quarantined_count
+        banner = _banner(card, is_down, problems)
+        if banner is not None:
+            banners.append(
+                banner.model_copy(update={"text": f"{d.name or d.alias}: {banner.text}"})
+            )
+        cards.append(
+            FleetCardOut(
+                device_id=d.id,
+                alias=d.alias,
+                name=d.name,
+                enabled=d.enabled,
+                card=card_o,
+                sample=sample_out(repo.latest_storage_sample(d.id)),
+                running=running is not None,
+                last_run=run_out(st, last_run) if last_run else None,
+                next_archive_utc=times.get(d.id, {}).get("scheduled_archive"),
+                gateway_down=is_down,
+                problems_count=problems,
+            )
+        )
+    try:
+        usage = shutil.disk_usage(st.settings.storage.vault_dir)
+    except OSError:
+        usage = None
+    policy = st.settings.retention
+    avg = recent_bytes / 30
+    return OverviewOut(
+        banner=max(banners, key=lambda b: b.level == "bad", default=None),
+        vault=VaultOut(
+            total_bytes=usage.total if usage else None,
+            used_bytes=usage.used if usage else None,
+            free_bytes=usage.free if usage else None,
+            archive_bytes=repo.archived_ciphertext_total(),
+            cap_bytes=(
+                int(policy.max_vault_gb * retention_policy.GB) if policy.max_vault_gb else None
+            ),
+            max_age_days=policy.max_age_days,
+            clip_count=clip_count,
+            clip_bytes=clip_bytes,
+            first_start_utc=parse_iso_utc(first) if first else None,
+            last_start_utc=parse_iso_utc(last) if last else None,
+            avg_per_day=avg,
+            days_headroom=int(usage.free / avg) if usage and avg > 0 else None,
+        ),
+        cards=cards,
     )
 
 
 @router.get("/growth")
 def get_growth(dev: Device, st: State, days: int = 30) -> GrowthOut:
     days = max(1, min(days, 366))
-    repo = st.repo
-    policy = st.settings.retention
-    totals = repo.totals(dev.device_id)
-    # Local days and labels: `runs_per_day` buckets by local date, so UTC
-    # labels would shift every bar by a day around midnight.
     local_days, from_utc = _local_window(dev, days)
-    series = repo.runs_per_day(
-        device_id=dev.device_id, from_utc=from_utc, to_utc=utcnow(), tz=dev.tz
-    )
-    by_day = {r.day: r.bytes_archived for r in series}
-    day_list = [d.isoformat() for d in local_days]
-    values = [by_day.get(d, 0) for d in day_list]
-    avg = sum(values) / days
-    try:
-        free: int | None = shutil.disk_usage(st.settings.storage.vault_dir).free
-    except OSError:
-        free = None
+    by_day = {
+        r.day: r
+        for r in st.repo.day_buckets(
+            device_id=dev.device_id, from_utc=from_utc, to_utc=utcnow(), tz=dev.tz
+        )
+    }
+    out = [
+        GrowthDayOut(
+            day=d.isoformat(),
+            bytes=b.bytes if (b := by_day.get(d.isoformat())) else 0,
+            clips=b.archived if b else 0,
+        )
+        for d in local_days
+    ]
+    total = sum(d.bytes for d in out)
     return GrowthOut(
-        archived_count=totals.archived_count,
-        archived_bytes=totals.archived_plaintext_bytes,
-        days=[GrowthDayOut(day=d, bytes=v) for d, v in zip(day_list, values, strict=True)],
-        avg_per_day=avg,
-        yearly_projection=avg * 365,
-        vault_free_bytes=free,
-        days_headroom=int(free / avg) if free is not None and avg > 0 else None,
-        vault_cap_bytes=(
-            int(policy.max_vault_gb * retention_policy.GB) if policy.max_vault_gb else None
-        ),
-        vault_used_bytes=repo.archived_ciphertext_total(),
+        days=out,
+        total_bytes=total,
+        total_clips=sum(d.clips for d in out),
+        avg_per_day=total / days,
+        yearly_projection=total / days * 365,
     )
 
 

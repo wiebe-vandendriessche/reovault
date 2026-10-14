@@ -17,6 +17,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { cn } from '$lib/utils';
 	import Activity from '@lucide/svelte/icons/activity';
+	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import Video from '@lucide/svelte/icons/video';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -32,7 +33,7 @@
 	let { children } = $props();
 
 	const scoped = [
-		{ href: '/', label: 'Health', icon: Activity, desc: "Status, coverage, and today's footage." },
+		{ href: '/health', label: 'Health', icon: Activity, desc: "This camera's SD card, runs, and today's footage." },
 		{ href: '/footage', label: 'Footage', icon: Video, desc: 'Browse and play archived clips.' },
 		{ href: '/runs', label: 'Runs', icon: ListChecks, desc: 'History of every archive run.' },
 		{
@@ -42,6 +43,7 @@
 			desc: 'Recordings that need attention.'
 		}
 	];
+	const home = { href: '/', label: 'Overview', icon: LayoutDashboard, desc: 'The archive disk and every SD card.' };
 	const fleet = [
 		{ href: '/devices', label: 'Devices', icon: Cctv, desc: 'Cameras, their settings, and adding one.' },
 		{ href: '/settings', label: 'Settings', icon: Settings, desc: 'Schedule, retention, alerts, system.' }
@@ -129,27 +131,18 @@
 					<img src="/icons/wordmark-light.png" alt="ReoVault" class="block h-7 w-auto dark:hidden" />
 				</a>
 
-				<nav class="hidden items-center gap-1 lg:flex" aria-label="Camera">
-					{#each scoped as item (item.href)}
-						<a
-							href={item.href}
-							aria-current={active(item.href) ? 'page' : undefined}
-							class={cn(
-								'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
-								active(item.href) && 'bg-muted text-foreground'
-							)}
-						>
-							<item.icon class="size-4" />
-							{item.label}
-							{#if item.href === '/problems' && problems.data?.count}
-								<span class="bg-bad text-background rounded-full px-1.5 text-xs font-semibold tabular-nums">
-									{problems.data.count}
-								</span>
-							{/if}
-						</a>
-					{/each}
-				</nav>
-
+				<a
+					href={home.href}
+					aria-current={active(home.href) ? 'page' : undefined}
+					class={cn(
+						'text-muted-foreground hover:text-foreground hover:bg-muted hidden h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors lg:flex',
+						active(home.href) && 'bg-muted text-foreground'
+					)}
+				>
+					<home.icon class="size-4" />
+					{home.label}
+				</a>
+				<div class="bg-border hidden h-6 w-px lg:block" aria-hidden="true"></div>
 				{#if devices.list.length > 1 && current}
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
@@ -175,6 +168,27 @@
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				{/if}
+				<nav class="hidden items-center gap-1 lg:flex" aria-label="Camera">
+					{#each scoped as item (item.href)}
+						<a
+							href={item.href}
+							aria-current={active(item.href) ? 'page' : undefined}
+							class={cn(
+								'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+								active(item.href) && 'bg-muted text-foreground'
+							)}
+						>
+							<item.icon class="size-4" />
+							{item.label}
+							{#if item.href === '/problems' && problems.data?.count}
+								<span class="bg-bad text-background rounded-full px-1.5 text-xs font-semibold tabular-nums">
+									{problems.data.count}
+								</span>
+							{/if}
+						</a>
+					{/each}
+				</nav>
+
 
 				<div class="ml-auto flex items-center gap-1">
 					<nav class="hidden items-center gap-1 lg:flex" aria-label="Fleet">
@@ -217,7 +231,7 @@
 								<Sheet.Title>Menu</Sheet.Title>
 							</Sheet.Header>
 							<nav class="flex flex-col gap-1 px-4">
-								{#each [...scoped, ...fleet] as item (item.href)}
+								{#each [home, ...scoped, ...fleet] as item (item.href)}
 									<a
 										href={item.href}
 										onclick={() => (menuOpen = false)}

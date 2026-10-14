@@ -114,8 +114,8 @@ builds and starts it; everything else above stays the same.
 ## Alerts
 
 ReoVault can tell you when archiving needs attention: a failed run, recordings
-that failed or were quarantined, a camera falling behind its SD card, or the
-camera gateway being down. Channels are configured in `reovault.toml` (or
+that failed or were quarantined, clips on a camera's SD card at risk of being
+overwritten before they're archived, or the camera gateway being down. Channels are configured in `reovault.toml` (or
 `REOVAULT_ALERTS__*` env vars), with anything secret in a file, the same way
 as the master passphrase:
 

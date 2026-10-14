@@ -67,3 +67,31 @@ def test_list_error_raises_once_then_clears():
         )
         == []
     )
+
+
+def test_demo_provider_card_slides_with_the_clock(tmp_path):
+    from datetime import timedelta
+
+    from reovault.providers.base import RecordingGoneError
+    from reovault.providers.fake import DemoProvider
+
+    now = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+    demo = DemoProvider(now=lambda: now)
+    week = demo.list_recordings(from_utc=now - timedelta(days=30), to_utc=now)
+    assert len(week) == 7 * 24 * 4 + 1  # one per 15 min, both ends included
+    assert week[0].start_utc == now - timedelta(days=7)
+
+    later = now + timedelta(hours=1)
+    demo.now = lambda: later
+    moved = demo.list_recordings(from_utc=later - timedelta(days=30), to_utc=later)
+    assert moved[0].start_utc == week[4].start_utc  # 4 oldest clips rolled off
+    assert moved[-1].start_utc == later
+
+    def is_gone(r):
+        return round(r.start_utc.timestamp() / 900) % demo.gone_every == 0
+
+    gone = next(r for r in moved if is_gone(r))
+    with pytest.raises(RecordingGoneError):
+        demo.fetch(gone, str(tmp_path / "g.mp4"))
+    kept = next(r for r in moved if not is_gone(r))
+    assert demo.fetch(kept, str(tmp_path / "k.mp4")).bytes_written == kept.remote_size

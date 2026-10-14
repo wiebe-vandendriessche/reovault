@@ -35,6 +35,10 @@ npm run build      # static output in dashboard/build
 To have `reovault daemon` itself serve a local build (what the image does):
 `rm -rf reovault/web/dist && cp -r dashboard/build reovault/web/dist`.
 
+Only one real camera? Add a `provider = "fake"` entry to `[[devices]]` to get
+a second, pretend camera with a sliding week of tiny clips (see
+[Configuration](https://wiebe-vandendriessche.github.io/reovault/configuration/#devices)).
+
 After changing an API route or model, regenerate the client types and
 commit both files (CI fails if either is stale):
 

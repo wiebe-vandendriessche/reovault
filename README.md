@@ -19,16 +19,16 @@ Full docs (installation, configuration reference, CLI reference, architecture): 
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-health.png" alt="Health: archive status, today's footage, manual runs, coverage margin, SD card usage, vault growth" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: the archive's disk (ReoVault's share, free space, room left, retention) and one tile per camera's SD card with its fill, a timeline of archived, waiting and failed clips, and a verdict" /></td>
+<td width="50%"><img src="img/screenshot-health.png" alt="Health, per camera: its SD card, its runs, today's footage, and manual runs" /></td>
+</tr>
+<tr>
 <td width="50%"><img src="img/screenshot-footage.png" alt="Footage: month calendar with activity per day, clips grouped by hour, filterable by detection type, with export" /></td>
-</tr>
-<tr>
 <td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, a test send, and which conditions alert" /></td>
-<td width="50%"><img src="img/screenshot-login.png" alt="Login screen" /></td>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
+<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and which conditions alert" /></td>
 </tr>
 </table>
 
@@ -68,13 +68,14 @@ Everything in `reovault.toml` is editable on the dashboard's Settings page, whic
 
 The container serves the dashboard on port 8080: a Svelte single-page app on a typed JSON API, updated live over Server-Sent Events, installable as a PWA (Add to Home Screen) on a phone. It's password-protected (`reovault web set-password`) and covers:
 
-* **Health**: is everything archived, is there room for it, vault growth and detections per type over the last 30 days, and run now, backfill or check the vault on demand, with live progress while a run is going.
+* **Overview** (home): the archive's disk (ReoVault's share, free space and how long it lasts at the current rate) and one tile per camera's SD card: how full it is, a timeline of what's on it coloured by archived, waiting or failed, and a plain verdict such as "All archived" or "At risk: the oldest unarchived clip is overwritten in about 22 hours".
+* **Health** (per camera): that camera's SD card, its runs, today's footage, footage archived and detections per type over the last 30 days, and run now, backfill or check the vault on demand, with live progress while a run is going.
 * **Footage**: date-first browsing (a month calendar drills into a day grouped by hour), filtered by detection type, with per-day counts on hover. On a phone, clips open in a bottom-sheet player that steps through the hour. Clips play straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to, and a date range downloads as one zip.
 * **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry for one or all of them.
 * **Devices**: every camera with its status, adding one from LAN discovery, turning archiving on or off, and editing its name, timezone and (optionally) its own schedule.
 * **Settings**: the app-wide part of `reovault.toml`: the default schedule, retention, alerts, and the web and system settings.
 
-**Alerts** go out over ntfy, a webhook (Slack and Discord URLs work as-is) or email when a run fails, recordings need attention, a camera falls behind its SD card, or the camera gateway is down. See [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/#alerts).
+**Alerts** go out over ntfy, a webhook (Slack and Discord URLs work as-is) or email when a run fails, recordings need attention, clips on a camera's SD card are at risk of being overwritten before they're archived, or the camera gateway is down. See [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/#alerts).
 
 See [Security](https://wiebe-vandendriessche.github.io/reovault/security/#deployment-modes) for the `[web]` settings each deployment mode (reverse proxy vs. direct port) needs, and [Architecture](https://wiebe-vandendriessche.github.io/reovault/architecture/) for the full design.
 

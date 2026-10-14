@@ -185,3 +185,18 @@ def test_disabling_the_only_camera_is_a_recoverable_409_not_a_500(
     devices = client.get("/api/v1/devices")
     assert devices.status_code == 200
     assert [d["enabled"] for d in devices.json()["devices"]] == [False]
+
+
+def test_overview_reports_the_vault_and_every_card(env, web_settings, web_password_hash):
+    """The fleet home page isn't `?device=`-scoped: one vault, one card per
+    enabled camera."""
+    app, device_b_id = _two_device_app(env, web_settings)
+    client = _client(app)
+
+    r = client.get("/api/v1/overview")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert {c["device_id"] for c in body["cards"]} == {env.device_id, device_b_id}
+    assert all(c["card"]["state"] == "unknown" for c in body["cards"])
+    assert body["vault"]["clip_count"] == 0

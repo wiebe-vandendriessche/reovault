@@ -27,7 +27,7 @@
 
 <Card.Root>
 	<Card.Header>
-		<Card.Description>Archive status</Card.Description>
+		<Card.Description>Runs</Card.Description>
 		<Card.Title class="text-xl leading-snug">{verdict}</Card.Title>
 		<Card.Action>
 			<StatusBadge level={health.status}>{health.running ? 'Running' : label[health.status]}</StatusBadge>

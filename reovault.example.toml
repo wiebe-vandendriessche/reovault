@@ -29,6 +29,15 @@ name = "Back yard"
 # [devices.schedule]
 # archive_cron = "30 6 * * *"
 
+# A pretend camera for trying the dashboard with several devices: no
+# reolink-cli needed, it serves a sliding week of tiny clips, some of which
+# "rotate off" before they can be archived.
+# [[devices]]
+# alias = "fake"
+# provider = "fake"
+# timezone = "Europe/Brussels"
+# name = "Test cam"
+
 [reolink_cli]
 binary = "reolink-cli"
 pinned_version = "0.19.0"

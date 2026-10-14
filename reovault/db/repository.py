@@ -182,6 +182,21 @@ class TotalsRow:
 
 
 @dataclass(frozen=True, slots=True)
+class CardBacklogRow:
+    waiting_count: int
+    oldest_waiting_utc: datetime | None
+    lost_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TimelineBucketRow:
+    start_utc: datetime
+    archived: int
+    waiting: int
+    quarantined: int
+
+
+@dataclass(frozen=True, slots=True)
 class OnCardBytesRow:
     """What the SD card's retention window (from the latest storage
     sample's `oldest_recording_utc`) is known to hold, split by archive
@@ -873,6 +888,77 @@ class Repository:
             (device_id,),
         )
         return parse_iso_utc(row["oldest"]) if row and row["oldest"] else None
+
+    def card_backlog(self, device_id: int, boundary_utc: datetime | None) -> CardBacklogRow:
+        """Unarchived recordings split at the card's oldest clip: at or after
+        it they're still on the card (`waiting`), before it the card has
+        overwritten them (`lost`). No boundary: everything counts as
+        waiting."""
+        boundary = _iso(boundary_utc) if boundary_utc else ""
+        row = self._fetchone(
+            """
+            SELECT SUM(start_utc >= ?) AS waiting,
+                   MIN(CASE WHEN start_utc >= ? THEN start_utc END) AS oldest_waiting,
+                   SUM(start_utc < ?) AS lost
+            FROM recordings
+            WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
+            """,
+            (boundary, boundary, boundary, device_id),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return CardBacklogRow(
+            waiting_count=row["waiting"] or 0,
+            oldest_waiting_utc=(
+                parse_iso_utc(row["oldest_waiting"]) if row["oldest_waiting"] else None
+            ),
+            lost_count=row["lost"] or 0,
+        )
+
+    def recorded_bytes_since(self, device_id: int, since_utc: datetime) -> int:
+        """What the camera wrote to its card since `since_utc`, by its own
+        reported `remote_size`, in any archive state."""
+        row = self._fetchone(
+            """
+            SELECT COALESCE(SUM(remote_size), 0) AS b FROM recordings
+            WHERE device_id = ? AND start_utc >= ?
+            """,
+            (device_id, _iso(since_utc)),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["b"])
+
+    def card_timeline(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime, buckets: int
+    ) -> list[TimelineBucketRow]:
+        """Clip counts per equal time slice of `[from_utc, to_utc)`, split
+        archived (incl. pruned) / waiting / quarantined. Every bucket is
+        returned, empty ones as zeroes. Served by `idx_rec_start`."""
+        span = (to_utc - from_utc).total_seconds()
+        if span <= 0 or buckets <= 0:
+            return []
+        rows = self._fetchall(
+            """
+            SELECT CAST((julianday(start_utc) - julianday(?)) * 86400.0 / ? AS INTEGER) AS b,
+                   SUM(state IN ('archived', 'pruned')) AS archived,
+                   SUM(state NOT IN ('archived', 'pruned', 'quarantined')) AS waiting,
+                   SUM(state = 'quarantined') AS quarantined
+            FROM recordings
+            WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+            GROUP BY b
+            """,
+            (_iso(from_utc), span / buckets, device_id, _iso(from_utc), _iso(to_utc)),
+        )
+        by_bucket = {min(int(r["b"]), buckets - 1): r for r in rows}
+        step = (to_utc - from_utc) / buckets
+        return [
+            TimelineBucketRow(
+                start_utc=from_utc + step * i,
+                archived=int(r["archived"]) if (r := by_bucket.get(i)) else 0,
+                waiting=int(r["waiting"]) if r else 0,
+                quarantined=int(r["quarantined"]) if r else 0,
+            )
+            for i in range(buckets)
+        ]
 
     def sample_for_integrity_scan(
         self, *, device_id: int, bucket_count: int, bucket_index: int

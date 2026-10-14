@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -54,6 +54,10 @@ class DeviceConfig(BaseModel):
     schedule: ScheduleConfig | None = None
     """This camera's own `[devices.schedule]`; unset means it follows the
     global `[schedule]`."""
+    provider: Literal["reolink-cli", "fake"] = "reolink-cli"
+    """`fake` swaps the camera for `providers.fake.DemoProvider`, a pretend
+    camera with a sliding window of tiny clips, for trying the dashboard
+    with several devices. Never needs `reolink-cli device add`."""
 
 
 class ReolinkCliConfig(BaseModel):
