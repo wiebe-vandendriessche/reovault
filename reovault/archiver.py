@@ -38,12 +38,22 @@ MAX_BACKOFF_SECS = 6 * 3600
 JITTER_FRACTION = 0.25
 
 # How many attempts a class gets before escalating from `failed` (retryable)
-# to `quarantined` (needs a human). Input and protocol errors have no entry:
-# they quarantine on the first failure.
+# to `quarantined` (needs a human). Input errors have no entry: they
+# quarantine on the first failure. A `ProtocolError` is never retryable
+# either; the protocol entry only applies to size mismatches (see
+# `_handle_size_mismatch`).
 _MAX_ATTEMPTS: dict[ErrorClass, int] = {
     ErrorClass.NETWORK: 8,
     ErrorClass.DEVICE: 2,
+    ErrorClass.PROTOCOL: 3,
 }
+
+# A short download gets one more try after this pause, inside the same
+# attempt, before it counts as failed. In production (reolink-cli 0.19.0, a
+# doorbell), `vod download` exited 0 with a truncated file about 2s into the
+# download right after a large one; the guess, unverified, is that the
+# camera hadn't closed the previous VOD session yet.
+_SIZE_MISMATCH_RETRY_PAUSE_SECS = 10.0
 
 # Live progress is written at most this often: once per clip would be one
 # extra SQLite write per file on a fast LAN for no visible benefit.
@@ -279,17 +289,29 @@ class Archiver:
         staging_path = staging_run_dir / rec.remote_name
         staging_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
-            fetch_result = self.provider.fetch(rec, str(staging_path))  # step 3
-        except ProviderError as exc:
-            self._handle_provider_failure(row_id, exc, result)
-            return
-        except OSError as exc:
-            result.error = str(exc)
-            raise _AbortRun(str(exc)) from exc
-
-        if rec.remote_size is not None and fetch_result.bytes_written != rec.remote_size:
+        for pause in (0.0, _SIZE_MISMATCH_RETRY_PAUSE_SECS):
+            time.sleep(pause)
+            try:
+                fetch_result = self.provider.fetch(rec, str(staging_path))  # step 3
+            except ProviderError as exc:
+                self._handle_provider_failure(row_id, exc, result)
+                return
+            except OSError as exc:
+                result.error = str(exc)
+                raise _AbortRun(str(exc)) from exc
+            if rec.remote_size is None or fetch_result.bytes_written == rec.remote_size:
+                break
+            # Never hand a partial file to a retry: whether `vod download -o`
+            # overwrites an existing file is unverified.
             staging_path.unlink(missing_ok=True)
+            logger.warning(
+                "archiver.size_mismatch",
+                recording_id=row_id,
+                remote_name=rec.remote_name,
+                actual=fetch_result.bytes_written,
+                expected=rec.remote_size,
+            )
+        else:  # came up short on both tries
             self._handle_size_mismatch(row_id, rec, fetch_result.bytes_written, result)
             return
 
@@ -384,13 +406,14 @@ class Archiver:
         self, row_id: int, rec: RemoteRecording, actual: int, result: ArchiveRunResult
     ) -> None:
         message = f"downloaded {actual} bytes, expected {rec.remote_size} (remote_size)"
-        result.failed += 1
-        result.errors.append(message)
-        # A silent, persistent size mismatch on the same recording points at
-        # something structural (protocol drift), not a transient network
-        # blip, so it's classified like a protocol error: quarantine, don't
-        # retry-loop.
-        self.repository.mark_quarantined(row_id, error=message, error_class=ErrorClass.PROTOCOL)
+        # One short download is a transient fault (seen in production after
+        # large downloads, with `vod download` still exiting 0), so it backs
+        # off and retries. Only one that persists across attempts points at
+        # something structural (protocol drift), hence the protocol class
+        # and its small budget in `_MAX_ATTEMPTS`.
+        self._handle_provider_failure(
+            row_id, ProviderError(message, ErrorClass.PROTOCOL, retryable=True), result
+        )
 
     def _finish(
         self,

@@ -5,6 +5,7 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import structlog
 
 from reovault.db.repository import Repository, parse_iso_utc
 from reovault.health import (
@@ -134,6 +135,36 @@ def test_coverage_margin_no_alarm_when_backlog_has_headroom(repo, device_id):
     status = coverage_margin(repository=repo, device_id=device_id)
     assert status.alarm is False
     assert status.margin_fraction > 0.20
+
+
+def test_coverage_alarm_logs_on_state_change_not_every_poll(repo, device_id, monkeypatch):
+    monkeypatch.setattr("reovault.health._logged_alarm", {})
+    oldest_on_card = datetime.now(UTC) - timedelta(days=10)
+    repo.record_storage_sample(
+        device_id=device_id,
+        total_gb=1.0,
+        remain_gb=1.0,
+        formatted=True,
+        mounted=True,
+        oldest_recording_utc=oldest_on_card,
+    )
+    rec = _rec("stuck", oldest_on_card + timedelta(days=1))
+    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=rec)
+    repo.mark_quarantined(rec_id, error="test", error_class=ErrorClass.PROTOCOL)
+
+    with structlog.testing.capture_logs() as logs:
+        for _ in range(3):  # dashboard/healthz polling
+            assert coverage_margin(repository=repo, device_id=device_id).alarm is True
+        repo.finalize_archived(
+            rec_id, vault_path="x.enc", plaintext_sha256="0", plaintext_size=1, ciphertext_size=1
+        )
+        assert coverage_margin(repository=repo, device_id=device_id).alarm is False
+        coverage_margin(repository=repo, device_id=device_id)
+
+    assert [e["event"] for e in logs] == [
+        "health.coverage_alarm",
+        "health.coverage_alarm_cleared",
+    ]
 
 
 def test_integrity_scan_checks_a_rotating_slice(repo, device_id, tmp_path):

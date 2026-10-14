@@ -27,6 +27,10 @@ DEFAULT_COVERAGE_MARGIN = 0.20
 # that (unplugged for a week) makes the oldest look more recent than it is,
 # which errs toward the coverage alarm firing early, never late.
 EMPTY_DAYS_TO_STOP = 3
+# Alarm state last logged, per device. `coverage_margin` is polled by
+# /healthz, the dashboard and alert evaluation, so it logs when the alarm
+# turns on or off, not on every call.
+_logged_alarm: dict[int, bool] = {}
 # Hard stop for the walk: far beyond any real SD card's retention.
 FULL_SCAN_LOOKBACK_DAYS = 3650
 
@@ -95,6 +99,7 @@ def coverage_margin(
 
     if oldest_on_card is None or oldest_unarchived is None:
         # Nothing to be behind on yet (fully caught up, or no sample taken).
+        _log_alarm_change(device_id, False)
         return CoverageStatus(oldest_on_card, oldest_unarchived, None, alarm=False)
 
     now = datetime.now(UTC)
@@ -105,16 +110,25 @@ def coverage_margin(
     remaining_buffer = (oldest_unarchived - oldest_on_card).total_seconds()
     fraction = max(remaining_buffer, 0.0) / coverage_span
     alarm = fraction <= margin
-    if alarm:
-        logger.error(
-            "health.coverage_alarm",
-            device_id=device_id,
-            margin_fraction=fraction,
-            configured_margin=margin,
-            oldest_on_card_utc=oldest_on_card.isoformat(),
-            oldest_unarchived_utc=oldest_unarchived.isoformat(),
-        )
+    _log_alarm_change(
+        device_id,
+        alarm,
+        margin_fraction=fraction,
+        configured_margin=margin,
+        oldest_on_card_utc=oldest_on_card.isoformat(),
+        oldest_unarchived_utc=oldest_unarchived.isoformat(),
+    )
     return CoverageStatus(oldest_on_card, oldest_unarchived, fraction, alarm=alarm)
+
+
+def _log_alarm_change(device_id: int, alarm: bool, **fields: object) -> None:
+    if alarm == _logged_alarm.get(device_id, False):
+        return
+    _logged_alarm[device_id] = alarm
+    if alarm:
+        logger.error("health.coverage_alarm", device_id=device_id, **fields)
+    else:
+        logger.info("health.coverage_alarm_cleared", device_id=device_id)
 
 
 def _parse_or_none(s: str) -> datetime | None:

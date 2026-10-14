@@ -19,7 +19,11 @@ onto one zone regardless of where each camera actually is.
 
 Every job is `max_instances=1, coalesce=True` (skip a fire that would
 overlap a still-running one), belt and suspenders on top of the archiver's
-own `flock`, which is the real mutual-exclusion mechanism. The scheduler
+own `flock`, which is the real mutual-exclusion mechanism. The archive and
+backfill jobs also take `misfire_grace_time=None`: with one worker, the
+weekly backfill can hold the executor past the daily archive's fire time
+(seen in production: a 04:00-06:00 backfill made APScheduler drop the 05:00
+archive as "missed"), and a late archive beats a dropped one. The scheduler
 itself runs everything through a single-worker executor (`ThreadPoolExecutor(1)`):
 every camera call funnels through one `reolink-gateway` whose concurrent
 behavior is unverified, and throughput here is bounded by the LAN and one
@@ -247,6 +251,7 @@ def add_device_jobs(
             id=_job_id("scheduled_archive", device_id),
             max_instances=1,
             coalesce=True,
+            misfire_grace_time=None,
             jitter=_JITTER_SECS,
         )
     if schedule.backfill_enabled:
@@ -257,6 +262,7 @@ def add_device_jobs(
             id=_job_id("deep_backfill", device_id),
             max_instances=1,
             coalesce=True,
+            misfire_grace_time=None,
             jitter=_JITTER_SECS,
         )
     if schedule.reconcile_enabled:

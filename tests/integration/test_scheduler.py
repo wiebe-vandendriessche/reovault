@@ -42,6 +42,19 @@ def test_add_device_jobs_registers_all_four_with_the_device_suffix(env):
     }
 
 
+def test_archive_and_backfill_jobs_run_late_instead_of_being_dropped(env):
+    # One worker: a long backfill can hold it past the daily archive's fire
+    # time, and APScheduler's default 1s grace would drop that archive.
+    scheduler = build_scheduler()
+    add_device_jobs(
+        scheduler, env.archiver(FakeProvider()), ScheduleConfig(), device_timezone="UTC"
+    )
+    for base in ("scheduled_archive", "deep_backfill"):
+        job = scheduler.get_job(f"{base}:{env.device_id}")
+        assert job.misfire_grace_time is None
+        assert job.coalesce is True
+
+
 def test_add_device_jobs_is_independent_per_device(env):
     """Two devices' jobs must never collide on one id (the bug multi-camera
     would hit if job ids were still the four fixed base names)."""
