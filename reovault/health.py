@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from reovault.db.repository import Repository, parse_iso_utc
 from reovault.logging import get_logger
@@ -27,21 +28,49 @@ DEFAULT_COVERAGE_MARGIN = 0.20
 # that (unplugged for a week) makes the oldest look more recent than it is,
 # which errs toward the coverage alarm firing early, never late.
 EMPTY_DAYS_TO_STOP = 3
+# Alarm state last logged, per device. `card_status` is polled by
+# /healthz, the dashboard and alert evaluation, so it logs when the alarm
+# turns on or off, not on every call.
+_logged_alarm: dict[int, bool] = {}
 # Hard stop for the walk: far beyond any real SD card's retention.
 FULL_SCAN_LOOKBACK_DAYS = 3650
 
 
+CardState = Literal["not_mounted", "at_risk", "waiting", "all_archived", "unknown"]
+
+# A card with less than this share free is looping: the camera overwrites
+# its oldest clip to make room for each new one. Above it, nothing on the
+# card is being overwritten yet, so there's no deadline to report.
+LOOPING_FREE_FRACTION = 0.10
+# Days of recent recordings the card-window estimate averages over.
+WINDOW_ESTIMATE_DAYS = 7
+
+
 @dataclass(frozen=True, slots=True)
-class CoverageStatus:
+class CardStatus:
+    """What a user wants to know about one camera's SD card: is everything
+    on it archived, and if not, how long until the oldest unarchived clip is
+    overwritten."""
+
+    state: CardState
+    waiting_count: int
+    """Unarchived clips still on the card."""
+    lost_count: int
+    """Unarchived clips older than the card's oldest clip: overwritten."""
+    oldest_waiting_utc: datetime | None
     oldest_on_card_utc: datetime | None
-    oldest_unarchived_utc: datetime | None
-    margin_fraction: float | None
-    """`(oldest_unarchived - oldest_on_card) / (now - oldest_on_card)`: how
-    much of the card's current retention window is left before the
-    loop-overwrite reaches our oldest not-yet-archived recording. `None`
-    when there isn't enough data yet (no sample, or nothing unarchived, in
-    which case there's nothing to be behind on)."""
-    alarm: bool
+    window: timedelta | None
+    """How much footage the card holds, from the sample's oldest clip, or
+    estimated from capacity / recent recording rate when that's unknown."""
+    window_estimated: bool
+    safe_for: timedelta | None
+    """Time left before the oldest waiting clip is overwritten. Only set on
+    a looping (full) card with clips waiting."""
+    used_fraction: float | None
+
+    @property
+    def alarm(self) -> bool:
+        return self.state == "at_risk"
 
 
 def record_storage_sample(
@@ -78,43 +107,96 @@ def _find_oldest_recording_utc(provider: CameraProvider) -> datetime | None:
     return oldest
 
 
-def coverage_margin(
-    *, repository: Repository, device_id: int, margin: float = DEFAULT_COVERAGE_MARGIN
-) -> CoverageStatus:
-    """Alarms when the oldest recording ReoVault hasn't archived yet is
-    within `margin` (default 20%) of the card's own loop-overwrite horizon,
-    i.e. the safety buffer before that recording gets overwritten
-    unarchived is running out."""
+def card_status(
+    *,
+    repository: Repository,
+    device_id: int,
+    margin: float = DEFAULT_COVERAGE_MARGIN,
+    now: datetime | None = None,
+) -> CardStatus:
+    """Alarms (`at_risk`) when the oldest clip ReoVault hasn't archived yet
+    is within `margin` (default 20%) of the card's window from being
+    overwritten. Clips already past the card's oldest clip count as `lost`,
+    not as an alarm: nothing can be done for them, and they used to pin the
+    old percentage at 0% forever."""
+    now = now or datetime.now(UTC)
     sample = repository.latest_storage_sample(device_id)
     oldest_on_card = (
         _parse_or_none(sample.oldest_recording_utc)
         if sample and sample.oldest_recording_utc
         else None
     )
-    oldest_unarchived = repository.oldest_unarchived_start_utc(device_id)
+    backlog = repository.card_backlog(device_id, oldest_on_card)
 
-    if oldest_on_card is None or oldest_unarchived is None:
-        # Nothing to be behind on yet (fully caught up, or no sample taken).
-        return CoverageStatus(oldest_on_card, oldest_unarchived, None, alarm=False)
+    total = sample.total_gb if sample else None
+    used_fraction = max(total - (sample.remain_gb or 0), 0.0) / total if sample and total else None
+    window = now - oldest_on_card if oldest_on_card and oldest_on_card < now else None
+    estimated = False
+    if window is None and total:
+        # ponytail: assumes a steady recording rate; a quiet week stretches it.
+        since = now - timedelta(days=WINDOW_ESTIMATE_DAYS)
+        per_day = repository.recorded_bytes_since(device_id, since) / WINDOW_ESTIMATE_DAYS
+        if per_day > 0:
+            window = timedelta(days=total * 2**30 / per_day)
+            estimated = True
 
-    now = datetime.now(UTC)
-    coverage_span = (now - oldest_on_card).total_seconds()
-    if coverage_span <= 0:
-        return CoverageStatus(oldest_on_card, oldest_unarchived, None, alarm=False)
+    looping = used_fraction is not None and used_fraction >= 1 - LOOPING_FREE_FRACTION
+    safe_for = None
+    if looping and window and backlog.oldest_waiting_utc:
+        safe_for = max(backlog.oldest_waiting_utc + window - now, timedelta(0))
 
-    remaining_buffer = (oldest_unarchived - oldest_on_card).total_seconds()
-    fraction = max(remaining_buffer, 0.0) / coverage_span
-    alarm = fraction <= margin
+    state: CardState
+    if sample is not None and sample.mounted is False:
+        state = "not_mounted"
+    elif safe_for is not None and window and safe_for <= window * margin:
+        state = "at_risk"
+    elif backlog.waiting_count:
+        state = "waiting"
+    elif sample is None and repository.totals(device_id).first_start_utc is None:
+        state = "unknown"  # never sampled, never recorded: a fresh camera
+    else:
+        state = "all_archived"
+
+    _log_alarm_change(
+        device_id,
+        state == "at_risk",
+        safe_for_seconds=safe_for.total_seconds() if safe_for is not None else None,
+        oldest_on_card_utc=oldest_on_card.isoformat() if oldest_on_card else None,
+        oldest_waiting_utc=(
+            backlog.oldest_waiting_utc.isoformat() if backlog.oldest_waiting_utc else None
+        ),
+    )
+    return CardStatus(
+        state=state,
+        waiting_count=backlog.waiting_count,
+        lost_count=backlog.lost_count,
+        oldest_waiting_utc=backlog.oldest_waiting_utc,
+        oldest_on_card_utc=oldest_on_card,
+        window=window,
+        window_estimated=estimated,
+        safe_for=safe_for,
+        used_fraction=used_fraction,
+    )
+
+
+def human_duration(d: timedelta | None) -> str:
+    """'3 days', '5 hours', '20 minutes': the one unit a reader needs."""
+    secs = d.total_seconds() if d else 0
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if secs >= size:
+            n = round(secs / size)
+            return f"{n} {unit}{'s' if n != 1 else ''}"
+    return "under a minute"
+
+
+def _log_alarm_change(device_id: int, alarm: bool, **fields: object) -> None:
+    if alarm == _logged_alarm.get(device_id, False):
+        return
+    _logged_alarm[device_id] = alarm
     if alarm:
-        logger.error(
-            "health.coverage_alarm",
-            device_id=device_id,
-            margin_fraction=fraction,
-            configured_margin=margin,
-            oldest_on_card_utc=oldest_on_card.isoformat(),
-            oldest_unarchived_utc=oldest_unarchived.isoformat(),
-        )
-    return CoverageStatus(oldest_on_card, oldest_unarchived, fraction, alarm=alarm)
+        logger.error("health.coverage_alarm", device_id=device_id, **fields)
+    else:
+        logger.info("health.coverage_alarm_cleared", device_id=device_id)
 
 
 def _parse_or_none(s: str) -> datetime | None:

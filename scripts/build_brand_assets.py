@@ -21,10 +21,10 @@ _ROOT = Path(__file__).resolve().parent.parent
 _MARGIN_FRACTION = 0.06  # even margin added back around the cropped ink box
 
 _SOURCES = [
-    (_ROOT / "img" / "reovault-bg.png", _ROOT / "reovault/web/static/icons/wordmark-light.png"),
+    (_ROOT / "img" / "reovault-bg.png", _ROOT / "dashboard/static/icons/wordmark-light.png"),
     (
         _ROOT / "img" / "reovault-dark-bg.png",
-        _ROOT / "reovault/web/static/icons/wordmark-dark.png",
+        _ROOT / "dashboard/static/icons/wordmark-dark.png",
     ),
 ]
 

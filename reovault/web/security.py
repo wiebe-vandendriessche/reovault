@@ -96,11 +96,18 @@ class SessionPayload:
     jti: str
     iat: int
     exp: int
+    # Server-side revocation: the middleware rejects a session whose epoch
+    # isn't the current `session_epoch` setting, and logout bumps that
+    # setting. Single user, so one counter revokes every session at once.
+    # Cookies minted before this field existed read as epoch 0.
+    epoch: int = 0
 
 
-def sign_session(key: bytes, *, jti: str, max_age_secs: int, now: int | None = None) -> str:
+def sign_session(
+    key: bytes, *, jti: str, max_age_secs: int, epoch: int = 0, now: int | None = None
+) -> str:
     now = now if now is not None else int(time.time())
-    payload = {"jti": jti, "iat": now, "exp": now + max_age_secs}
+    payload = {"jti": jti, "iat": now, "exp": now + max_age_secs, "ep": epoch}
     payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
     sig = _mac(key, _SESSION_LABEL, payload_b64.encode())
     return f"1.{payload_b64}.{_b64url_encode(sig)}"
@@ -129,13 +136,14 @@ def verify_session(key: bytes, token: str, *, now: int | None = None) -> Session
         jti = str(payload["jti"])
         iat = int(payload["iat"])
         exp = int(payload["exp"])
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        epoch = int(payload.get("ep", 0))
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
         return None
     if iat > now + 60:  # clock skew tolerance, not a validity window
         return None
     if exp < now:
         return None
-    return SessionPayload(jti=jti, iat=iat, exp=exp)
+    return SessionPayload(jti=jti, iat=iat, exp=exp, epoch=epoch)
 
 
 def sign_csrf(key: bytes, *, jti: str, max_age_secs: int = 600, now: int | None = None) -> str:

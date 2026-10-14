@@ -1,47 +1,41 @@
-"""The version footer (see base.html): every authenticated page gets it now,
-not just Health, and it carries no device at all any more -- the navbar's
-own device selector is where that lives now."""
+"""The version footer's data: the dashboard renders it from
+`GET /api/v1/session`, which is public so the login screen can show it
+too. It carries the app version and the pinned reolink-cli version, and no
+device at all (the device selector is where that lives)."""
 
 from __future__ import annotations
 
 from reovault import __version__
+from tests.integration.conftest import login
 
 
-def _footer(html: str) -> str:
-    return html.split('class="app-footer"', 1)[1]
+def test_session_carries_app_and_pinned_cli_versions(web_settings, client):
+    body = client.get("/api/v1/session").json()
+
+    assert body["version"] == __version__
+    assert body["pinned_cli_version"] == web_settings.reolink_cli.pinned_version
+    assert body["pinned_cli_version"]
 
 
-def test_footer_appears_on_every_authenticated_page(env, auth_client):
-    for path in ("/", "/schedule", "/devices", "/recordings", "/runs", "/problems"):
-        r = auth_client.get(path)
-        assert r.status_code == 200, path
-        assert 'class="app-footer"' in r.text, path
-        footer = _footer(r.text)
-        assert __version__ in footer, path
-        assert "reolink-cli" in footer, path
+def test_versions_are_the_same_logged_in_or_not(client):
+    """Public on purpose: the footer is identical before and after login."""
+    anon = client.get("/api/v1/session").json()
+
+    authed = login(client).get("/api/v1/session").json()
+
+    assert authed["authenticated"] is True
+    assert (authed["version"], authed["pinned_cli_version"]) == (
+        anon["version"],
+        anon["pinned_cli_version"],
+    )
 
 
-def test_footer_never_names_a_device(env, auth_client):
-    r = auth_client.get("/")
-
-    assert "doorbell" not in _footer(r.text)
-
-
-def test_theme_toggle_button_is_present_and_left_of_sign_out(env, auth_client):
-    r = auth_client.get("/")
-
-    assert 'id="theme-toggle"' in r.text
-    toggle_pos = r.text.index('id="theme-toggle"')
-    sign_out_pos = r.text.index('hx-post="/logout"')
-    assert toggle_pos < sign_out_pos
-
-
-def test_navbar_uses_the_devices_own_name_when_set(env, auth_client):
+def test_session_never_names_a_device(env, auth_client):
     env.repository.upsert_device(
         alias="doorbell", channel=0, timezone="Europe/Brussels", name="Front door"
     )
 
-    r = auth_client.get("/")
+    text = auth_client.get("/api/v1/session").text
 
-    assert "Front door" in r.text
-    assert "doorbell" not in _footer(r.text)
+    assert "doorbell" not in text
+    assert "Front door" not in text

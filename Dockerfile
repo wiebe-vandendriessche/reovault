@@ -1,14 +1,27 @@
 # syntax=docker/dockerfile:1
 #
-# Multi-stage build (see docs/architecture.md): a downloader stage fetches
-# the pinned `reolink-cli` release and its per-asset `.sha256`, verifies it,
-# and extracts the two binaries it ships (`reolink-cli`, `reolink-gateway`).
-# The runtime stage is `python:3.14-slim` with `uv`-installed deps, running
-# as uid 1000. The gateway daemon stays supervised in-process by
+# Multi-stage build (see docs/architecture.md):
+# - `dashboard` builds the Svelte SPA (dashboard/) with Node. Node exists only
+#   in this stage; the image ships the static output, no Node runtime.
+# - `reolink-cli-download` fetches the pinned `reolink-cli` release and its
+#   per-asset `.sha256`, verifies it, and extracts the two binaries it ships
+#   (`reolink-cli`, `reolink-gateway`).
+# - `runtime` is `python:3.14-slim` with `uv`-installed deps, running as uid
+#   1000, serving the API and the built dashboard from one process. The gateway daemon stays supervised in-process by
 # `GatewaySupervisor` (reovault/providers/gateway.py); no supervisord, no
 # second entrypoint.
 
 ARG REOLINK_CLI_VERSION=0.19.0
+
+# Static output is architecture-independent: build it once, natively, on the
+# build host instead of under QEMU for every target platform.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS dashboard
+WORKDIR /dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+# --ignore-scripts: no dependency gets to run code at install time.
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run build
 
 FROM python:3.14-slim AS reolink-cli-download
 ARG REOLINK_CLI_VERSION
@@ -61,6 +74,7 @@ RUN pip install --no-cache-dir uv==0.12.*
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY reovault ./reovault
+COPY --from=dashboard /dashboard/build ./reovault/web/dist
 COPY reovault.example.toml README.md ./
 RUN uv sync --frozen --no-dev
 

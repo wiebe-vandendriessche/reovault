@@ -7,9 +7,10 @@ duplicate names, empty results.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -22,7 +23,12 @@ from reovault.models import (
     RemoteRecording,
     StorageStatus,
 )
-from reovault.providers.base import CameraProvider, CameraRegistry, DeviceError
+from reovault.providers.base import (
+    CameraProvider,
+    CameraRegistry,
+    DeviceError,
+    RecordingGoneError,
+)
 
 
 @dataclass
@@ -141,3 +147,60 @@ class FakeRegistry(CameraRegistry):
         if alias not in self.device_infos:
             raise DeviceError(f"no scripted device_info for {alias!r}")
         return self.device_infos[alias]
+
+
+@dataclass
+class DemoProvider(CameraProvider):
+    """A pretend camera for trying the dashboard with more than one device
+    (`provider = "fake"` in a `[[devices]]` entry). Its "SD card" is a
+    sliding window over the wall clock: one small clip every `every`, the
+    last `window` of them on the card, so new clips appear and old ones
+    roll off like a real looping card. Every `gone_every`-th clip raises
+    `RecordingGoneError`, so the lost/at-risk states have something to show.
+    Clips are tiny so the vault doesn't fill with junk."""
+
+    every: timedelta = timedelta(minutes=15)
+    window: timedelta = timedelta(days=7)
+    gone_every: int = 97
+    clip_bytes: int = 4096
+    storage: StorageStatus = field(
+        default_factory=lambda: StorageStatus(
+            total_gb=64.0, remain_gb=1.5, formatted=True, mounted=True
+        )
+    )
+    now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
+
+    _TYPES = ("md", "people", "vehicle")
+
+    def _slot(self, i: int) -> RemoteRecording:
+        start = datetime.fromtimestamp(i * self.every.total_seconds(), UTC)
+        return RemoteRecording(
+            remote_name=f"demo_{start:%Y%m%d_%H%M%S}.mp4",
+            start_utc=start,
+            end_utc=start + timedelta(seconds=30),
+            duration_s=30.0,
+            rec_type=self._TYPES[i % len(self._TYPES)],
+            stream="main",
+            remote_size=self.clip_bytes,
+            raw_metadata={},
+        )
+
+    def list_recordings(self, *, from_utc: datetime, to_utc: datetime) -> list[RemoteRecording]:
+        step = self.every.total_seconds()
+        oldest = self.now() - self.window
+        lo = math.ceil(max(from_utc, oldest).timestamp() / step)
+        hi = math.floor(min(to_utc, self.now()).timestamp() / step)
+        return [self._slot(i) for i in range(lo, hi + 1)]
+
+    def fetch(self, recording: RemoteRecording, dest_path: str) -> FetchResult:
+        i = round(recording.start_utc.timestamp() / self.every.total_seconds())
+        if i % self.gone_every == 0 or recording.start_utc < self.now() - self.window:
+            raise RecordingGoneError(f"{recording.remote_name} is no longer on the demo card")
+        content = recording.remote_name.encode().ljust(self.clip_bytes, b"\0")
+        path = Path(dest_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        return FetchResult(local_path=str(path), bytes_written=len(content))
+
+    def storage_status(self) -> StorageStatus:
+        return self.storage

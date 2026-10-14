@@ -182,6 +182,21 @@ class TotalsRow:
 
 
 @dataclass(frozen=True, slots=True)
+class CardBacklogRow:
+    waiting_count: int
+    oldest_waiting_utc: datetime | None
+    lost_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TimelineBucketRow:
+    start_utc: datetime
+    archived: int
+    waiting: int
+    quarantined: int
+
+
+@dataclass(frozen=True, slots=True)
 class OnCardBytesRow:
     """What the SD card's retention window (from the latest storage
     sample's `oldest_recording_utc`) is known to hold, split by archive
@@ -200,6 +215,17 @@ class DayBytesRow:
     runs: int
     bytes_archived: int
     downloaded: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlertRow:
+    key: str
+    condition: str
+    device_id: int | None
+    title: str
+    message: str
+    first_seen_at: str
+    last_sent_at: str | None
 
 
 class Repository:
@@ -393,6 +419,54 @@ class Repository:
                 """,
                 (key, value, _now()),
             )
+
+    # -- alert_state: see reovault.notify --
+
+    def list_alerts(self) -> list[AlertRow]:
+        rows = self._fetchall(
+            "SELECT key, condition, device_id, title, message, first_seen_at, last_sent_at "
+            "FROM alert_state ORDER BY first_seen_at"
+        )
+        return [AlertRow(**dict(r)) for r in rows]
+
+    def open_alert(
+        self,
+        *,
+        key: str,
+        condition: str,
+        device_id: int | None,
+        title: str,
+        message: str,
+        now: datetime,
+    ) -> None:
+        """Inserts a newly-true condition; for one already open, only
+        refreshes its text (a problems count that grew), never its
+        timestamps."""
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO alert_state
+                  (key, condition, device_id, title, message, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET title = excluded.title, message = excluded.message
+                """,
+                (key, condition, device_id, title, message, _iso(now)),
+            )
+
+    def mark_alert_sent(self, key: str, now: datetime) -> None:
+        with self.transaction() as conn:
+            conn.execute("UPDATE alert_state SET last_sent_at = ? WHERE key = ?", (_iso(now), key))
+
+    def delete_alert(self, key: str) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM alert_state WHERE key = ?", (key,))
+
+    def setting_keys(self) -> list[str]:
+        return [str(r["key"]) for r in self._fetchall("SELECT key FROM app_settings")]
+
+    def delete_setting(self, key: str) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
 
     # -- recordings / dedup ----------------------------------------------
 
@@ -685,6 +759,29 @@ class Repository:
             assert cur.lastrowid is not None
             return cur.lastrowid
 
+    def update_run_progress(
+        self,
+        run_id: int,
+        *,
+        discovered: int,
+        downloaded: int,
+        skipped_dup: int,
+        failed: int,
+        bytes_archived: int,
+    ) -> None:
+        """Live counters on a still-running run (`finished_at` stays NULL);
+        `finish_run` writes the final values."""
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                UPDATE archive_runs SET
+                    discovered = ?, downloaded = ?, skipped_dup = ?, failed = ?,
+                    bytes_archived = ?
+                WHERE id = ? AND finished_at IS NULL
+                """,
+                (discovered, downloaded, skipped_dup, failed, bytes_archived, run_id),
+            )
+
     def finish_run(
         self,
         run_id: int,
@@ -792,6 +889,77 @@ class Repository:
         )
         return parse_iso_utc(row["oldest"]) if row and row["oldest"] else None
 
+    def card_backlog(self, device_id: int, boundary_utc: datetime | None) -> CardBacklogRow:
+        """Unarchived recordings split at the card's oldest clip: at or after
+        it they're still on the card (`waiting`), before it the card has
+        overwritten them (`lost`). No boundary: everything counts as
+        waiting."""
+        boundary = _iso(boundary_utc) if boundary_utc else ""
+        row = self._fetchone(
+            """
+            SELECT SUM(start_utc >= ?) AS waiting,
+                   MIN(CASE WHEN start_utc >= ? THEN start_utc END) AS oldest_waiting,
+                   SUM(start_utc < ?) AS lost
+            FROM recordings
+            WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
+            """,
+            (boundary, boundary, boundary, device_id),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return CardBacklogRow(
+            waiting_count=row["waiting"] or 0,
+            oldest_waiting_utc=(
+                parse_iso_utc(row["oldest_waiting"]) if row["oldest_waiting"] else None
+            ),
+            lost_count=row["lost"] or 0,
+        )
+
+    def recorded_bytes_since(self, device_id: int, since_utc: datetime) -> int:
+        """What the camera wrote to its card since `since_utc`, by its own
+        reported `remote_size`, in any archive state."""
+        row = self._fetchone(
+            """
+            SELECT COALESCE(SUM(remote_size), 0) AS b FROM recordings
+            WHERE device_id = ? AND start_utc >= ?
+            """,
+            (device_id, _iso(since_utc)),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["b"])
+
+    def card_timeline(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime, buckets: int
+    ) -> list[TimelineBucketRow]:
+        """Clip counts per equal time slice of `[from_utc, to_utc)`, split
+        archived (incl. pruned) / waiting / quarantined. Every bucket is
+        returned, empty ones as zeroes. Served by `idx_rec_start`."""
+        span = (to_utc - from_utc).total_seconds()
+        if span <= 0 or buckets <= 0:
+            return []
+        rows = self._fetchall(
+            """
+            SELECT CAST((julianday(start_utc) - julianday(?)) * 86400.0 / ? AS INTEGER) AS b,
+                   SUM(state IN ('archived', 'pruned')) AS archived,
+                   SUM(state NOT IN ('archived', 'pruned', 'quarantined')) AS waiting,
+                   SUM(state = 'quarantined') AS quarantined
+            FROM recordings
+            WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+            GROUP BY b
+            """,
+            (_iso(from_utc), span / buckets, device_id, _iso(from_utc), _iso(to_utc)),
+        )
+        by_bucket = {min(int(r["b"]), buckets - 1): r for r in rows}
+        step = (to_utc - from_utc) / buckets
+        return [
+            TimelineBucketRow(
+                start_utc=from_utc + step * i,
+                archived=int(r["archived"]) if (r := by_bucket.get(i)) else 0,
+                waiting=int(r["waiting"]) if r else 0,
+                quarantined=int(r["quarantined"]) if r else 0,
+            )
+            for i in range(buckets)
+        ]
+
     def sample_for_integrity_scan(
         self, *, device_id: int, bucket_count: int, bucket_index: int
     ) -> list[RecordingRow]:
@@ -863,6 +1031,32 @@ class Repository:
                     bytes=(prev.bytes if prev else 0) + r["bytes"],
                 )
         return sorted(merged.values(), key=lambda row: row.day)
+
+    def type_counts_per_day(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str
+    ) -> dict[str, dict[str, int]]:
+        """`{local_day: {rec_type: clips}}` over `[from_utc, to_utc)`, same
+        DST segmentation as `day_buckets`. A clip tagged with several types
+        ("people,md") counts once toward each; untagged clips count as
+        "other". Grouped in SQL by the raw tag string, so the rows out are
+        bounded by days times distinct tag combinations, not by clips."""
+        out: dict[str, dict[str, int]] = {}
+        for seg_start, seg_end, offset_minutes in offset_segments(from_utc, to_utc, tz):
+            rows = self._fetchall(
+                """
+                SELECT date(start_utc, ?) AS day, COALESCE(rec_type, '') AS tags,
+                       COUNT(*) AS n
+                FROM recordings
+                WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+                GROUP BY day, tags
+                """,
+                (sqlite_offset_modifier(offset_minutes), device_id, _iso(seg_start), _iso(seg_end)),
+            )
+            for r in rows:
+                day = out.setdefault(r["day"], {})
+                for tag in [t for t in r["tags"].split(",") if t] or ["other"]:
+                    day[tag] = day.get(tag, 0) + r["n"]
+        return out
 
     def hour_buckets(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str
@@ -936,6 +1130,23 @@ class Repository:
             tuple(params),
         )
         return [self._row_to_recording(r) for r in rows]
+
+    def window_summary(
+        self, *, device_id: int, from_utc: datetime, to_utc: datetime
+    ) -> tuple[int, int]:
+        """(clip count in any state, archived plaintext bytes) for one
+        window, as one aggregate over `idx_rec_start` instead of loading the
+        rows to count them."""
+        row = self._fetchone(
+            """
+            SELECT COUNT(*) AS n,
+                   COALESCE(SUM(CASE WHEN state = 'archived' THEN plaintext_size END), 0) AS b
+            FROM recordings WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
+            """,
+            (device_id, _iso(from_utc), _iso(to_utc)),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["n"]), int(row["b"])
 
     def problems(
         self,
@@ -1184,6 +1395,20 @@ class Repository:
                 (now_iso, recording_id),
             )
             return cur.rowcount > 0
+
+    def retry_all_problems(self, device_id: int, *, now: datetime | None = None) -> int:
+        """`retry_recording` for every failed/quarantined recording of one
+        device, as a single statement. Returns how many were re-queued."""
+        now_iso = _iso(now) if now else _now()
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET state = 'failed', attempts = 0, next_attempt_at = ?
+                WHERE device_id = ? AND state IN ('failed', 'quarantined')
+                """,
+                (now_iso, device_id),
+            )
+            return cur.rowcount
 
     def distinct_rec_types(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime

@@ -54,5 +54,9 @@ class ActivityLog:
             EVENT_JOB_ERROR: "error",
             EVENT_JOB_MISSED: "missed",
         }.get(event.code, "unknown")
+        from reovault.scheduler import device_of_job_id
+
+        if device_of_job_id(event.job_id) is None:
+            return  # fleet-wide housekeeping (alerts), not a camera's activity
         detail = str(exc) if (exc := getattr(event, "exception", None)) else None
         self.record(event.job_id, kind, detail)

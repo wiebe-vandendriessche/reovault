@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -23,15 +24,18 @@ import uvicorn
 from reovault import __version__, health, retention
 from reovault.archiver import Archiver, assert_pinned_cli_version, assert_same_filesystem
 from reovault.config import DeviceConfig, Settings, load_settings
+from reovault.config_store import ConfigStore, migrate_db_settings
 from reovault.crypto import keyring
 from reovault.db.repository import RecordingRow, Repository
 from reovault.fleet import Fleet, build_fleet
 from reovault.logging import configure_logging, get_logger
 from reovault.models import ArchiveRunResult
-from reovault.providers.base import LocalError
+from reovault.providers.base import CameraProvider, LocalError
+from reovault.providers.fake import DemoProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.providers.reolink_cli_registry import ReolinkCliRegistry
+from reovault.settings_apply import sync_devices
 from reovault.storage.vault import EncryptedFsVault
 
 app = typer.Typer(add_completion=False, help="ReoVault: archive Reolink recordings locally.")
@@ -315,13 +319,17 @@ def _bootstrap(device_alias: str | None) -> _Context:
     gateway = GatewaySupervisor(
         binary=settings.reolink_cli.binary, addr=settings.reolink_cli.gateway_addr
     )
-    provider = ReolinkCliProvider(
-        alias=device.alias,
-        timezone=device.timezone,
-        binary=settings.reolink_cli.binary,
-        gateway=gateway,
-        search_timeout_secs=settings.reolink_cli.search_timeout_secs,
-        download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+    provider: CameraProvider = (
+        DemoProvider()
+        if device.provider == "fake"
+        else ReolinkCliProvider(
+            alias=device.alias,
+            timezone=device.timezone,
+            binary=settings.reolink_cli.binary,
+            gateway=gateway,
+            search_timeout_secs=settings.reolink_cli.search_timeout_secs,
+            download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+        )
     )
     archiver = Archiver(
         repository=repository,
@@ -336,7 +344,7 @@ def _bootstrap(device_alias: str | None) -> _Context:
         # in-flight download away.
         staging_dir=settings.storage.staging_dir / str(device_id),
         lock_path=settings.storage.config_dir / f"reovault-{device_id}.lock",
-        retention=retention.archiver_hook(settings, repository, vault),
+        retention=retention.archiver_hook(lambda: settings, repository, vault),
     )
     return _Context(settings=settings, device=device, archiver=archiver)
 
@@ -353,21 +361,7 @@ class _Runtime:
     gateway: GatewaySupervisor
     fleet: Fleet
     registry: ReolinkCliRegistry
-
-
-def _seed_devices_from_toml(settings: Settings, repository: Repository) -> None:
-    """Each `[[devices]]` entry is upserted on every startup: TOML stays a
-    valid way to declare cameras for a scripted deploy, but never deletes
-    or disables a device the dashboard has since added or turned off,
-    since `upsert_device` only sets `enabled`/`created_at` on first
-    insert."""
-    for device in settings.devices:
-        repository.upsert_device(
-            alias=device.alias,
-            channel=device.channel,
-            timezone=device.timezone,
-            name=device.name,
-        )
+    config: ConfigStore
 
 
 def _load_runtime() -> _Runtime:
@@ -378,14 +372,27 @@ def _load_runtime() -> _Runtime:
     settings, master_key = _preflight()
 
     repository = Repository(settings.storage.db_path)
-    _seed_devices_from_toml(settings, repository)
+    # reovault.toml is the source of truth and the dashboard writes it back
+    # (see reovault.config_store). Pre-0.4 dashboard state is moved into the
+    # file once, then the device rows are brought in line with it.
+    config = ConfigStore(Path(os.environ.get("REOVAULT_CONFIG_FILE", "reovault.toml")), settings)
+    migrate_db_settings(config, repository)
+    settings = config.current
+    sync_devices(settings, repository, authoritative=config.writable)
     vault = EncryptedFsVault(settings.storage.vault_dir, master_key)
     gateway = GatewaySupervisor(
         binary=settings.reolink_cli.binary, addr=settings.reolink_cli.gateway_addr
     )
-    fleet = build_fleet(settings=settings, repository=repository, vault=vault, gateway=gateway)
+    fleet = build_fleet(
+        settings=settings,
+        repository=repository,
+        vault=vault,
+        gateway=gateway,
+        current_settings=lambda: config.current,
+    )
     registry = ReolinkCliRegistry(binary=settings.reolink_cli.binary, gateway=gateway)
     return _Runtime(
+        config=config,
         settings=settings,
         repository=repository,
         vault=vault,
@@ -564,7 +571,7 @@ def reconcile(device: str | None = _DeviceOption) -> None:
 
 def _start_gateway(gateway: GatewaySupervisor) -> None:
     """Start the gateway at boot instead of waiting for the first camera
-    call, otherwise the Health tab reports it unreachable from every
+    call, otherwise the Health page reports it unreachable from every
     restart until the next scheduled run. Best-effort: the first camera
     call retries it anyway, so a failure here is logged and startup goes on."""
     try:
@@ -579,7 +586,7 @@ def daemon() -> None:
     device at once. This is the container's main process; one-shot
     `run`/`backfill` (still single-device, via `--device`) are for
     manual/testing use. Starting with zero devices configured is fine: the
-    dashboard's Devices tab can add the first camera without a restart."""
+    dashboard's Devices page can add the first camera without a restart."""
     from reovault.scheduler import build_scheduler, reschedule_all_devices
     from reovault.web.app import create_app
 
@@ -605,6 +612,9 @@ def daemon() -> None:
     reschedule_all_devices(scheduler, runtime.fleet, runtime.repository, settings)
     scheduler.start()
     logger.info("daemon.started", device_count=len(runtime.fleet.ids()))
+    # Hand edits of reovault.toml are applied live (see reovault.config_store).
+    stop_watching = threading.Event()
+    runtime.config.watch(stop_watching)
 
     try:
         uvicorn.run(
@@ -614,14 +624,20 @@ def daemon() -> None:
                 repository=runtime.repository,
                 scheduler=scheduler,
                 registry=runtime.registry,
+                config=runtime.config,
             ),
             host=settings.web.host,
             port=settings.web.port,
             proxy_headers=True,
             forwarded_allow_ips=settings.web.forwarded_allow_ips,
             log_config=None,
+            # Open dashboards hold an SSE stream that never completes on
+            # its own; without a cap, shutdown would wait on them until
+            # Docker's own stop timeout kills the process.
+            timeout_graceful_shutdown=3,
         )
     finally:
+        stop_watching.set()
         scheduler.shutdown(wait=False)
 
 

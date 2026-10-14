@@ -1,33 +1,28 @@
-"""Problems page: retry must keep looking like a problem row, and the
-manual-run activity card's Stop button (see `Archiver.request_cancel`)."""
+"""Problems list and count, retrying from it, and the manual-run Stop action
+(see `Archiver.request_cancel`)."""
 
 from __future__ import annotations
 
-import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from reovault.fleet import Fleet
 from reovault.models import ErrorClass, RemoteRecording
-from reovault.providers.fake import FakeProvider
-from reovault.providers.gateway import GatewaySupervisor
-from reovault.web import security
-from reovault.web.app import create_app
-from reovault.web.auth import write_password_file
-from tests.integration.conftest import extract_body_csrf
+from tests.integration.conftest import login, make_web_app
 
 
-def _seed_failed_recording(env) -> int:
+def _seed_failed_recording(env, start: datetime | None = None, *, name: str | None = None) -> int:
+    start = start or datetime(2026, 9, 18, 20, 59, 12, tzinfo=UTC)
+    name = name or f"01{start:%Y%m%d%H%M%S}"
     rec = RemoteRecording(
-        remote_name="0120260918225912",
-        start_utc=datetime(2026, 9, 18, 20, 59, 12, tzinfo=UTC),
+        remote_name=name,
+        start_utc=start,
         end_utc=None,
         duration_s=None,
         rec_type="md,vehicle",
         stream="mainStream",
         remote_size=21905004,
-        raw_metadata={"fileName": "0120260918225912"},
+        raw_metadata={"fileName": name},
     )
     rid, _ = env.repository.discover_recording(device_id=env.device_id, channel=0, recording=rec)
     env.repository.transition_downloading(rid)
@@ -37,103 +32,111 @@ def _seed_failed_recording(env) -> int:
     return rid
 
 
-def test_retrying_from_problems_keeps_problem_row_shape(env, auth_client):
-    """Regression: retrying used to swap in fragments/rec_row.html (the
-    Footage day view's row, meant for a *different* page) and only ever
-    replaced the <article>, leaving the trailing error <details> orphaned
-    beside it -- a broken hybrid row showing a local time, type pills, and
-    a stale "exit code -2" detail no longer attached to anything that
-    explains it."""
-    rid = _seed_failed_recording(env)
-    client = auth_client
-    csrf = extract_body_csrf(client.get("/problems").text)
-
-    r = client.post(
-        f"/recordings/{rid}/retry", params={"context": "problem"}, headers={"X-CSRF-Token": csrf}
-    )
-
-    assert r.status_code == 200
-    assert f'id="rec-{rid}"' in r.text
-    assert "Queued for the next run" in r.text
-    # Not the Footage row shape: no bare local-time span, no type pills.
-    assert "rec-time" not in r.text
-    # The row's own error explanation must still be present and attached
-    # to the same returned fragment, not orphaned.
-    assert "exit code -2" in r.text
-
-
-def test_retrying_from_footage_still_collapses_to_a_plain_row(env, auth_client):
-    """The Footage day view's own Retry button (in rec_player.html) has no
-    `context=problem` and must keep getting rec_row.html back, exactly like
-    its Close button already does."""
-    rid = _seed_failed_recording(env)
-    client = auth_client
-    csrf = extract_body_csrf(client.get("/problems").text)
-
-    r = client.post(f"/recordings/{rid}/retry", headers={"X-CSRF-Token": csrf})
-
-    assert r.status_code == 200
-    assert f'id="rec-{rid}"' in r.text
-    assert "Queued for the next run" not in r.text
-
-
-def test_stop_button_appears_while_a_run_is_in_progress(env, auth_client):
-    client = auth_client
-
-    # No run yet: no Stop button.
-    r = client.get("/fragments/activity")
-    assert "Stop" not in r.text
-
-    env.repository.start_run(
+def _start_run(env) -> int:
+    return env.repository.start_run(
         device_id=env.device_id,
         trigger="manual",
         window_from_utc=datetime(2026, 1, 1, tzinfo=UTC),
         window_to_utc=datetime(2026, 1, 2, tzinfo=UTC),
     )
-    r = client.get("/fragments/activity")
-    assert "Stop" in r.text
-    assert 'hx-post="/actions/stop' in r.text  # durl() may append ?device=
 
 
-def test_actions_stop_sets_the_archivers_cancel_flag(env, web_settings, web_device):
+def test_problems_lists_failed_and_quarantined_newest_first(env, auth_client):
+    older = _seed_failed_recording(env, datetime(2026, 9, 1, tzinfo=UTC))
+    newer = _seed_failed_recording(env, datetime(2026, 9, 2, tzinfo=UTC))
+    env.repository.mark_quarantined(newer, error="bad", error_class=ErrorClass.PROTOCOL)
+
+    body = auth_client.get("/api/v1/problems").json()
+
+    assert [p["id"] for p in body["items"]] == [newer, older]
+    assert [p["state"] for p in body["items"]] == ["quarantined", "failed"]
+    assert body["next"] is None
+    assert auth_client.get("/api/v1/problems/count").json() == {"count": 2}
+
+
+def test_healthy_device_has_no_problems(auth_client):
+    assert auth_client.get("/api/v1/problems").json() == {"items": [], "next": None}
+    assert auth_client.get("/api/v1/problems/count").json() == {"count": 0}
+
+
+def test_problems_keyset_paginates(env, web_settings, web_device, web_password_hash):
+    """Two problems share a start_utc so the page boundary needs the id
+    tiebreak; the last full page hands out no cursor (one row is overfetched
+    to know), so there's never a trailing empty page."""
+    web_settings.web.page_size = 2
+    client = login(TestClient(make_web_app(env, web_settings, web_device)))
+    base = datetime(2026, 9, 1, tzinfo=UTC)
+    ids = [
+        _seed_failed_recording(env, base, name="a"),
+        _seed_failed_recording(env, base + timedelta(hours=1), name="b"),
+        _seed_failed_recording(env, base + timedelta(hours=1), name="c"),
+        _seed_failed_recording(env, base + timedelta(hours=2), name="d"),
+    ]
+
+    seen: list[int] = []
+    cursor = ""
+    pages = 0
+    while True:
+        body = client.get("/api/v1/problems", params={"after": cursor}).json()
+        pages += 1
+        seen += [p["id"] for p in body["items"]]
+        if body["next"] is None:
+            break
+        cursor = body["next"]
+
+    assert pages == 2
+    assert sorted(seen) == sorted(ids)
+    assert len(seen) == len(set(seen))
+    assert seen[0] == ids[3] and seen[-1] == ids[0]
+
+
+def test_retrying_from_problems_keeps_the_error_and_stays_a_problem(env, auth_client):
+    """Retry only makes the row eligible for the next run: it stays in the
+    Problems list with its explanation until a run actually fixes it."""
+    rid = _seed_failed_recording(env)
+
+    r = auth_client.post(f"/api/v1/recordings/{rid}/retry")
+
+    assert r.status_code == 200
+    assert r.json()["last_error"] == "exit code -2"
+    listed = auth_client.get("/api/v1/problems").json()["items"]
+    assert [p["id"] for p in listed] == [rid]
+    assert auth_client.get("/api/v1/problems/count").json() == {"count": 1}
+
+
+def test_activity_shows_the_running_run(env, auth_client):
+    assert auth_client.get("/api/v1/activity").json()["running"] is None
+
+    run_id = _start_run(env)
+
+    running = auth_client.get("/api/v1/activity").json()["running"]
+    assert running is not None
+    assert running["id"] == run_id
+
+
+def test_actions_stop_sets_the_archivers_cancel_flag(env, web_app, auth_client):
     """`/actions/stop` must reach the exact same Archiver instance the
     scheduler would be running the job on (see fleet.Fleet: one persistent
     Archiver per device, reused across every job), not a throwaway copy."""
-    provider = FakeProvider()
-    archiver = env.archiver(provider)
-    fleet = Fleet(
-        settings=web_settings,
-        repository=env.repository,
-        vault=env.vault,
-        gateway=GatewaySupervisor(binary="reolink-cli"),
-    )
-    fleet.archivers[env.device_id] = archiver
-    app = create_app(fleet, settings=web_settings, repository=env.repository)
-    client = TestClient(app)
-
-    write_password_file(web_settings.web.password_file, security.hash_password(b"x" * 12))
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text).group(1)
-    client.post("/login", data={"password": "x" * 12, "csrf_token": csrf, "next": "/"})
-
-    env.repository.start_run(
-        device_id=env.device_id,
-        trigger="manual",
-        window_from_utc=datetime(2026, 1, 1, tzinfo=UTC),
-        window_to_utc=datetime(2026, 1, 2, tzinfo=UTC),
-    )
+    archiver = web_app.state.rv.fleet.get(env.device_id)
+    run_id = _start_run(env)
     assert not archiver.cancel_requested.is_set()
 
-    csrf2 = extract_body_csrf(client.get("/").text)
-    r = client.post("/actions/stop", headers={"X-CSRF-Token": csrf2})
+    r = auth_client.post("/api/v1/actions/stop")
 
     assert r.status_code == 200
     assert archiver.cancel_requested.is_set()
+    assert r.json()["running"]["id"] == run_id
 
 
-def test_actions_stop_is_a_no_op_with_nothing_running(env, auth_client):
-    client = auth_client
-    csrf = extract_body_csrf(client.get("/").text)
-
-    r = client.post("/actions/stop", headers={"X-CSRF-Token": csrf})
+def test_actions_stop_is_a_no_op_with_nothing_running(env, web_app, auth_client):
+    r = auth_client.post("/api/v1/actions/stop")
 
     assert r.status_code == 200
+    assert r.json()["running"] is None
+    assert not web_app.state.rv.fleet.get(env.device_id).cancel_requested.is_set()
+
+
+def test_actions_stop_requires_csrf(auth_client):
+    r = auth_client.post("/api/v1/actions/stop", headers={"X-CSRF-Token": "nope"})
+    assert r.status_code == 403

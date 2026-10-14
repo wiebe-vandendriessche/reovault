@@ -14,3 +14,7 @@ reovault.toml
 .pytest_cache
 __pycache__
 *.pyc
+dashboard/node_modules
+dashboard/build
+dashboard/.svelte-kit
+reovault/web/dist

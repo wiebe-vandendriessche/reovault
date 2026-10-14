@@ -17,8 +17,11 @@ eggs/
 # MkDocs build output
 site/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: an unanchored `lib/` also matched the
+# dashboard's SvelteKit `dashboard/src/lib/`, and Tailwind skips gitignored
+# paths, so it silently dropped every component's styles.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -224,6 +227,11 @@ __marimo__/
 /data/
 /secrets/
 reovault.toml
+# Written next to reovault.toml by every dashboard settings save (see
+# reovault/config_store.py): the previous version, and the temp file that
+# atomically replaces it. Same contents as the real config, so never in git.
+reovault.toml.bak
+.reovault.toml.tmp
 *.db
 *.db-wal
 *.db-shm
@@ -240,3 +248,10 @@ dev-notes/
 .github/hooks/
 .github/skills/
 skills-lock.json
+
+# Dashboard (Node). dashboard/.gitignore covers node_modules, .svelte-kit
+# and build/ inside dashboard/; the built copy the daemon serves lives here,
+# copied in by the Dockerfile or by hand in development (CONTRIBUTING.md).
+reovault/web/dist/
+dashboard/coverage/
+npm-debug.log*

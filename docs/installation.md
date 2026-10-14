@@ -1,6 +1,11 @@
 # Installation
 
-## Docker (recommended)
+ReoVault is deployed with Docker Compose, and only with Docker Compose. One
+image holds everything: the archiver and scheduler, the web API, the built
+dashboard, and a pinned `reolink-cli`. Running from a source checkout without
+Docker is a development setup, see [Contributing](contributing.md).
+
+## Docker Compose
 
 ReoVault is published as a signed image for `linux/amd64` and `linux/arm64`
 at `ghcr.io/wiebe-vandendriessche/reovault`. You don't need to clone the
@@ -9,10 +14,10 @@ repository, two files are enough:
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-# edit reovault.toml: your [[devices]], and set [web] email (set-password needs it)
+mkdir -p config data/config data/vault data/staging data/reolink-cli secrets
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+# edit config/reovault.toml: your [[devices]], and set [web] email (set-password needs it)
 
-mkdir -p data/config data/vault data/staging data/reolink-cli secrets
 echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
 
 docker compose run --rm reovault key init
@@ -20,10 +25,10 @@ docker compose up -d
 docker compose exec reovault reovault web set-password
 ```
 
-Create `reovault.toml` and the `data/` folders yourself before the first
+Create `config/reovault.toml` and the `data/` folders yourself before the first
 `docker compose` command, as above. If Docker has to create a missing bind
 mount itself, it makes a root-owned folder, which the container (running as
-uid 1000) can't write to, and for `reovault.toml` a folder instead of a file.
+uid 1000) can't write to.
 If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
 
 `compose.yaml` supports two deployment modes. Pick one, both are first-class:
@@ -41,10 +46,12 @@ If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
   `REOVAULT_WEB__FORWARDED_ALLOW_IPS` to the proxy's own address (never
   `"*"`, see [Security](security.md)).
 
-`./reovault.toml` is mounted read-only (ReoVault never writes its own
-config). `./data/{config,vault,staging}` and `./data/reolink-cli`
+`./config/` holds `reovault.toml` and is mounted read-write: the dashboard's
+Settings page writes changes back into the file (comments and layout kept,
+the previous version saved as `reovault.toml.bak`), and edits made to the
+file by hand are applied live. `./data/{config,vault,staging}` and `./data/reolink-cli`
 (reolink-cli's own credential registry, written to when a camera is added
-from the Devices tab) are bind mounts holding everything that must survive an
+from the Devices page) are bind mounts holding everything that must survive an
 upgrade: database, master key, dashboard password, and the archive itself.
 `./secrets/reovault_master_passphrase.txt` is a Docker secret file. Never
 commit it, and back up `data/config/master.key` together with the passphrase:
@@ -63,17 +70,33 @@ docker compose pull && docker compose up -d
 
 `:latest` follows the newest release. To upgrade on your own schedule
 instead, pin a version in `compose.yaml` (for example
-`ghcr.io/wiebe-vandendriessche/reovault:0.1.0`) and bump it after reading the
+`ghcr.io/wiebe-vandendriessche/reovault:0.4.0`) and bump it after reading the
 [release notes](https://github.com/wiebe-vandendriessche/reovault/releases).
 Before 1.0 the config schema can still change between releases.
 
+
+#### From 0.3 to 0.4
+
+`reovault.toml` moves into a folder that is mounted read-write, so the
+dashboard can write settings back into it:
+
+```bash
+mkdir -p config && mv reovault.toml config/ && sudo chown -R 1000:1000 config
+```
+
+Then update `compose.yaml` (the `volumes:` line is now `- ./config:/etc/reovault`)
+and `docker compose up -d`. On first start, settings you changed in the 0.3
+dashboard (schedules, retention, alert rules, cameras added from the
+dashboard) are written into `reovault.toml` once; from then on the file is
+the single source of truth. Until the folder is writable, the dashboard shows
+settings read-only and nothing is migrated.
 ### Verifying the image
 
 Release images are signed keylessly with [cosign](https://docs.sigstore.dev/)
 by the release workflow, and carry an attested CycloneDX SBOM:
 
 ```bash
-cosign verify ghcr.io/wiebe-vandendriessche/reovault:0.1.0 \
+cosign verify ghcr.io/wiebe-vandendriessche/reovault:0.4.0 \
   --certificate-identity-regexp '^https://github\.com/wiebe-vandendriessche/reovault/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -88,42 +111,38 @@ Clone the repository, then in `compose.yaml` comment out the `image:` line
 and uncomment the `build:` block below it. `docker compose up -d --build`
 builds and starts it; everything else above stays the same.
 
-## Bare metal / development
+## Alerts
 
-Prerequisites: [`reolink-cli`](https://github.com/reolink/reolink-cli)
-installed and a camera registered under an alias
-(`reolink-cli device add <alias> --host <ip> --user admin`), and its gateway
-reachable (`reolink-cli gateway start --addr 127.0.0.1:9000 &`). ReoVault
-never touches the camera password itself. See
-[Architecture](architecture.md).
+ReoVault can tell you when archiving needs attention: a failed run, recordings
+that failed or were quarantined, clips on a camera's SD card at risk of being
+overwritten before they're archived, or the camera gateway being down. Channels are configured in `reovault.toml` (or
+`REOVAULT_ALERTS__*` env vars), with anything secret in a file, the same way
+as the master passphrase:
 
-```bash
-uv sync
-cp reovault.example.toml reovault.toml   # set [[devices]] alias/timezone to match reolink-cli's, storage paths, and [web] email
-
-export REOVAULT_MASTER_PASSPHRASE="a passphrase, not the camera's"
-uv run reovault key init                 # creates data/config/master.key (0600)
-uv run reovault doctor                   # preflight: config, storage, DB, key. No camera contact.
-uv run reovault probe                    # confirms the camera/gateway are reachable
-
-uv run reovault run --from 2026-04-17T00:00:00 --to 2026-04-17T23:59:59   # one-shot archive run (UTC)
-uv run reovault status                   # archived count, bytes, SD card status
-uv run reovault verify --all             # re-decrypt + re-hash every archived file
-uv run reovault export <id> -o clip.mp4  # decrypt one archived recording back out
-
-uv run reovault web set-password         # sets the dashboard login (data/config/web_password, 0600)
-uv run reovault daemon                   # scheduler + dashboard: http://127.0.0.1:8080
+```toml
+[alerts]
+ntfy_url = "https://ntfy.sh/your-private-topic"
+# ntfy_token_file = "/run/secrets/ntfy_token"
+# webhook_url_file = "/run/secrets/alert_webhook"   # Slack/Discord URLs work as-is
+# smtp_host = "smtp.example.com"
+# smtp_user = "reovault@example.com"
+# smtp_password_file = "/run/secrets/smtp_password"
+# smtp_to = ["you@example.com"]
 ```
 
-See the [CLI reference](cli-reference.md) for every command, or run
-`reovault --help` / `reovault key --help`.
+Mount each secret file with a compose `secrets:` entry (see the commented
+example in `compose.yaml`). Which conditions alert, and how often an open
+alert reminds you, is set from the dashboard under Settings, Alerts, which
+also has a "Send test" button. See [Configuration](configuration.md#alerts).
 
 ## First-run checklist
 
-1. `reovault.toml` has at least one `[[devices]]` entry with an `alias` that
-   matches an alias `reolink-cli device add` already registered.
+1. Either `reovault.toml` has a `[[devices]]` entry whose `alias` matches one
+   `reolink-cli device add` already registered, or you add the first camera
+   from the dashboard's Devices page after startup.
 2. `REOVAULT_MASTER_PASSPHRASE` (or `REOVAULT_MASTER_PASSPHRASE_FILE` /
    Docker secret) is set. `reovault key init` needs it.
 3. `reovault doctor` passes before anything camera-facing is attempted.
 4. `[web] email` is set, and `reovault web set-password` is run before exposing the dashboard.
-   Until a password is set, every UI route returns 503 (the healthcheck still works).
+   Until a password is set, the API answers 503 and the dashboard says so (the healthcheck
+   still works).

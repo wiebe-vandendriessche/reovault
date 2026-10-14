@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -47,7 +47,17 @@ class DeviceConfig(BaseModel):
     """The camera's own configured display name (e.g. "Front door"), shown
     throughout the dashboard instead of `alias`. Optional: when unset, the
     dashboard shows `alias` until `device_info` backfills it from the camera
-    itself (see reovault/web/app.py's `_backfill_device_identity`)."""
+    itself (see reovault/web/api/devices.py's `_backfill_identity`)."""
+    enabled: bool = True
+    """False stops archiving this camera; its archived footage stays. A
+    camera removed from the file entirely is treated the same way."""
+    schedule: ScheduleConfig | None = None
+    """This camera's own `[devices.schedule]`; unset means it follows the
+    global `[schedule]`."""
+    provider: Literal["reolink-cli", "fake"] = "reolink-cli"
+    """`fake` swaps the camera for `providers.fake.DemoProvider`, a pretend
+    camera with a sliding window of tiny clips, for trying the dashboard
+    with several devices. Never needs `reolink-cli device add`."""
 
 
 class ReolinkCliConfig(BaseModel):
@@ -92,6 +102,9 @@ class ScheduleConfig(BaseModel):
     timezone: str | None = None
 
 
+DeviceConfig.model_rebuild()  # resolves the forward reference to ScheduleConfig
+
+
 class RetentionConfig(BaseModel):
     """Global, rolling cap on the vault. Either limit (or both) prunes the
     oldest archived clips first; `None` disables that limit. Both default to
@@ -99,6 +112,40 @@ class RetentionConfig(BaseModel):
 
     max_age_days: int | None = Field(default=None, ge=1)
     max_vault_gb: float | None = Field(default=None, ge=1)
+
+
+class AlertRules(BaseModel):
+    """What to alert on. Seeded from `[alerts.rules]` and editable from the
+    dashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same
+    scheme as retention)."""
+
+    enabled: bool = True
+    run_failed: bool = True
+    problems: bool = True
+    gateway_down: bool = True
+    gateway_down_minutes: int = Field(default=15, ge=1, le=1440)
+    coverage: bool = True
+    renotify_hours: int = Field(default=24, ge=1, le=720)
+    notify_on_resolve: bool = True
+
+
+class AlertsConfig(BaseModel):
+    """Where alerts go. Config/env only, never the database or the
+    dashboard: a webhook URL (Slack, Discord) or an ntfy token is a
+    credential, so those are read from files (Docker secrets), the same
+    posture as the master passphrase."""
+
+    ntfy_url: str | None = None  # full topic URL, e.g. https://ntfy.sh/my-reovault
+    ntfy_token_file: Path | None = None
+    webhook_url_file: Path | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_starttls: bool = True
+    smtp_user: str | None = None
+    smtp_password_file: Path | None = None
+    smtp_from: str | None = None
+    smtp_to: list[str] = Field(default_factory=list)
+    rules: AlertRules = Field(default_factory=AlertRules)
 
 
 class WebConfig(BaseModel):
@@ -152,6 +199,7 @@ class Settings(BaseSettings):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 
     @classmethod

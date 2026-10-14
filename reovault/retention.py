@@ -5,10 +5,9 @@ A pruned clip keeps its DB row in state `pruned` (see
 `Repository.mark_pruned`): dedup is the row alone, so deleting it would let
 the next scan or backfill re-download a clip still on the SD card.
 
-The policy lives in `app_settings` under `retention`, seeded from
-`reovault.toml`'s `[retention]` table and editable from the dashboard,
-unless any `REOVAULT_RETENTION__*` env var pins it, the same scheme as the
-schedule (see `scheduler.load_effective_schedule`).
+The policy is `reovault.toml`'s `[retention]` table, editable from the
+dashboard (which writes the file back, see `reovault.config_store`) unless a
+`REOVAULT_RETENTION__*` env var pins it.
 """
 
 from __future__ import annotations
@@ -25,37 +24,22 @@ from reovault.storage.vault import VaultStore
 
 logger = get_logger(__name__)
 
-RETENTION_SETTING_KEY = "retention"
+RETENTION_SETTING_KEY = "retention"  # pre-0.4 app_settings key, migrated by config_store
 _RETENTION_ENV_PREFIX = "REOVAULT_RETENTION__"
 _BATCH = 500
 GB = 1024**3
 
 
 def archiver_hook(
-    settings: Settings, repository: Repository, vault: VaultStore
+    current_settings: Callable[[], Settings], repository: Repository, vault: VaultStore
 ) -> Callable[[], PruneResult]:
-    """The `Archiver.retention` callable. Re-reads the policy on every call
-    so a dashboard edit applies from the next clip on."""
-    return lambda: enforce(repository, vault, load_effective_retention(settings, repository))
+    """The `Archiver.retention` callable. Reads the live policy on every
+    call, so an edit (dashboard or file) applies from the next clip on."""
+    return lambda: enforce(repository, vault, current_settings().retention)
 
 
 def is_retention_env_pinned() -> bool:
     return any(k.startswith(_RETENTION_ENV_PREFIX) for k in os.environ)
-
-
-def load_effective_retention(settings: Settings, repository: Repository) -> RetentionConfig:
-    if is_retention_env_pinned():
-        return settings.retention
-    stored = repository.get_setting(RETENTION_SETTING_KEY)
-    if stored is None:
-        # Not logged: this also runs inside CLI commands whose stdout is JSON.
-        repository.set_setting(RETENTION_SETTING_KEY, settings.retention.model_dump_json())
-        return settings.retention
-    return RetentionConfig.model_validate_json(stored)
-
-
-def save_retention(repository: Repository, policy: RetentionConfig) -> None:
-    repository.set_setting(RETENTION_SETTING_KEY, policy.model_dump_json())
 
 
 @dataclass

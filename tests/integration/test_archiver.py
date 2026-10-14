@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+import structlog
 
 from reovault.archiver import AlreadyRunningError, instance_lock
 from reovault.providers.base import (
@@ -85,17 +86,109 @@ def test_dedup_under_overlapping_windows(env):
     assert provider.fetch_calls == 1  # downloaded exactly once
 
 
-def test_size_mismatch_is_quarantined_not_retried(env):
+def _no_mismatch_pause():
+    return patch("reovault.archiver._SIZE_MISMATCH_RETRY_PAUSE_SECS", 0.0)
+
+
+def test_truncated_download_once_then_full_is_archived_in_the_same_attempt(env):
+    content = b"0123456789"
+    rec = _rec("clip1", datetime(2026, 4, 17, 12, tzinfo=UTC), len(content))
+    calls = {"n": 0}
+
+    def _truncated_once():
+        calls["n"] += 1
+        return content[:3] if calls["n"] == 1 else None
+
+    provider = FakeProvider(recordings=[ScriptedRecording(rec, content, on_fetch=_truncated_once)])
+    archiver = env.archiver(provider)
+
+    with _no_mismatch_pause():
+        result = archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+
+    assert result.downloaded == 1
+    assert result.failed == 0
+    assert provider.fetch_calls == 2
+    row = env.repository.conn.execute("SELECT * FROM recordings").fetchone()
+    assert row["state"] == "archived"
+    assert row["attempts"] == 1  # the in-attempt retry isn't a failed attempt
+    assert row["plaintext_size"] == len(content)
+
+
+def test_truncated_download_on_a_later_run_recovers_without_quarantine(env):
+    content = b"0123456789"
+    rec = _rec("clip1", datetime(2026, 4, 17, 12, tzinfo=UTC), len(content))
+    calls = {"n": 0}
+
+    def _truncated_first_attempt():
+        calls["n"] += 1
+        return content[:3] if calls["n"] <= 2 else None  # both tries of attempt 1
+
+    provider = FakeProvider(
+        recordings=[ScriptedRecording(rec, content, on_fetch=_truncated_first_attempt)]
+    )
+    archiver = env.archiver(provider)
+
+    with _no_mismatch_pause(), _no_backoff():
+        r1 = archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+        row = env.repository.conn.execute("SELECT * FROM recordings").fetchone()
+        assert r1.failed == 1
+        assert row["state"] == "failed"
+        assert row["next_attempt_at"] is not None
+
+        r2 = archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+
+    assert r2.downloaded == 1
+    row = env.repository.conn.execute("SELECT * FROM recordings").fetchone()
+    assert row["state"] == "archived"
+    assert row["attempts"] == 2
+
+
+def test_persistent_size_mismatch_quarantines_after_the_retry_budget(env):
     rec = _rec("clip1", datetime(2026, 4, 17, 12, tzinfo=UTC), 999999)  # wrong expected size
     provider = FakeProvider(recordings=[ScriptedRecording(rec, b"short content")])
     archiver = env.archiver(provider)
 
-    result = archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+    states = []
+    with _no_mismatch_pause(), _no_backoff():
+        for _ in range(3):
+            result = archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+            assert result.failed == 1
+            states.append(
+                env.repository.conn.execute("SELECT state FROM recordings").fetchone()["state"]
+            )
 
-    assert result.failed == 1
+    assert states == ["failed", "failed", "quarantined"]
     row = env.repository.conn.execute("SELECT * FROM recordings").fetchone()
-    assert row["state"] == "quarantined"
+    assert row["attempts"] == 3
     assert row["last_error_class"] == "protocol"
+    assert row["last_error"] == "downloaded 13 bytes, expected 999999 (remote_size)"
+    assert provider.fetch_calls == 6  # two tries per attempt
+    assert list(env.staging_dir.rglob("clip1")) == []
+
+
+def test_size_mismatch_is_logged(env):
+    rec = _rec("clip1", datetime(2026, 4, 17, 12, tzinfo=UTC), 999999)
+    provider = FakeProvider(recordings=[ScriptedRecording(rec, b"short content")])
+    archiver = env.archiver(provider)
+
+    with _no_mismatch_pause(), structlog.testing.capture_logs() as logs:
+        archiver.run(trigger="manual", from_utc=WINDOW_FROM, to_utc=WINDOW_TO)
+
+    row_id = env.repository.conn.execute("SELECT id FROM recordings").fetchone()["id"]
+    mismatches = [e for e in logs if e["event"] == "archiver.size_mismatch"]
+    assert len(mismatches) == 2
+    assert mismatches[0] == {
+        "event": "archiver.size_mismatch",
+        "log_level": "warning",
+        "recording_id": row_id,
+        "remote_name": "clip1",
+        "actual": 13,
+        "expected": 999999,
+    }
+    failed = [e for e in logs if e["event"] == "archiver.recording_failed"]
+    assert len(failed) == 1
+    assert failed[0]["recording_id"] == row_id
+    assert failed[0]["error_class"] == "protocol"
 
 
 @pytest.mark.parametrize(

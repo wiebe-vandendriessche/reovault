@@ -29,6 +29,9 @@ camera saw.
   elsewhere.
 * **Encrypted storage**: recordings are encrypted at rest with a
   passphrase-wrapped master key.
+* **No silent failure**: alerts (ntfy, webhook, email) when a run fails,
+  recordings need attention, clips on a camera's SD card are at risk of
+  being overwritten before they're archived, or the camera gateway is down.
 
 ## Architecture at a glance
 
@@ -42,18 +45,22 @@ dashboard. See [Architecture](architecture.md) for the full picture.
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-health.png" alt="Health overview: coverage margin, SD card usage, vault size, latest footage" /></td>
-<td width="50%"><img src="img/screenshot-recordings.png" alt="Recordings browser: date-first, grouped by hour, filterable by detection type" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: the archive's disk (ReoVault's share, free space, room left, retention) and one tile per camera's SD card with its fill, a timeline of archived, waiting and failed clips, and a verdict" /></td>
+<td width="50%"><img src="img/screenshot-health.png" alt="Health, per camera: its SD card, its runs, today's footage, and manual runs" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Schedule: archive, backfill, and integrity-scan cadence per camera" /></td>
-<td width="50%"><img src="img/screenshot-login.png" alt="Login screen" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: month calendar with activity per day, clips grouped by hour, filterable by detection type, with export" /></td>
+<td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
+</tr>
+<tr>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
+<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and which conditions alert" /></td>
 </tr>
 </table>
 
 ## Where to go next
 
-* [Installation](installation.md): Docker Compose or bare-metal setup
+* [Installation](installation.md): Docker Compose setup, upgrading, and alerts
 * [Configuration](configuration.md): every `reovault.toml` / env var option
 * [CLI reference](cli-reference.md): every `reovault` subcommand
 * [Architecture](architecture.md): how the pieces fit together

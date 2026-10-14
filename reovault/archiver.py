@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -37,12 +38,26 @@ MAX_BACKOFF_SECS = 6 * 3600
 JITTER_FRACTION = 0.25
 
 # How many attempts a class gets before escalating from `failed` (retryable)
-# to `quarantined` (needs a human). Input and protocol errors have no entry:
-# they quarantine on the first failure.
+# to `quarantined` (needs a human). Input errors have no entry: they
+# quarantine on the first failure. A `ProtocolError` is never retryable
+# either; the protocol entry only applies to size mismatches (see
+# `_handle_size_mismatch`).
 _MAX_ATTEMPTS: dict[ErrorClass, int] = {
     ErrorClass.NETWORK: 8,
     ErrorClass.DEVICE: 2,
+    ErrorClass.PROTOCOL: 3,
 }
+
+# A short download gets one more try after this pause, inside the same
+# attempt, before it counts as failed. In production (reolink-cli 0.19.0, a
+# doorbell), `vod download` exited 0 with a truncated file about 2s into the
+# download right after a large one; the guess, unverified, is that the
+# camera hadn't closed the previous VOD session yet.
+_SIZE_MISMATCH_RETRY_PAUSE_SECS = 10.0
+
+# Live progress is written at most this often: once per clip would be one
+# extra SQLite write per file on a fast LAN for no visible benefit.
+_PROGRESS_INTERVAL_SECS = 1.0
 
 _VAULT_FILENAME_RE = re.compile(r"^(?P<start>\d{8}T\d{6}Z)_(?P<remote_name>.+)\.enc$")
 
@@ -145,6 +160,11 @@ class Archiver:
     # `fleet.build_archiver`. Called before a run and after every finalized
     # clip, so a long backfill overshoots the size cap by at most one clip.
     retention: Callable[[], object] | None = None
+    # Live-progress hook, wired by `Fleet` (the dashboard turns it into an
+    # SSE hint). Gets this archiver's device id after the run's counters
+    # have been written; never allowed to fail a run.
+    on_progress: Callable[[int], None] | None = None
+    _last_progress: float = field(default=0.0, init=False, repr=False)
     processed_ids: set[int] = field(default_factory=set, init=False, repr=False)
     # Cooperative cancellation for the dashboard's Stop button: a plain flag,
     # not a hard kill, so cancellation can only ever land *between*
@@ -193,11 +213,13 @@ class Archiver:
             return self._finish(run_id, result, outcome="failed", error=exc)
 
         result.discovered = len(recordings)
+        self._report_progress(run_id, result, force=True)
         try:
             for rec in recordings:
                 if self.cancel_requested.is_set():
                     raise _AbortRun("canceled")
                 self._maybe_process_discovered(rec, result, staging_run_dir)
+                self._report_progress(run_id, result)
             for row in self.repository.pending(device_id=self.device_id):
                 if row.id in self.processed_ids:
                     continue
@@ -206,12 +228,37 @@ class Archiver:
                 self._process_one(
                     row.id, self._row_to_remote_recording(row), result, staging_run_dir
                 )
+                self._report_progress(run_id, result)
         except _AbortRun as exc:
             return self._finish(run_id, result, outcome="aborted", error=exc)
 
         shutil.rmtree(staging_run_dir, ignore_errors=True)
         outcome = "success" if result.failed == 0 else "partial"
         return self._finish(run_id, result, outcome=outcome)
+
+    def _report_progress(
+        self, run_id: int, result: ArchiveRunResult, *, force: bool = False
+    ) -> None:
+        """Writes the running counters so the dashboard can show progress
+        before `finish_run`, throttled to `_PROGRESS_INTERVAL_SECS`. Purely
+        informational: any failure is logged and the run carries on."""
+        now = time.monotonic()
+        if not force and now - self._last_progress < _PROGRESS_INTERVAL_SECS:
+            return
+        self._last_progress = now
+        try:
+            self.repository.update_run_progress(
+                run_id,
+                discovered=result.discovered,
+                downloaded=result.downloaded,
+                skipped_dup=result.skipped_dup,
+                failed=result.failed,
+                bytes_archived=result.bytes_archived,
+            )
+            if self.on_progress is not None:
+                self.on_progress(self.device_id)
+        except Exception as exc:  # noqa: BLE001 - progress must never fail a run
+            logger.warning("archiver.progress_report_failed", error=str(exc))
 
     def _maybe_process_discovered(
         self, rec: RemoteRecording, result: ArchiveRunResult, staging_run_dir: Path
@@ -242,17 +289,29 @@ class Archiver:
         staging_path = staging_run_dir / rec.remote_name
         staging_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
-            fetch_result = self.provider.fetch(rec, str(staging_path))  # step 3
-        except ProviderError as exc:
-            self._handle_provider_failure(row_id, exc, result)
-            return
-        except OSError as exc:
-            result.error = str(exc)
-            raise _AbortRun(str(exc)) from exc
-
-        if rec.remote_size is not None and fetch_result.bytes_written != rec.remote_size:
+        for pause in (0.0, _SIZE_MISMATCH_RETRY_PAUSE_SECS):
+            time.sleep(pause)
+            try:
+                fetch_result = self.provider.fetch(rec, str(staging_path))  # step 3
+            except ProviderError as exc:
+                self._handle_provider_failure(row_id, exc, result)
+                return
+            except OSError as exc:
+                result.error = str(exc)
+                raise _AbortRun(str(exc)) from exc
+            if rec.remote_size is None or fetch_result.bytes_written == rec.remote_size:
+                break
+            # Never hand a partial file to a retry: whether `vod download -o`
+            # overwrites an existing file is unverified.
             staging_path.unlink(missing_ok=True)
+            logger.warning(
+                "archiver.size_mismatch",
+                recording_id=row_id,
+                remote_name=rec.remote_name,
+                actual=fetch_result.bytes_written,
+                expected=rec.remote_size,
+            )
+        else:  # came up short on both tries
             self._handle_size_mismatch(row_id, rec, fetch_result.bytes_written, result)
             return
 
@@ -347,13 +406,14 @@ class Archiver:
         self, row_id: int, rec: RemoteRecording, actual: int, result: ArchiveRunResult
     ) -> None:
         message = f"downloaded {actual} bytes, expected {rec.remote_size} (remote_size)"
-        result.failed += 1
-        result.errors.append(message)
-        # A silent, persistent size mismatch on the same recording points at
-        # something structural (protocol drift), not a transient network
-        # blip, so it's classified like a protocol error: quarantine, don't
-        # retry-loop.
-        self.repository.mark_quarantined(row_id, error=message, error_class=ErrorClass.PROTOCOL)
+        # One short download is a transient fault (seen in production after
+        # large downloads, with `vod download` still exiting 0), so it backs
+        # off and retries. Only one that persists across attempts points at
+        # something structural (protocol drift), hence the protocol class
+        # and its small budget in `_MAX_ATTEMPTS`.
+        self._handle_provider_failure(
+            row_id, ProviderError(message, ErrorClass.PROTOCOL, retryable=True), result
+        )
 
     def _finish(
         self,

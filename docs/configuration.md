@@ -7,10 +7,32 @@ default `./reovault.toml`), merged with `REOVAULT_*` environment variables.
 
 Start from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/reovault/blob/main/reovault.example.toml).
 
-The defaults below are for a bare-metal install. In Docker, the image points
-every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
-and `compose.yaml` mounts your `reovault.toml` read-only at
-`/etc/reovault/reovault.toml`, so leave the path fields out of it there.
+The path defaults below apply when running from a source checkout (a
+development setup). In Docker, the image points every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
+and `compose.yaml` mounts the folder holding your `reovault.toml` at
+`/etc/reovault`, so leave the path fields out of it there.
+
+## The file is the source of truth
+
+Every setting lives in `reovault.toml`, and the dashboard's Settings page is
+just another editor of it:
+
+* **Dashboard to file.** Saving a setting rewrites the file with your
+  comments and layout intact. The whole new file is validated first and
+  replaces the old one atomically; the previous version is kept as
+  `reovault.toml.bak`. If the file changed on disk since the page loaded,
+  the save is refused instead of overwriting that edit.
+* **File to dashboard.** Edits to the file are picked up within about a
+  second, no restart needed, and open dashboards refresh. A file that
+  doesn't validate is reported on the Settings page while ReoVault keeps
+  running on the last valid settings.
+* **Precedence.** `REOVAULT_*` env vars win over the file, which wins over
+  the defaults. A field set by an env var shows a lock in the dashboard.
+* **Restart-only settings.** `[storage]`, `[reolink_cli]` and the `[web]`
+  bind, port, cookie, origin, proxy and login-identity fields are read once
+  at startup and shown read-only in the dashboard; a change to them in the
+  file is flagged "restart required". Only `[web]`'s session length, login
+  attempt limits and page size apply live.
 
 Nothing in config is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the
 camera password are deliberately not config fields. See
@@ -26,10 +48,31 @@ One entry per camera. A list, so multi-camera setups just add more entries.
 | `channel` | int | `0` | Camera channel (multi-channel NVR-style devices). |
 | `timezone` | string | required | IANA tz name the camera's clock runs in, e.g. `America/New_York`. |
 | `name` | string | none | Display name shown in the dashboard instead of `alias`; auto-backfilled from the camera's own name once discovered if left unset. |
+| `enabled` | bool | `true` | `false` stops archiving this camera; its archived footage stays browsable. |
+| `schedule` | table | none | The camera's own `[devices.schedule]` (same fields as `[schedule]`); unset means it follows `[schedule]`. |
+| `provider` | `"reolink-cli"` or `"fake"` | `"reolink-cli"` | `"fake"` replaces the camera with a built-in pretend one, for trying the dashboard with several cameras. See below. |
 
-Devices are seeded from `reovault.toml` on every startup (never deleted or
-disabled by a reseed); the dashboard's Devices tab can also add, rename,
-enable/disable, and schedule cameras at runtime.
+The `[[devices]]` list is the set of cameras. Adding a camera on the Devices
+page appends an entry, and turning one off writes `enabled = false`. A
+camera removed from the file is disabled, never deleted, so its footage
+stays. Cameras are matched to their archive by `alias` and `channel`, which
+is why those two can't be changed from the dashboard.
+
+A `provider = "fake"` entry needs no `reolink-cli` alias. Its "SD card" is
+a nearly full card holding a sliding week of tiny clips, one every 15
+minutes, so new clips appear and old ones roll off like on a real camera.
+About one clip in a hundred "rotates off" before it can be archived, so the
+at-risk and lost states have something to show. Its clips go through the
+real download, verification and encryption into your vault; removing the
+entry stops it, and what it archived stays like any other camera's footage.
+
+```toml
+[[devices]]
+alias = "fake"
+provider = "fake"
+timezone = "Europe/Brussels"
+name = "Test cam"
+```
 
 ## `[reolink_cli]`
 
@@ -79,11 +122,10 @@ ciphertext it unlocks.
 
 `timezone` unset (the default) means each device's cron jobs evaluate in
 that device's own `[[devices]] timezone`. Setting it forces every device
-onto one timezone. This table only seeds the dashboard's per-camera schedule
-on first boot. Once a camera's schedule has been saved from the Schedule
-tab, that camera's own saved schedule wins from then on. Setting any
-`REOVAULT_SCHEDULE__*` env var instead pins this schedule for every camera
-and takes the dashboard's Schedule tab out of the loop entirely.
+onto one timezone. This table is the default every camera follows unless it has its own
+`[devices.schedule]`. Setting any `REOVAULT_SCHEDULE__*` env var instead pins
+this schedule for every camera and makes the dashboard's schedule form
+read-only.
 
 ## `[retention]`
 
@@ -105,12 +147,54 @@ so even a long backfill overshoots the cap by at most one clip. A pruned
 clip keeps its database row in state `pruned` and is never downloaded
 again, even while it is still on the camera's SD card.
 
-Like `[schedule]`, this table only seeds the dashboard on first boot; after
-that, the Retention card on the Schedule tab is authoritative. Saving a
-policy that would delete footage right away asks for confirmation first,
+The Retention tab under Settings edits this table. Saving a policy that would delete footage right away asks for confirmation first,
 showing how many clips and bytes would go. Setting any
-`REOVAULT_RETENTION__*` env var pins the policy and makes the card
+`REOVAULT_RETENTION__*` env var pins the policy and makes the tab
 read-only.
+
+## `[alerts]`
+
+Where alerts go. These fields are config-only, never stored in the database
+or editable from the dashboard: a webhook URL or an ntfy token is a
+credential, so anything secret is read from a file (mount it as a Docker
+secret).
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ntfy_url` | string or unset | unset | Full topic URL, e.g. `https://ntfy.sh/my-reovault`. Choose an unguessable topic on a public server. |
+| `ntfy_token_file` | path or unset | unset | Access token for a protected topic, sent as a Bearer token. |
+| `webhook_url_file` | path or unset | unset | File holding the URL. Receives a JSON POST with `title`, `message`, `resolved`, plus `text` and `content` so Slack and Discord incoming webhooks work as-is. |
+| `smtp_host` | string or unset | unset | Email is sent only when this and `smtp_to` are set. |
+| `smtp_port` | int | `587` | `465` uses implicit TLS; any other port uses STARTTLS when `smtp_starttls` is on. |
+| `smtp_starttls` | bool | `true` | |
+| `smtp_user` | string or unset | unset | |
+| `smtp_password_file` | path or unset | unset | |
+| `smtp_from` | string or unset | `smtp_user` | |
+| `smtp_to` | list of strings | `[]` | |
+
+### `[alerts.rules]`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `true` |
+| `run_failed` | bool | `true` |
+| `problems` | bool | `true` |
+| `coverage` | bool | `true` |
+| `gateway_down` | bool | `true` |
+| `gateway_down_minutes` | int, 1 to 1440 | `15` |
+| `renotify_hours` | int, 1 to 720 | `24` |
+| `notify_on_resolve` | bool | `true` |
+
+What to alert on: a run that failed or was stopped, recordings that failed
+or were quarantined, clips at risk of being overwritten on a camera's SD
+card before they're archived (the same "At risk" state its SD card shows
+on the Overview and Health pages), and the camera gateway staying down longer
+than `gateway_down_minutes`. An open alert is sent once, repeated every
+`renotify_hours` while it stays open, and followed by a "Resolved" message
+when it clears. A send that fails on every channel is retried on the next
+evaluation, once a minute. Settings, Alerts edits this table and the
+channel fields above; any `REOVAULT_ALERTS__RULES__*` env var pins the
+rules.
 
 ## `[web]`
 
@@ -118,7 +202,7 @@ read-only.
 |---|---|---|---|
 | `host` | string | `127.0.0.1` | Bind `0.0.0.0` in a container. Loopback there is the container's own namespace, unreachable from a reverse proxy. |
 | `port` | int | `8080` | |
-| `password_hash` | string or unset | unset | Set via `REOVAULT_WEB__PASSWORD_HASH` (Docker secret) or the `password_file` below. App still starts and `/healthz` still works if unset; every UI route returns 503 until set. |
+| `password_hash` | string or unset | unset | Set via `REOVAULT_WEB__PASSWORD_HASH` (Docker secret) or the `password_file` below. App still starts and `/healthz` still works if unset; the API answers 503 until set. |
 | `email` | string or unset | unset | Login identity field (password-manager autofill, not an authorization boundary). `reovault web set-password` refuses to run without it. |
 | `password_file` | path | `./data/config/web_password` | |
 | `session_key_path` | path | `./data/config/web_session.key` | |

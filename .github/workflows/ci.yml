@@ -34,6 +34,44 @@ jobs:
       - name: pytest (unit + integration, contract excluded)
         run: uv run pytest -q --cov=reovault --cov-report=term-missing
 
+      - name: OpenAPI schema is up to date
+        # The dashboard's types are generated from this file; a stale copy
+        # means the frontend compiles against an API that no longer exists.
+        run: |
+          uv run python scripts/export_openapi.py /tmp/openapi.json
+          diff -u dashboard/openapi.json /tmp/openapi.json
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Generated API types match openapi.json
+        run: |
+          npm run gen:api
+          git diff --exit-code src/lib/api/schema.d.ts
+
+      - name: svelte-check
+        run: npm run check
+
+      - name: vitest
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

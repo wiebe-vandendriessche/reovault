@@ -13,12 +13,15 @@ missing.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 
 from reovault import retention
 from reovault.archiver import Archiver
 from reovault.config import Settings
 from reovault.db.repository import DeviceRow, Repository
 from reovault.logging import get_logger
+from reovault.providers.base import CameraProvider
+from reovault.providers.fake import DemoProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
 from reovault.storage.vault import VaultStore
@@ -33,6 +36,7 @@ def build_archiver(
     repository: Repository,
     vault: VaultStore,
     gateway: GatewaySupervisor,
+    current_settings: Callable[[], Settings] | None = None,
 ) -> Archiver:
     # A fresh Archiver is exactly the signal that no thread of this process
     # can be running a job for this device yet -- so any archive_runs row
@@ -47,14 +51,22 @@ def build_archiver(
         logger.warning(
             "fleet.aborted_stale_running_run", device_id=device.id, device_alias=device.alias
         )
-    provider = ReolinkCliProvider(
-        alias=device.alias,
-        timezone=device.timezone,
-        binary=settings.reolink_cli.binary,
-        gateway=gateway,
-        search_timeout_secs=settings.reolink_cli.search_timeout_secs,
-        download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+    config = next(
+        (c for c in settings.devices if c.alias == device.alias and c.channel == device.channel),
+        None,
     )
+    provider: CameraProvider
+    if config is not None and config.provider == "fake":
+        provider = DemoProvider()
+    else:
+        provider = ReolinkCliProvider(
+            alias=device.alias,
+            timezone=device.timezone,
+            binary=settings.reolink_cli.binary,
+            gateway=gateway,
+            search_timeout_secs=settings.reolink_cli.search_timeout_secs,
+            download_timeout_secs=settings.reolink_cli.download_timeout_secs,
+        )
     return Archiver(
         repository=repository,
         provider=provider,
@@ -69,7 +81,11 @@ def build_archiver(
         # path segment.
         staging_dir=settings.storage.staging_dir / str(device.id),
         lock_path=settings.storage.config_dir / f"reovault-{device.id}.lock",
-        retention=retention.archiver_hook(settings, repository, vault),
+        # Live settings when the daemon has a ConfigStore, so a retention
+        # edit (dashboard or file) applies from the next clip on.
+        retention=retention.archiver_hook(
+            current_settings or (lambda: settings), repository, vault
+        ),
     )
 
 
@@ -88,10 +104,15 @@ class Fleet:
         gateway: GatewaySupervisor,
     ) -> None:
         self._settings = settings
+        # Swapped for `ConfigStore.current` by the daemon; see build_archiver.
+        self.current_settings: Callable[[], Settings] = lambda: settings
         self._repository = repository
         self._gateway = gateway
         self._lock = threading.Lock()
         self.archivers: dict[int, Archiver] = {}
+        # Applied to every archiver, current and future; see
+        # `Archiver.on_progress`.
+        self._on_progress: Callable[[int], None] | None = None
         # Public: the vault is shared across every device (namespaced
         # internally by `<alias>/...`), so a caller streaming a recording by
         # id needs this directly rather than through a specific device's
@@ -114,10 +135,18 @@ class Fleet:
             repository=self._repository,
             vault=self.vault,
             gateway=self._gateway,
+            current_settings=self.current_settings,
         )
+        archiver.on_progress = self._on_progress
         with self._lock:
             self.archivers[device.id] = archiver
         return archiver
+
+    def set_progress_hook(self, hook: Callable[[int], None] | None) -> None:
+        with self._lock:
+            self._on_progress = hook
+            for archiver in self.archivers.values():
+                archiver.on_progress = hook
 
     def remove(self, device_id: int) -> None:
         with self._lock:
@@ -130,10 +159,13 @@ def build_fleet(
     repository: Repository,
     vault: VaultStore,
     gateway: GatewaySupervisor,
+    current_settings: Callable[[], Settings] | None = None,
 ) -> Fleet:
     """Seeds a Fleet from every currently-enabled device row. Called once at
     startup, after `_seed_devices_from_toml` has upserted `[[devices]]`."""
     fleet = Fleet(settings=settings, repository=repository, vault=vault, gateway=gateway)
+    if current_settings is not None:
+        fleet.current_settings = current_settings
     for device in repository.list_devices(enabled_only=True):
         fleet.add(device)
     return fleet

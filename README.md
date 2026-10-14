@@ -19,18 +19,22 @@ Full docs (installation, configuration reference, CLI reference, architecture): 
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-health.png" alt="Health overview: coverage margin, SD card usage, vault size, latest footage" /></td>
-<td width="50%"><img src="img/screenshot-recordings.png" alt="Recordings browser: date-first, grouped by hour, filterable by detection type" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: the archive's disk (ReoVault's share, free space, room left, retention) and one tile per camera's SD card with its fill, a timeline of archived, waiting and failed clips, and a verdict" /></td>
+<td width="50%"><img src="img/screenshot-health.png" alt="Health, per camera: its SD card, its runs, today's footage, and manual runs" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Schedule: archive, backfill, and integrity-scan cadence per camera" /></td>
-<td width="50%"><img src="img/screenshot-login.png" alt="Login screen" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: month calendar with activity per day, clips grouped by hour, filterable by detection type, with export" /></td>
+<td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
+</tr>
+<tr>
+<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
+<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and which conditions alert" /></td>
 </tr>
 </table>
 
 ## Status
 
-Implemented and tested end to end (provider layer, database, crypto/vault, archiver, scheduler/health, the web dashboard as an installable PWA, and Docker packaging). Verified against real camera hardware, not just fakes/mocks. See [compatible devices](https://wiebe-vandendriessche.github.io/reovault/compatibility/). Pre-1.0: expect the config schema to still move.
+Implemented and tested end to end (provider layer, database, crypto/vault, archiver, scheduler/health, alerts, the web dashboard as an installable PWA, and Docker packaging). Verified against real camera hardware, not just fakes/mocks. See [compatible devices](https://wiebe-vandendriessche.github.io/reovault/compatibility/). Pre-1.0: expect the config schema to still move.
 
 ## Docker
 
@@ -39,10 +43,10 @@ Signed images for `linux/amd64` and `linux/arm64` are published at `ghcr.io/wieb
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-# edit reovault.toml: your [[devices]], and set [web] email (set-password needs it)
+mkdir -p config data/config data/vault data/staging data/reolink-cli secrets
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+# edit config/reovault.toml: your [[devices]], and set [web] email (set-password needs it)
 
-mkdir -p data/config data/vault data/staging data/reolink-cli secrets
 echo -n "a passphrase, not the camera's" > secrets/reovault_master_passphrase.txt
 
 docker compose run --rm reovault key init
@@ -50,7 +54,9 @@ docker compose up -d
 docker compose exec reovault reovault web set-password
 ```
 
-Create `reovault.toml` and the `data/` folders before the first `docker compose` command: otherwise Docker creates them as root, and the container (uid 1000) can't write to them. Upgrade with `docker compose pull && docker compose up -d`.
+Create `config/reovault.toml` and the `data/` folders before the first `docker compose` command: otherwise Docker creates them as root, and the container (uid 1000) can't write to them. Upgrade with `docker compose pull && docker compose up -d`; coming from 0.3, see [Upgrading](https://wiebe-vandendriessche.github.io/reovault/installation/#upgrading).
+
+Everything in `reovault.toml` is editable on the dashboard's Settings page, which writes your changes back into the file (comments kept), and edits you make to the file show up in the dashboard within seconds.
 
 `compose.yaml` supports two deployment modes: behind a reverse proxy (Nginx Proxy Manager, Traefik, ...) with no port published by default, or a direct port publish for LAN/VPN access. See the comments at the top of `compose.yaml` and [Security](https://wiebe-vandendriessche.github.io/reovault/security/#deployment-modes) for what each needs.
 
@@ -58,44 +64,33 @@ Create `reovault.toml` and the `data/` folders before the first `docker compose`
 
 [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/) covers upgrading, pinning a version, verifying the image signature, and building from source.
 
-## Quick start
-
-Prerequisites: [`reolink-cli`](https://github.com/reolink/reolink-cli) installed and a camera registered under an alias (`reolink-cli device add <alias> --host <ip> --user admin`), and its gateway reachable (`reolink-cli gateway start --addr 127.0.0.1:9000 &`). ReoVault never touches the camera password itself, see [Architecture](https://wiebe-vandendriessche.github.io/reovault/architecture/).
-
-```bash
-uv sync --dev
-cp reovault.example.toml reovault.toml   # set [[devices]] alias/timezone to match reolink-cli's, storage paths, and [web] email
-
-export REOVAULT_MASTER_PASSPHRASE="a passphrase, not the camera's"
-uv run reovault key init                 # creates data/config/master.key (0600)
-uv run reovault doctor                   # preflight: config, storage, DB, key. No camera contact.
-uv run reovault probe                    # confirms the camera/gateway are reachable
-
-uv run reovault run --from 2026-04-17T00:00:00 --to 2026-04-17T23:59:59   # one-shot archive run (UTC)
-uv run reovault status                   # archived count, bytes, SD card status
-uv run reovault verify --all             # re-decrypt + re-hash every archived file
-uv run reovault export <id> -o clip.mp4  # decrypt one archived recording back out
-
-uv run reovault web set-password         # sets the dashboard login (data/config/web_password, 0600)
-uv run reovault daemon                   # scheduler + dashboard: http://127.0.0.1:8080
-```
-
-`reovault --help` and `reovault key --help` list every command.
-
 ## Dashboard
 
-`reovault daemon` serves a server-rendered dashboard (FastAPI + Jinja2 + HTMX, no build step, no Node) at the configured `[web]` host/port, installable as a PWA (Add to Home Screen) on a phone. It's password-protected (`reovault web set-password`), date-first for browsing footage (a month calendar drills into a day grouped by hour), and plays clips straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to.
+The container serves the dashboard on port 8080: a Svelte single-page app on a typed JSON API, updated live over Server-Sent Events, installable as a PWA (Add to Home Screen) on a phone. It's password-protected (`reovault web set-password`) and covers:
+
+* **Overview** (home): the archive's disk (ReoVault's share, free space and how long it lasts at the current rate) and one tile per camera's SD card: how full it is, a timeline of what's on it coloured by archived, waiting or failed, and a plain verdict such as "All archived" or "At risk: the oldest unarchived clip is overwritten in about 22 hours".
+* **Health** (per camera): that camera's SD card, its runs, today's footage, footage archived and detections per type over the last 30 days, and run now, backfill or check the vault on demand, with live progress while a run is going.
+* **Footage**: date-first browsing (a month calendar drills into a day grouped by hour), filtered by detection type, with per-day counts on hover. On a phone, clips open in a bottom-sheet player that steps through the hour. Clips play straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to, and a date range downloads as one zip.
+* **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry for one or all of them.
+* **Devices**: every camera with its status, adding one from LAN discovery, turning archiving on or off, and editing its name, timezone and (optionally) its own schedule.
+* **Settings**: the app-wide part of `reovault.toml`: the default schedule, retention, alerts, and the web and system settings.
+
+**Alerts** go out over ntfy, a webhook (Slack and Discord URLs work as-is) or email when a run fails, recordings need attention, clips on a camera's SD card are at risk of being overwritten before they're archived, or the camera gateway is down. See [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/#alerts).
 
 See [Security](https://wiebe-vandendriessche.github.io/reovault/security/#deployment-modes) for the `[web]` settings each deployment mode (reverse proxy vs. direct port) needs, and [Architecture](https://wiebe-vandendriessche.github.io/reovault/architecture/) for the full design.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including running the daemon from a checkout without Docker and the CLI commands.
 
 ```bash
 uv sync --dev
 uv run pytest                            # unit + integration tests (camera-free, uses a fake provider)
 uv run ruff check . && uv run ruff format --check . && uv run mypy reovault
+
+cd dashboard && npm ci --ignore-scripts
+npm run dev                              # the dashboard on :5173, proxying /api to a daemon on :8080
+npm run check && npm test && npm run build
 ```
 
 Camera-touching work (`reovault probe`/`run` against real hardware, capturing fixtures, contract tests) needs `reolink-cli` installed and a supported camera on the LAN. See [compatible devices](https://wiebe-vandendriessche.github.io/reovault/compatibility/).

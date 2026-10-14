@@ -19,7 +19,11 @@ onto one zone regardless of where each camera actually is.
 
 Every job is `max_instances=1, coalesce=True` (skip a fire that would
 overlap a still-running one), belt and suspenders on top of the archiver's
-own `flock`, which is the real mutual-exclusion mechanism. The scheduler
+own `flock`, which is the real mutual-exclusion mechanism. The archive and
+backfill jobs also take `misfire_grace_time=None`: with one worker, the
+weekly backfill can hold the executor past the daily archive's fire time
+(seen in production: a 04:00-06:00 backfill made APScheduler drop the 05:00
+archive as "missed"), and a late archive beats a dropped one. The scheduler
 itself runs everything through a single-worker executor (`ThreadPoolExecutor(1)`):
 every camera call funnels through one `reolink-gateway` whose concurrent
 behavior is unverified, and throughput here is bounded by the LAN and one
@@ -47,7 +51,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from reovault import health
 from reovault.archiver import AlreadyRunningError, Archiver
-from reovault.config import ScheduleConfig, Settings
+from reovault.config import DeviceConfig, ScheduleConfig, Settings
 from reovault.db.repository import Repository
 from reovault.fleet import Fleet
 from reovault.logging import get_logger
@@ -77,39 +81,31 @@ def is_schedule_env_pinned() -> bool:
     return any(k.startswith(_SCHEDULE_ENV_PREFIX) for k in os.environ)
 
 
-def _schedule_key(device_id: int | None) -> str:
-    return SCHEDULE_SETTING_KEY if device_id is None else f"{SCHEDULE_SETTING_KEY}:{device_id}"
+def device_config(
+    settings: Settings, repository: Repository, device_id: int
+) -> DeviceConfig | None:
+    """The `[[devices]]` entry for a device row, matched on alias + channel."""
+    row = repository.get_device(device_id)
+    if row is None:
+        return None
+    return next(
+        (d for d in settings.devices if d.alias == row.alias and d.channel == row.channel), None
+    )
 
 
 def load_effective_schedule(
     settings: Settings, repository: Repository, device_id: int | None = None
 ) -> ScheduleConfig:
-    """The schedule actually in effect for one camera (or the global
-    fallback, with `device_id=None`). Env-pinned always wins outright, for
-    every camera alike (see `is_schedule_env_pinned`'s docstring).
-    Otherwise: this device's own saved schedule if it has one, else the
-    global `schedule` key (seeded from `reovault.toml`'s `[schedule]` table
-    on first boot, logged once), so a camera that has never had its own
-    schedule edited still inherits the same effective schedule it always
-    had before per-device schedules existed."""
-    if is_schedule_env_pinned():
-        return settings.schedule
-    if device_id is not None:
-        stored = repository.get_setting(_schedule_key(device_id))
-        if stored is not None:
-            return ScheduleConfig.model_validate_json(stored)
-    stored = repository.get_setting(SCHEDULE_SETTING_KEY)
-    if stored is None:
-        repository.set_setting(SCHEDULE_SETTING_KEY, settings.schedule.model_dump_json())
-        logger.info("settings.schedule_seeded_from_toml")
-        return settings.schedule
-    return ScheduleConfig.model_validate_json(stored)
-
-
-def save_schedule(
-    repository: Repository, schedule: ScheduleConfig, device_id: int | None = None
-) -> None:
-    repository.set_setting(_schedule_key(device_id), schedule.model_dump_json())
+    """The schedule in effect for one camera (or the global one, with
+    `device_id=None`): its own `[devices.schedule]` from reovault.toml if
+    it has one, else the global `[schedule]`. A `REOVAULT_SCHEDULE__*` env
+    var pins the global schedule for every camera alike (see
+    `is_schedule_env_pinned`)."""
+    if device_id is not None and not is_schedule_env_pinned():
+        device = device_config(settings, repository, device_id)
+        if device is not None and device.schedule is not None:
+            return device.schedule
+    return settings.schedule
 
 
 def _job_id(base: str, device_id: int) -> str:
@@ -155,14 +151,14 @@ def _run_and_sample(
         logger.exception("scheduler.storage_sample_failed", device_id=archiver.device_id)
         return
 
-    status = health.coverage_margin(repository=archiver.repository, device_id=archiver.device_id)
+    status = health.card_status(repository=archiver.repository, device_id=archiver.device_id)
     if status.alarm:
         logger.error(
             "scheduler.coverage_alarm",
             device_id=archiver.device_id,
-            margin_fraction=status.margin_fraction,
+            safe_for_seconds=status.safe_for.total_seconds() if status.safe_for else None,
             oldest_on_card_utc=status.oldest_on_card_utc,
-            oldest_unarchived_utc=status.oldest_unarchived_utc,
+            oldest_waiting_utc=status.oldest_waiting_utc,
         )
 
 
@@ -208,6 +204,26 @@ def _integrity_scan_job(archiver: Archiver, sample_pct: float) -> None:
     )
 
 
+ALERTS_JOB_ID = "alerts"
+
+
+def add_alerts_job(scheduler: BackgroundScheduler, evaluate: Callable[[], None]) -> None:
+    """Alert evaluation, once a minute, on its own single-thread executor:
+    the default one is busy for the whole length of an archive run, and a
+    gateway that goes down mid-run is exactly when an alert matters."""
+    if "alerts" not in scheduler._executors:  # noqa: SLF001 - no public lookup in APScheduler 3
+        scheduler.add_executor(ThreadPoolExecutor(1), "alerts")
+    scheduler.add_job(
+        evaluate,
+        IntervalTrigger(minutes=1),
+        id=ALERTS_JOB_ID,
+        executor="alerts",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+
+
 def build_scheduler() -> BackgroundScheduler:
     """One instance per daemon process, with no jobs yet: call
     `add_device_jobs` once per device in the fleet. Caller owns
@@ -235,6 +251,7 @@ def add_device_jobs(
             id=_job_id("scheduled_archive", device_id),
             max_instances=1,
             coalesce=True,
+            misfire_grace_time=None,
             jitter=_JITTER_SECS,
         )
     if schedule.backfill_enabled:
@@ -245,6 +262,7 @@ def add_device_jobs(
             id=_job_id("deep_backfill", device_id),
             max_instances=1,
             coalesce=True,
+            misfire_grace_time=None,
             jitter=_JITTER_SECS,
         )
     if schedule.reconcile_enabled:

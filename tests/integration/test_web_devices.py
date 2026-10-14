@@ -1,7 +1,7 @@
-"""The Devices tab: listing, discovery, adding a camera, enable/disable, and
+"""The Devices API: listing, discovery, adding a camera, enable/disable, and
 the end-to-end version of the password-never-leaked invariant: a real
 add-camera POST through the whole web stack, with a stubbed `reolink-cli`
-subprocess, must never put the password in the rendered response.
+subprocess, must never put the password in the response.
 """
 
 import json
@@ -10,30 +10,46 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from reovault.models import DiscoveredDevice, RegisteredDevice
+from reovault.models import DiscoveredDevice, ErrorClass, RegisteredDevice
+from reovault.providers.base import ProviderError
 from reovault.providers.fake import FakeRegistry
 from reovault.providers.reolink_cli_registry import ReolinkCliRegistry
-from tests.integration.conftest import extract_body_csrf, login, make_web_app
+from tests.integration.conftest import login, make_web_app
 
 SECRET_PASSWORD = "hunter2-camera-secret"  # noqa: S105 - test fixture
 
+ADD_BODY = {
+    "alias": "back-yard",
+    "name": "Back yard",
+    "host": "192.168.1.99",
+    "user": "admin",
+    "password": SECRET_PASSWORD,
+    "timezone": "Europe/Brussels",
+}
 
-def test_devices_page_lists_the_seeded_device(env, auth_client):
-    r = auth_client.get("/devices")
+
+def _client(env, web_settings, web_device, **kwargs) -> TestClient:
+    return login(TestClient(make_web_app(env, web_settings, web_device, **kwargs)))
+
+
+def test_devices_lists_the_seeded_device(env, auth_client):
+    r = auth_client.get("/api/v1/devices")
 
     assert r.status_code == 200
-    # The alias is never shown, only the ReoVault name; env's seeded device
-    # has no name set, so it falls back to a plain placeholder rather than
-    # leaking the internal reolink-cli alias.
-    assert "Unnamed camera" in r.text
-    assert "doorbell" not in r.text
+    body = r.json()
+    assert [d["id"] for d in body["devices"]] == [env.device_id]
+    device = body["devices"][0]
+    assert device["alias"] == "doorbell"
+    assert device["name"] is None  # the SPA renders its own placeholder
+    assert device["enabled"] is True
+    assert device["sample"] is None
+    assert device["sd"] is None
 
 
-def test_sd_card_bar_has_no_pending_segment(env, auth_client):
+def test_sd_card_bar_has_two_segments_archived_and_other(env, auth_client):
     """Regression: a third "not yet archived" bucket used to sit between
-    archived and free, in --warn yellow. It was dropped -- a user can
-    already read "not yet archived" off archived-vs-used -- leaving just
-    two segments, archived (blue) and everything else used (grey)."""
+    archived and free. It was dropped, leaving archived and everything else
+    used."""
     from datetime import UTC, datetime
 
     from reovault.models import RemoteRecording
@@ -67,22 +83,27 @@ def test_sd_card_bar_has_no_pending_segment(env, auth_client):
         ciphertext_size=1_000_000_100,
     )
 
-    r = auth_client.get("/devices")
+    sd = auth_client.get("/api/v1/devices").json()["devices"][0]["sd"]
 
-    assert "not yet archived" not in r.text
-    assert "is-pending" not in r.text
-    assert "GB archived" in r.text
-    assert "GB used" in r.text
-
-
-def test_devices_page_without_a_registry_shows_the_unavailable_banner(env, auth_client):
-    r = auth_client.get("/devices")  # registry=None
-
-    assert "aren't available" in r.text
-    assert "Find cameras" not in r.text
+    assert set(sd) == {"total_gb", "used_gb", "free_gb", "archived_gb", "other_gb"}
+    assert sd["used_gb"] == 80.0
+    assert sd["free_gb"] == 20.0
+    assert sd["archived_gb"] > 0
+    assert abs(sd["archived_gb"] + sd["other_gb"] - sd["used_gb"]) < 1e-9
 
 
-def test_discover_renders_found_devices(env, web_settings, web_device, web_password_hash):
+def test_devices_without_a_registry_reports_it_unavailable(env, auth_client):
+    r = auth_client.get("/api/v1/devices")  # registry=None
+
+    assert r.json()["registry_available"] is False
+
+
+def test_discover_and_add_are_503_without_a_registry(env, auth_client):
+    assert auth_client.post("/api/v1/devices/discover").status_code == 503
+    assert auth_client.post("/api/v1/devices", json=ADD_BODY).status_code == 503
+
+
+def test_discover_returns_found_devices(env, web_settings, web_device, web_password_hash):
     registry = FakeRegistry(
         discovered=[
             DiscoveredDevice(
@@ -96,20 +117,26 @@ def test_discover_renders_found_devices(env, web_settings, web_device, web_passw
             )
         ]
     )
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post("/devices/discover", headers={"X-CSRF-Token": csrf})
+    assert client.get("/api/v1/devices").json()["registry_available"] is True
+    r = client.post("/api/v1/devices/discover")
 
     assert r.status_code == 200
-    assert "Back yard" in r.text
-    assert "192.168.1.99:9000" in r.text
-    assert "Add this camera" in r.text
+    assert r.json() == [
+        {
+            "host": "192.168.1.99:9000",
+            "uid": "uid-1",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "protocol": "v20",
+            "model": "D340W",
+            "name": "Back yard",
+            "already_registered": False,
+        }
+    ]
 
 
-def test_discover_marks_already_registered_devices_without_an_add_form(
+def test_discover_marks_already_registered_devices(
     env, web_settings, web_device, web_password_hash
 ):
     registry = FakeRegistry(
@@ -125,43 +152,36 @@ def test_discover_marks_already_registered_devices_without_an_add_form(
             )
         ]
     )
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post("/devices/discover", headers={"X-CSRF-Token": csrf})
+    r = client.post("/api/v1/devices/discover")
 
-    assert "Already added" in r.text
-    assert "Add this camera" not in r.text
+    assert [d["already_registered"] for d in r.json()] == [True]
+
+
+def test_discover_provider_error_is_502(env, web_settings, web_device, web_password_hash):
+    registry = FakeRegistry()
+    client = _client(env, web_settings, web_device, registry=registry)
+
+    with patch.object(registry, "discover", side_effect=ProviderError("boom", ErrorClass.NETWORK)):
+        r = client.post("/api/v1/devices/discover")
+
+    assert r.status_code == 502
 
 
 def test_add_device_registers_it_with_the_registry_and_the_repository(
     env, web_settings, web_device, web_password_hash
 ):
     registry = FakeRegistry()
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post(
-        "/devices",
-        data={
-            "alias": "back-yard",
-            "name": "Back yard",
-            "host": "192.168.1.99",
-            "user": "admin",
-            "password": SECRET_PASSWORD,
-            "timezone": "Europe/Brussels",
-        },
-        headers={"X-CSRF-Token": csrf},
-    )
+    r = client.post("/api/v1/devices", json=ADD_BODY)
 
-    assert r.status_code == 200
-    # The alias is never shown, only the ReoVault name.
-    assert "Back yard" in r.text
-    assert "back-yard" not in r.text
+    assert r.status_code == 201
+    added = [d for d in r.json()["devices"] if d["alias"] == "back-yard"]
+    assert len(added) == 1
+    assert added[0]["name"] == "Back yard"
+    assert added[0]["enabled"] is True
     assert len(registry.received_passwords) == 1
     assert registry.received_passwords[0].get_secret_value() == SECRET_PASSWORD
     device_id = env.repository.get_device_id(alias="back-yard", channel=0)
@@ -169,6 +189,9 @@ def test_add_device_registers_it_with_the_registry_and_the_repository(
     device_row = env.repository.get_device(device_id)
     assert device_row.timezone == "Europe/Brussels"
     assert device_row.enabled is True
+    # Enabled in the live fleet too, so it shows in the navbar picker.
+    enabled = client.get("/api/v1/devices/enabled").json()
+    assert device_id in {d["id"] for d in enabled}
 
 
 def test_add_device_rejects_a_duplicate_alias(env, web_settings, web_device, web_password_hash):
@@ -185,47 +208,24 @@ def test_add_device_rejects_a_duplicate_alias(env, web_settings, web_device, web
             )
         ]
     )
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post(
-        "/devices",
-        data={
-            "alias": "doorbell",  # already registered as env's seeded device
-            "host": "192.168.1.99",
-            "user": "admin",
-            "password": SECRET_PASSWORD,
-            "timezone": "Europe/Brussels",
-        },
-        headers={"X-CSRF-Token": csrf},
-    )
+    # already registered as env's seeded device
+    r = client.post("/api/v1/devices", json={**ADD_BODY, "alias": "doorbell"})
 
-    assert "already registered" in r.text
+    assert r.status_code == 409
+    assert "already registered" in r.json()["detail"]
     assert registry.received_passwords == []  # never even attempted
 
 
 def test_add_device_rejects_an_unknown_timezone(env, web_settings, web_device, web_password_hash):
     registry = FakeRegistry()
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post(
-        "/devices",
-        data={
-            "alias": "back-yard",
-            "host": "192.168.1.99",
-            "user": "admin",
-            "password": SECRET_PASSWORD,
-            "timezone": "Not/A_Real_Zone",
-        },
-        headers={"X-CSRF-Token": csrf},
-    )
+    r = client.post("/api/v1/devices", json={**ADD_BODY, "timezone": "Not/A_Real_Zone"})
 
-    assert "Unknown timezone" in r.text
+    assert r.status_code == 422
+    assert "Unknown timezone" in r.json()["detail"]
     assert registry.received_passwords == []
 
 
@@ -233,52 +233,62 @@ def test_add_device_rejects_missing_required_fields(
     env, web_settings, web_device, web_password_hash
 ):
     registry = FakeRegistry()
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r = client.post(
-        "/devices",
-        data={"alias": "back-yard"},  # host/user/password/timezone all missing
-        headers={"X-CSRF-Token": csrf},
-    )
+    # host/user/password/timezone all missing
+    r = client.post("/api/v1/devices", json={"alias": "back-yard"})
 
-    assert r.status_code == 200
-    assert "field-error" in r.text
+    assert r.status_code == 422
+    assert registry.received_passwords == []
 
 
-def test_toggle_disables_and_re_enables_a_device(env, auth_client):
-    client = auth_client
-    csrf = extract_body_csrf(client.get("/devices").text)
+def test_add_device_registry_failure_is_502(env, web_settings, web_device, web_password_hash):
+    registry = FakeRegistry()
+    client = _client(env, web_settings, web_device, registry=registry)
 
-    r_off = client.post(f"/devices/{env.device_id}/toggle", headers={"X-CSRF-Token": csrf})
-    assert env.repository.get_device(env.device_id).enabled is False
+    with patch.object(
+        registry, "add_device", side_effect=ProviderError("boom", ErrorClass.NETWORK)
+    ):
+        r = client.post("/api/v1/devices", json=ADD_BODY)
+
+    assert r.status_code == 502
+    assert env.repository.get_device_id(alias="back-yard", channel=0) is None
+
+
+def test_set_enabled_disables_and_re_enables_a_device(env, auth_client):
+    url = f"/api/v1/devices/{env.device_id}/enabled"
+
+    r_off = auth_client.put(url, json={"enabled": False})
     assert r_off.status_code == 200
-    assert "checked" not in r_off.text  # the lone device's switch is now unchecked
+    assert env.repository.get_device(env.device_id).enabled is False
+    assert r_off.json()["devices"][0]["enabled"] is False
+    assert auth_client.get("/api/v1/devices/enabled").json() == []
 
-    r_on = client.post(f"/devices/{env.device_id}/toggle", headers={"X-CSRF-Token": csrf})
-    assert env.repository.get_device(env.device_id).enabled is True
+    # Idempotent: a repeat of the same value is a no-op, not a flip.
+    r_again = auth_client.put(url, json={"enabled": False})
+    assert r_again.status_code == 200
+    assert env.repository.get_device(env.device_id).enabled is False
+
+    r_on = auth_client.put(url, json={"enabled": True})
     assert r_on.status_code == 200
+    assert env.repository.get_device(env.device_id).enabled is True
+    assert [d["id"] for d in auth_client.get("/api/v1/devices/enabled").json()] == [env.device_id]
 
 
-def test_toggle_unknown_device_is_404(env, auth_client):
-    csrf = extract_body_csrf(auth_client.get("/devices").text)
-
-    r = auth_client.post("/devices/999999/toggle", headers={"X-CSRF-Token": csrf})
+def test_set_enabled_unknown_device_is_404(env, auth_client):
+    r = auth_client.put("/api/v1/devices/999999/enabled", json={"enabled": False})
     assert r.status_code == 404
 
 
 # -- end-to-end password safety through the real web stack -----------------
 
 
-def test_add_device_password_never_appears_in_the_rendered_response(
+def test_add_device_password_never_appears_in_the_response(
     env, web_settings, web_device, web_password_hash
 ):
     """The full-stack version of the registry-level password safety tests:
     a real ReolinkCliRegistry, a stubbed reolink-cli subprocess, a real
-    HTTP round trip, and the rendered HTML checked for the plaintext
-    password."""
+    HTTP round trip, and the response checked for the plaintext password."""
     registry = ReolinkCliRegistry(binary="reolink-cli")
     ok = subprocess.CompletedProcess(
         args=[],
@@ -286,23 +296,10 @@ def test_add_device_password_never_appears_in_the_rendered_response(
         stdout=json.dumps({"ok": True, "data": {"action": "added"}, "error": None}),
         stderr="",
     )
-    app = make_web_app(env, web_settings, web_device, registry=registry)
-    client = TestClient(app)
-    login(client)
-    csrf = extract_body_csrf(client.get("/devices").text)
+    client = _client(env, web_settings, web_device, registry=registry)
 
     with patch("subprocess.run", return_value=ok) as spy:
-        r = client.post(
-            "/devices",
-            data={
-                "alias": "back-yard",
-                "host": "192.168.1.99",
-                "user": "admin",
-                "password": SECRET_PASSWORD,
-                "timezone": "Europe/Brussels",
-            },
-            headers={"X-CSRF-Token": csrf},
-        )
+        r = client.post("/api/v1/devices", json=ADD_BODY)
 
     assert SECRET_PASSWORD not in r.text
     # Several subprocess.run calls can happen around this request (e.g. a
