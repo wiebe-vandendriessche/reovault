@@ -15,7 +15,7 @@ ARG REOLINK_CLI_VERSION=0.19.0
 
 # Static output is architecture-independent: build it once, natively, on the
 # build host instead of under QEMU for every target platform.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS dashboard
+FROM --platform=$BUILDPLATFORM node:25-alpine AS dashboard
 WORKDIR /dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
 # --ignore-scripts: no dependency gets to run code at install time.
