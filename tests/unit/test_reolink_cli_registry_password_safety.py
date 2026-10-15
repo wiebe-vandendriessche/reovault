@@ -37,17 +37,6 @@ def test_add_device_never_puts_the_password_on_argv():
     assert call.kwargs.get("input") == SECRET + "\n"
 
 
-def test_set_password_never_puts_the_password_on_argv():
-    registry = ReolinkCliRegistry(binary="reolink-cli")
-    ok = _completed({"ok": True, "data": {}, "error": None})
-    with patch("subprocess.run", return_value=ok) as spy:
-        registry.set_password(alias="test-cam", password=SecretStr(SECRET))
-
-    argv = spy.call_args.args[0]
-    assert SECRET not in argv
-    assert spy.call_args.kwargs.get("input") == SECRET + "\n"
-
-
 def test_add_device_password_never_appears_in_any_log_record():
     registry = ReolinkCliRegistry(binary="reolink-cli")
     ok = _completed({"ok": True, "data": {"action": "added"}, "error": None})

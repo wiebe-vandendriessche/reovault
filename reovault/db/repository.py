@@ -13,18 +13,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
-from typing import Any
 
 from reovault.models import ErrorClass, RemoteRecording
 from reovault.timeline import offset_segments, sqlite_offset_modifier
 
 _ISO = "%Y-%m-%dT%H:%M:%S.%f"
 
-# Explicit column list for every recordings query except the single-row
-# detail lookup that needs `raw_metadata`. Deliberately excludes it: it's a
-# verbatim JSON blob per row, and dragging it through every retry sweep and
-# every dashboard list is hundreds of MB of pointless I/O at 313k rows/year.
-# See `get_raw_metadata` below.
+# Explicit column list for every recordings query. Deliberately excludes
+# `raw_metadata`: it's a verbatim JSON blob per row, and dragging it through
+# every retry sweep and every dashboard list is hundreds of MB of pointless
+# I/O at 313k rows/year.
 _REC_COLS = (
     "id, device_id, channel, remote_name, start_utc, end_utc, duration_s, rec_type, stream, "
     "remote_size, state, vault_path, plaintext_sha256, plaintext_size, ciphertext_size, "
@@ -515,13 +513,6 @@ class Repository:
         row = self._fetchone(f"SELECT {_REC_COLS} FROM recordings WHERE id = ?", (recording_id,))
         return self._row_to_recording(row) if row else None
 
-    def find_by_hash(self, plaintext_sha256: str) -> RecordingRow | None:
-        row = self._fetchone(
-            f"SELECT {_REC_COLS} FROM recordings WHERE plaintext_sha256 = ? AND state = 'archived'",
-            (plaintext_sha256,),
-        )
-        return self._row_to_recording(row) if row else None
-
     def find_archived_by_vault_path(self, vault_path: str) -> RecordingRow | None:
         """Used by reconciliation to tell an already-tracked vault file apart
         from an orphan (a crash between rename and the `finalize_archived`
@@ -543,18 +534,6 @@ class Repository:
             WHERE device_id = ?
                 AND (state = 'discovered'
                      OR (state = 'failed' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)))
-            """,
-            (device_id, now_iso),
-        )
-        return [self._row_to_recording(r) for r in rows]
-
-    def due_for_retry(self, *, device_id: int, now: datetime | None = None) -> list[RecordingRow]:
-        now_iso = _iso(now) if now else _now()
-        rows = self._fetchall(
-            f"""
-            SELECT {_REC_COLS} FROM recordings
-            WHERE device_id = ? AND state = 'failed'
-                AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
             """,
             (device_id, now_iso),
         )
@@ -877,18 +856,6 @@ class Repository:
         )
         return parse_iso_utc(row["started_at"]) if row else None
 
-    def oldest_unarchived_start_utc(self, device_id: int) -> datetime | None:
-        """Feeds the coverage/lag alarm: how far behind ReoVault's own
-        backlog is."""
-        row = self._fetchone(
-            """
-            SELECT MIN(start_utc) AS oldest FROM recordings
-            WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
-            """,
-            (device_id,),
-        )
-        return parse_iso_utc(row["oldest"]) if row and row["oldest"] else None
-
     def card_backlog(self, device_id: int, boundary_utc: datetime | None) -> CardBacklogRow:
         """Unarchived recordings split at the card's oldest clip: at or after
         it they're still on the card (`waiting`), before it the card has
@@ -987,15 +954,6 @@ class Repository:
     def get_device(self, device_id: int) -> DeviceRow | None:
         row = self._fetchone(f"SELECT {_DEVICE_COLS} FROM devices WHERE id = ?", (device_id,))
         return self._row_to_device(row) if row is not None else None
-
-    def get_raw_metadata(self, recording_id: int) -> dict[str, Any] | None:
-        """The verbatim vod-search JSON, for the single-recording detail
-        page only. Deliberately not part of `_REC_COLS` (see its docstring)."""
-        row = self._fetchone("SELECT raw_metadata FROM recordings WHERE id = ?", (recording_id,))
-        if row is None:
-            return None
-        loaded: dict[str, Any] = json.loads(row["raw_metadata"])
-        return loaded
 
     def day_buckets(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str

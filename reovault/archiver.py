@@ -29,7 +29,7 @@ from reovault.db.repository import RecordingRow, Repository, parse_iso_utc
 from reovault.logging import get_logger
 from reovault.models import ArchiveRunResult, ErrorClass, RemoteRecording
 from reovault.providers.base import AuthError, CameraProvider, ProviderError
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 logger = get_logger(__name__)
 
@@ -146,7 +146,7 @@ def _parse_vault_path(vault_path: str) -> tuple[str, datetime, str] | None:
 class Archiver:
     repository: Repository
     provider: CameraProvider
-    vault: VaultStore
+    vault: EncryptedFsVault
     device_id: int
     device_alias: str
     channel: int

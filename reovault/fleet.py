@@ -24,7 +24,7 @@ from reovault.providers.base import CameraProvider
 from reovault.providers.fake import DemoProvider
 from reovault.providers.gateway import GatewaySupervisor
 from reovault.providers.reolink_cli import ReolinkCliProvider
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,7 @@ def build_archiver(
     settings: Settings,
     device: DeviceRow,
     repository: Repository,
-    vault: VaultStore,
+    vault: EncryptedFsVault,
     gateway: GatewaySupervisor,
     current_settings: Callable[[], Settings] | None = None,
 ) -> Archiver:
@@ -100,7 +100,7 @@ class Fleet:
         *,
         settings: Settings,
         repository: Repository,
-        vault: VaultStore,
+        vault: EncryptedFsVault,
         gateway: GatewaySupervisor,
     ) -> None:
         self._settings = settings
@@ -157,7 +157,7 @@ def build_fleet(
     *,
     settings: Settings,
     repository: Repository,
-    vault: VaultStore,
+    vault: EncryptedFsVault,
     gateway: GatewaySupervisor,
     current_settings: Callable[[], Settings] | None = None,
 ) -> Fleet:

@@ -140,9 +140,6 @@ class FakeRegistry(CameraRegistry):
             )
         )
 
-    def set_password(self, *, alias: str, password: SecretStr) -> None:
-        self.received_passwords.append(password)
-
     def device_info(self, *, alias: str) -> DeviceInfo:
         if alias not in self.device_infos:
             raise DeviceError(f"no scripted device_info for {alias!r}")

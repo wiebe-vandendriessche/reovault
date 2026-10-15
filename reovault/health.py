@@ -4,7 +4,7 @@ Deliberately separate from `archiver.py`: the archiver's job is "make the
 state machine correct", this module's job is "notice when things are
 trending toward data loss" and "notice bit rot before a downstream backup
 snapshot overwrites the last good copy". Neither needs the other's
-internals, they only share the `Repository`/`VaultStore` boundaries.
+internals, they only share the `Repository`/`EncryptedFsVault` boundaries.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Literal
 from reovault.db.repository import Repository, parse_iso_utc
 from reovault.logging import get_logger
 from reovault.providers.base import CameraProvider
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 logger = get_logger(__name__)
 
@@ -215,7 +215,7 @@ class IntegrityScanResult:
 def run_integrity_scan(
     *,
     repository: Repository,
-    vault: VaultStore,
+    vault: EncryptedFsVault,
     device_id: int,
     sample_pct: float = 5.0,
     bucket_index: int | None = None,

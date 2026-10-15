@@ -183,14 +183,6 @@ class CameraRegistry(ABC):
         Home Hub child are both documented normal non-responders."""
 
     @abstractmethod
-    def set_password(self, *, alias: str, password: SecretStr) -> None:
-        """Rotates an existing device's stored credential. Deliberately not
-        wired to any web route yet: the device-edit form never carries a
-        password field, precisely so "edit device metadata" can never
-        double as a way to leak or replace a credential by accident.
-        Credential rotation is its own explicit, separate flow."""
-
-    @abstractmethod
     def device_info(self, *, alias: str) -> DeviceInfo:
         """Model/firmware for an already-registered, reachable device. The
         one call in this ABC that needs the gateway."""

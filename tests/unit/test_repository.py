@@ -72,7 +72,7 @@ def test_state_machine_full_success_path(repo):
     assert row.plaintext_sha256 == "a" * 64
 
 
-def test_mark_failed_then_due_for_retry(repo):
+def test_mark_failed_then_pending_after_backoff(repo):
     device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="Europe/Brussels")
     rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=_rec())
 
@@ -81,14 +81,14 @@ def test_mark_failed_then_due_for_retry(repo):
         rec_id, error="network drop", error_class=ErrorClass.NETWORK, next_attempt_at=past
     )
 
-    due = repo.due_for_retry(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
+    due = repo.pending(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
     assert [r.id for r in due] == [rec_id]
 
     future = datetime(2099, 1, 1, tzinfo=UTC)
     repo.mark_failed(
         rec_id, error="network drop", error_class=ErrorClass.NETWORK, next_attempt_at=future
     )
-    due = repo.due_for_retry(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
+    due = repo.pending(device_id=device_id, now=datetime(2026, 1, 1, tzinfo=UTC))
     assert due == []
 
 
@@ -98,19 +98,6 @@ def test_mark_quarantined(repo):
     repo.mark_quarantined(rec_id, error="unrecognized schema", error_class=ErrorClass.PROTOCOL)
     row = repo.get(rec_id)
     assert row.state == "quarantined"
-
-
-def test_find_by_hash_only_matches_archived(repo):
-    device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="Europe/Brussels")
-    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=_rec())
-    assert repo.find_by_hash("b" * 64) is None
-
-    repo.finalize_archived(
-        rec_id, vault_path="x", plaintext_sha256="b" * 64, plaintext_size=1, ciphertext_size=2
-    )
-    found = repo.find_by_hash("b" * 64)
-    assert found is not None
-    assert found.id == rec_id
 
 
 def test_archive_run_lifecycle(repo):

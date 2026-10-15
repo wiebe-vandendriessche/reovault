@@ -1,7 +1,7 @@
 """Frame-aligned chunked decrypt-and-stream for `/recordings/{id}/stream`.
 
 Chunk size must be a multiple of the vault's frame size (1 MiB by default),
-and reads must be aligned to chunk boundaries. `VaultStore.open_range`
+and reads must be aligned to chunk boundaries. `EncryptedFsVault.open_range`
 decrypts every frame that *overlaps* the requested slice; an unaligned or
 too-small chunk re-decrypts the same frame on every chunk that touches it,
 a silent CPU multiplier that never shows up as a wrong answer, only as a
@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -40,7 +40,7 @@ def safe_download_filename(remote_name: str) -> str:
 
 
 def iter_plaintext(
-    vault: VaultStore, vault_path: str, start: int, end: int, chunk_size: int
+    vault: EncryptedFsVault, vault_path: str, start: int, end: int, chunk_size: int
 ) -> Iterator[bytes]:
     """Yields plaintext bytes covering `[start, end]` inclusive, in reads
     aligned to `chunk_size`. Raises `StreamTruncatedError` if the vault
