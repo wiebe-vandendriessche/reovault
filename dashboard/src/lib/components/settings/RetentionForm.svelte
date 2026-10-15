@@ -12,6 +12,7 @@
 	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
 	import { bytes, plural } from '$lib/format';
 	import { toast } from 'svelte-sonner';
+	import { trackUnsaved } from '$lib/state/unsaved.svelte';
 
 	const loaded = query(() => {
 		void live.settings; // also a hand edit of reovault.toml
@@ -19,12 +20,19 @@
 	});
 	let age = $state<number | null>(null);
 	let cap = $state<number | null>(null);
+	// Reset only when the saved policy changed, so a live update (any
+	// settings event) doesn't wipe a value being typed.
+	let saved = $state<[number | null, number | null]>([null, null]);
 	$effect(() => {
-		if (loaded.data) {
-			age = loaded.data.max_age_days ?? null;
-			cap = loaded.data.max_vault_gb ?? null;
+		if (!loaded.data) return;
+		const next: [number | null, number | null] = [loaded.data.max_age_days ?? null, loaded.data.max_vault_gb ?? null];
+		if (next[0] !== saved[0] || next[1] !== saved[1]) {
+			saved = next;
+			[age, cap] = next;
 		}
 	});
+	const dirty = $derived((age || null) !== saved[0] || (cap || null) !== saved[1]);
+	trackUnsaved(() => dirty);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let confirm = $state<RetentionSave['confirm']>(null);
@@ -84,8 +92,12 @@
 				</fieldset>
 			</Card.Content>
 			<Card.Footer class="flex items-center gap-3 border-t">
-				<Button type="submit" disabled={busy || pinned}>{#if busy}<Spinner />{/if} Save retention</Button>
-				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
+				<Button type="submit" disabled={busy || pinned || !dirty}>{#if busy}<Spinner />{/if} Save retention</Button>
+				{#if error}
+					<p class="text-bad text-sm" role="alert">{error}</p>
+				{:else if dirty}
+					<p class="text-muted-foreground text-sm">Unsaved changes</p>
+				{/if}
 			</Card.Footer>
 		</Card.Root>
 	</form>

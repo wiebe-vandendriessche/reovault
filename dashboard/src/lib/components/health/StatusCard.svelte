@@ -2,13 +2,15 @@
 	import type { Health } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
 	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
+	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
 	import { bytes, plural, relative } from '$lib/format';
+	import { triggerLabel } from '$lib/labels';
 
 	let { health }: { health: Health } = $props();
 
 	const verdict = $derived.by(() => {
 		const { running, last_run: last } = health;
-		if (running) return `Run in progress (${running.trigger}).`;
+		if (running) return `${triggerLabel(running.trigger)} run in progress.`;
 		if (!last) return 'No run yet.';
 		switch (last.outcome) {
 			case 'success':
@@ -22,7 +24,6 @@
 		}
 	});
 
-	const label = { ok: 'Healthy', warn: 'Degraded', bad: 'Failing', idle: 'Idle' } as const;
 </script>
 
 <Card.Root>
@@ -30,7 +31,13 @@
 		<Card.Description>Runs</Card.Description>
 		<Card.Title class="text-xl leading-snug">{verdict}</Card.Title>
 		<Card.Action>
-			<StatusBadge level={health.status}>{health.running ? 'Running' : label[health.status]}</StatusBadge>
+			{#if health.running}
+				<StatusBadge level="idle">Running</StatusBadge>
+			{:else if health.last_run}
+				<RunOutcome run={health.last_run} />
+			{:else}
+				<StatusBadge level="idle">No runs yet</StatusBadge>
+			{/if}
 		</Card.Action>
 	</Card.Header>
 	<Card.Content class="text-muted-foreground flex flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
@@ -43,7 +50,10 @@
 			<span>No scheduled run</span>
 		{/if}
 		{#if health.gateway_down}
-			<span class="text-warn font-medium">Camera gateway unreachable</span>
+			<span class="text-warn basis-full font-medium">
+				Camera gateway unreachable. ReoVault starts it again before its next camera call; Run now tries
+				straight away.
+			</span>
 		{/if}
 	</Card.Content>
 </Card.Root>

@@ -7,13 +7,13 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as InputGroup from '$lib/components/ui/input-group';
-	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { toast } from 'svelte-sonner';
 	import Lock from '@lucide/svelte/icons/lock';
+	import { trackUnsaved } from '$lib/state/unsaved.svelte';
 
 	let {
 		config,
@@ -39,12 +39,27 @@
 	);
 	const editable = $derived(!!section && fields.some((f) => f.editable));
 
-	// Values per field (number inputs bind numbers); reset whenever the
-	// server's view changes, e.g. after a save or a hand edit of the file.
+	// Values per field (number inputs bind numbers); reset only when the
+	// saved values change (a save, or a hand edit of the file), not on every
+	// refetch, so a live update never wipes what's being typed.
 	let draft = $state<Record<string, unknown>>({});
+	let lastSaved = '';
 	$effect(() => {
-		draft = Object.fromEntries(fields.map((f) => [f.key, toText(f.value)]));
+		const saved = JSON.stringify(fields.map((f) => [f.key, f.value]));
+		if (saved !== lastSaved) {
+			lastSaved = saved;
+			draft = Object.fromEntries(fields.map((f) => [f.key, toText(f.value)]));
+		}
 	});
+	const changed = $derived(
+		Object.fromEntries(
+			fields
+				.filter((f) => f.editable && toText(draft[f.key]) !== toText(f.value))
+				.map((f) => [f.key, parse(f, toText(draft[f.key]))])
+		)
+	);
+	const dirty = $derived(Object.keys(changed).length > 0);
+	trackUnsaved(() => dirty);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
@@ -86,14 +101,8 @@
 
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
-		if (!section) return;
-		const values: Record<string, unknown> = {};
-		for (const f of fields) {
-			if (!f.editable) continue;
-			const text = toText(draft[f.key]);
-			if (text !== toText(f.value)) values[f.key] = parse(f, text);
-		}
-		if (!Object.keys(values).length) return;
+		if (!section || !dirty) return;
+		const values = changed;
 		busy = true;
 		error = null;
 		try {
@@ -136,18 +145,7 @@
 					<Field.Content>
 						<Field.Label for="cfg-{path.join('-')}-{f.key}" class="flex items-center gap-1.5">
 							{label(f.key)}
-							{#if locked && reason}
-								<Tooltip.Root>
-									<Tooltip.Trigger>
-										{#snippet child({ props })}
-											<span {...props} class="text-subtle" aria-label={reason}>
-												<Lock class="size-3.5" />
-											</span>
-										{/snippet}
-									</Tooltip.Trigger>
-									<Tooltip.Content>{reason}</Tooltip.Content>
-								</Tooltip.Root>
-							{/if}
+							{#if locked && reason}<Lock class="text-subtle size-3.5" aria-hidden="true" />{/if}
 						</Field.Label>
 						{#if f.kind !== 'bool'}
 							{@const u = unit(f.key)}
@@ -175,11 +173,15 @@
 							{/if}
 						{/if}
 						<Field.Description>
-							{f.source === 'default'
-								? 'Default'
-								: f.source === 'env'
-									? 'From the environment'
-									: 'From reovault.toml'}{f.kind === 'list' ? ', comma separated' : ''}
+							{#if locked && reason}
+								{reason}
+							{:else}
+								{f.source === 'default'
+									? 'Default'
+									: f.source === 'env'
+										? 'From the environment'
+										: 'From reovault.toml'}{f.kind === 'list' ? ', comma separated' : ''}
+							{/if}
 						</Field.Description>
 					</Field.Content>
 				</Field.Field>
@@ -187,7 +189,8 @@
 		</Card.Content>
 		{#if editable}
 			<Card.Footer class="flex items-center gap-3 border-t">
-				<Button type="submit" disabled={busy}>{#if busy}<Spinner />{/if} Save {title.toLowerCase()}</Button>
+				<Button type="submit" disabled={busy || !dirty}>{#if busy}<Spinner />{/if} Save {title.toLowerCase()}</Button>
+				{#if dirty && !error}<p class="text-muted-foreground text-sm">Unsaved changes</p>{/if}
 				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 			</Card.Footer>
 		{/if}

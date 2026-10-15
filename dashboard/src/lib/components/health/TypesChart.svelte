@@ -9,6 +9,7 @@
 	import { BarChart } from 'layerchart';
 	import { scaleBand } from 'd3-scale';
 	import { plural, shortDay } from '$lib/format';
+	import { typeLabel } from '$lib/labels';
 
 	type TypeStats = components['schemas']['TypeStatsOut'];
 
@@ -38,7 +39,7 @@
 		}))
 	);
 	const series = $derived(
-		(stats.data?.types ?? []).map((t, i) => ({ key: t, label: t, color: colorOf(t, i) }))
+		(stats.data?.types ?? []).map((t, i) => ({ key: t, label: typeLabel(t), color: colorOf(t, i) }))
 	);
 	const total = $derived(
 		(stats.data?.days ?? []).reduce((n, d) => n + Object.values(d.counts).reduce((a, b) => a + b, 0), 0)

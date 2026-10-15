@@ -48,11 +48,15 @@ class RunDetailOut(BaseModel):
 
 
 @router.get("/runs")
-def list_runs(dev: Device, st: State, before_id: int | None = None) -> RunsOut:
+def list_runs(
+    dev: Device, st: State, before_id: int | None = None, failures_only: bool = False
+) -> RunsOut:
     size = st.settings.web.page_size
     # One extra row says whether a next page exists, so a full last page
     # doesn't hand out a cursor to an empty one.
-    rows = st.repo.recent_runs(device_id=dev.device_id, limit=size + 1, before_id=before_id)
+    rows = st.repo.recent_runs(
+        device_id=dev.device_id, limit=size + 1, before_id=before_id, failures_only=failures_only
+    )
     more, rows = len(rows) > size, rows[:size]
     times = next_run_times(st.scheduler).get(dev.device_id, {}) if st.scheduler else {}
     return RunsOut(

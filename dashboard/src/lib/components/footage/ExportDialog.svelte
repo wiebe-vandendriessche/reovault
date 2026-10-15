@@ -10,6 +10,7 @@
 	import type { DateRange } from 'bits-ui';
 	import Download from '@lucide/svelte/icons/download';
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
+	import { typeLabel } from '$lib/labels';
 
 	let { device, day, types }: { device: number; day: string; types: string } = $props();
 
@@ -57,7 +58,7 @@
 			<Dialog.Title>Export clips</Dialog.Title>
 			<Dialog.Description>
 				Download decrypted clips as a zip, organized by day. Up to {MAX_DAYS} days at a time{types
-					? `, only "${types === '__problems__' ? 'problems' : types}"`
+					? `, only "${types === '__problems__' ? 'problems' : typeLabel(types)}"`
 					: ''}.
 			</Dialog.Description>
 		</Dialog.Header>

@@ -14,6 +14,7 @@
 	import { toast } from 'svelte-sonner';
 
 	import { live } from '$lib/state/live.svelte';
+	import { trackUnsaved } from '$lib/state/unsaved.svelte';
 
 	/** `device` null edits the global default `[schedule]`; a camera id edits
 	 * that camera's own `[devices.schedule]` (or switches it back to the
@@ -21,12 +22,15 @@
 	let {
 		device,
 		label,
-		bare = false
+		bare = false,
+		dirty = $bindable(false)
 	}: {
 		device: number | null;
 		label: string;
-		/** No card chrome or title: for embedding (the camera edit panel). */
+		/** No card chrome, title or Save button: for embedding in the camera
+		 * edit panel, which saves it through `save()` with its own button. */
 		bare?: boolean;
+		dirty?: boolean;
 	} = $props();
 
 	const path = $derived(device == null ? '/schedule/default' : '/schedule');
@@ -35,20 +39,31 @@
 		return api<Schedule>(path, { query: { device: device ?? undefined } });
 	});
 	let form = $state<(ScheduleBody & { inherit: boolean }) | null>(null);
+	let saved = $state('');
 	$effect(() => {
-		if (loaded.data) {
-			const { env_pinned: _, inherits, ...body } = loaded.data;
-			form = { ...body, inherit: device != null && !!inherits };
+		// Reset only when the saved schedule changed (a save, or an edit of
+		// reovault.toml), not on every refetch, so edits in progress survive.
+		if (!loaded.data) return;
+		const { env_pinned: _, inherits, ...body } = loaded.data;
+		const next = { ...body, inherit: device != null && !!inherits };
+		if (JSON.stringify(next) !== saved) {
+			saved = JSON.stringify(next);
+			form = next;
 		}
 	});
+	$effect(() => {
+		dirty = !!form && JSON.stringify(form) !== saved;
+	});
+	// Embedded (bare), the camera sheet tracks it as part of its own form.
+	trackUnsaved(() => !bare && dirty);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	const pinned = $derived(loaded.data?.env_pinned ?? false);
 	const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-	async function save(e: SubmitEvent) {
-		e.preventDefault();
-		if (!form) return;
+	/** Saves when there are changes; throws on failure (also shown inline). */
+	export async function save() {
+		if (!form || !dirty) return;
 		busy = true;
 		error = null;
 		try {
@@ -58,12 +73,18 @@
 				query: { device: device ?? undefined },
 				body
 			});
-			toast.success(`Schedule for ${label} saved to reovault.toml.`);
+			if (!bare) toast.success(`Schedule for ${label} saved to reovault.toml.`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
+			throw err;
 		} finally {
 			busy = false;
 		}
+	}
+
+	function submit(e: SubmitEvent) {
+		e.preventDefault();
+		save().catch(() => {});
 	}
 </script>
 
@@ -72,7 +93,7 @@
 {:else if !form}
 	<Skeleton class="h-96 w-full rounded-xl" />
 {:else}
-	<form onsubmit={save}>
+	<form onsubmit={submit}>
 		<Card.Root class={bare ? 'gap-4 border-0 bg-transparent py-0 shadow-none ring-0 [--card-spacing:0px]' : ''}>
 			{#if !bare}
 			<Card.Header>
@@ -80,9 +101,7 @@
 				<Card.Description>
 					{device == null
 						? 'Every camera follows this unless it has a schedule of its own.'
-						: "Times are in the camera's own timezone"}{form.timezone
-						? ` (overridden: ${form.timezone})`
-						: ''}.
+						: `Times are in the camera's own timezone${form.timezone ? ` (overridden: ${form.timezone})` : ''}.`}
 					{#if pinned}<span class="text-warn">Set by environment variables, so read-only here.</span>{/if}
 				</Card.Description>
 			</Card.Header>
@@ -191,10 +210,18 @@
 					</Field.Set>
 				</fieldset>
 			</Card.Content>
-			<Card.Footer class={bare ? 'flex items-center gap-3' : 'flex items-center gap-3 border-t'}>
-				<Button type="submit" disabled={busy || pinned}>{#if busy}<Spinner />{/if} Save schedule</Button>
+			{#if bare}
 				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
-			</Card.Footer>
+			{:else}
+				<Card.Footer class="flex items-center gap-3 border-t">
+					<Button type="submit" disabled={busy || pinned || !dirty}>{#if busy}<Spinner />{/if} Save schedule</Button>
+					{#if error}
+						<p class="text-bad text-sm" role="alert">{error}</p>
+					{:else if dirty}
+						<p class="text-muted-foreground text-sm">Unsaved changes</p>
+					{/if}
+				</Card.Footer>
+			{/if}
 		</Card.Root>
 	</form>
 {/if}

@@ -72,6 +72,16 @@ class BannerOut(BaseModel):
     link: Literal["problems"] | None = None
 
 
+class IssueOut(BaseModel):
+    """One open condition on one camera, for the Overview's "needs
+    attention" list. `link` is the page that resolves it."""
+
+    device_id: int
+    level: Literal["warn", "bad"]
+    text: str
+    link: Literal["problems", "health"]
+
+
 class TodayOut(BaseModel):
     date: str
     count: int
@@ -141,7 +151,10 @@ class FleetCardOut(BaseModel):
 
 
 class OverviewOut(BaseModel):
-    banner: BannerOut | None
+    # Every open condition across the fleet, most urgent first: a card not
+    # recording, then clips about to be overwritten (soonest first), then a
+    # gateway outage, then failed clips (already lost or retryable later).
+    issues: list[IssueOut]
     vault: VaultOut
     cards: list[FleetCardOut]
 
@@ -272,30 +285,37 @@ def _status(last_run: RunRow | None, running: RunRow | None) -> Level:
     return outcomes.get(last_run.outcome or "", "idle")
 
 
-def _banner(
+def _issues(
     card: health.CardStatus,
     is_gateway_down: bool,
     problems: int,
-) -> BannerOut | None:
+) -> list[tuple[int, float, BannerOut]]:
+    """Every open condition on one camera as (rank, seconds left, banner),
+    lower sorting first. Seconds left orders at-risk cards across cameras."""
+    out: list[tuple[int, float, BannerOut]] = []
     if card.state == "not_mounted":
-        return BannerOut(level="bad", text="The SD card is not mounted.")
+        out.append((0, 0.0, BannerOut(level="bad", text="The SD card is not mounted.")))
     if card.alarm:
         n = card.waiting_count
-        return BannerOut(
-            level="warn",
-            text=f"{n} clip{'s' if n != 1 else ''} not archived yet; the oldest is overwritten "
-            f"in about {health.human_duration(card.safe_for)}.",
+        left = card.safe_for.total_seconds() if card.safe_for is not None else 0.0
+        text = (
+            f"{n} clip{'s' if n != 1 else ''} not archived yet; the oldest is overwritten "
+            f"in about {health.human_duration(card.safe_for)}."
         )
+        out.append((1, left, BannerOut(level="warn", text=text)))
     if is_gateway_down:
-        return BannerOut(level="warn", text="The camera gateway is unreachable.")
+        out.append((2, 0.0, BannerOut(level="warn", text="The camera gateway is unreachable.")))
     if problems > 0:
         plural = "s" if problems != 1 else ""
-        return BannerOut(
-            level="bad",
-            text=f"{problems} recording{plural} {'needs' if problems == 1 else 'need'} attention.",
-            link="problems",
-        )
-    return None
+        text = f"{problems} recording{plural} {'needs' if problems == 1 else 'need'} attention."
+        out.append((3, 0.0, BannerOut(level="bad", text=text, link="problems")))
+    return out
+
+
+def _banner(card: health.CardStatus, is_gateway_down: bool, problems: int) -> BannerOut | None:
+    """The single most urgent condition, for one camera's Health page."""
+    issues = _issues(card, is_gateway_down, problems)
+    return issues[0][2] if issues else None
 
 
 @router.get("/health")
@@ -336,7 +356,7 @@ def get_overview(st: State) -> OverviewOut:
     now = utcnow()
     times = next_run_times(st.scheduler) if st.scheduler else {}
     cards: list[FleetCardOut] = []
-    banners: list[BannerOut] = []
+    issues: list[tuple[int, float, IssueOut]] = []
     clip_count = clip_bytes = recent_bytes = 0
     first: str | None = None
     last: str | None = None
@@ -362,11 +382,14 @@ def get_overview(st: State) -> OverviewOut:
         running = repo.running_run(d.id)
         last_run = repo.last_finished_run(d.id)
         problems = totals.failed_count + totals.quarantined_count
-        banner = _banner(card, is_down, problems)
-        if banner is not None:
-            banners.append(
-                banner.model_copy(update={"text": f"{d.name or d.alias}: {banner.text}"})
+        for rank, left, b in _issues(card, is_down, problems):
+            issue = IssueOut(
+                device_id=d.id,
+                level=b.level,
+                text=f"{d.name or d.alias}: {b.text}",
+                link=b.link or "health",
             )
+            issues.append((rank, left, issue))
         cards.append(
             FleetCardOut(
                 device_id=d.id,
@@ -389,7 +412,7 @@ def get_overview(st: State) -> OverviewOut:
     policy = st.settings.retention
     avg = recent_bytes / 30
     return OverviewOut(
-        banner=max(banners, key=lambda b: b.level == "bad", default=None),
+        issues=[i for _, _, i in sorted(issues, key=lambda t: (t[0], t[1]))],
         vault=VaultOut(
             total_bytes=usage.total if usage else None,
             used_bytes=usage.used if usage else None,

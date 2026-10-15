@@ -1041,6 +1041,11 @@ export interface components {
             archived_bytes: number;
             /** Archived Count */
             archived_count: number;
+            /**
+             * Card State
+             * @enum {string}
+             */
+            card_state: "not_mounted" | "at_risk" | "waiting" | "all_archived" | "unknown";
             /** Enabled */
             enabled: boolean;
             /** Gateway Down */
@@ -1056,10 +1061,16 @@ export interface components {
             model: string | null;
             /** Name */
             name: string | null;
+            /** Problems Count */
+            problems_count: number;
+            /** Safe For Seconds */
+            safe_for_seconds: number | null;
             sample: components["schemas"]["StorageSampleOut"] | null;
             sd: components["schemas"]["SdBarOut"] | null;
             /** Timezone */
             timezone: string;
+            /** Waiting Count */
+            waiting_count: number;
         };
         /**
          * DeviceSettingsIn
@@ -1232,6 +1243,27 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * IssueOut
+         * @description One open condition on one camera, for the Overview's "needs
+         *     attention" list. `link` is the page that resolves it.
+         */
+        IssueOut: {
+            /** Device Id */
+            device_id: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "warn" | "bad";
+            /**
+             * Link
+             * @enum {string}
+             */
+            link: "problems" | "health";
+            /** Text */
+            text: string;
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -1259,9 +1291,10 @@ export interface components {
         };
         /** OverviewOut */
         OverviewOut: {
-            banner: components["schemas"]["BannerOut"] | null;
             /** Cards */
             cards: components["schemas"]["FleetCardOut"][];
+            /** Issues */
+            issues: components["schemas"]["IssueOut"][];
             vault: components["schemas"]["VaultOut"];
         };
         /** Page[RecordingOut] */
@@ -2754,6 +2787,7 @@ export interface operations {
         parameters: {
             query?: {
                 before_id?: number | null;
+                failures_only?: boolean;
                 device?: number | null;
             };
             header?: never;

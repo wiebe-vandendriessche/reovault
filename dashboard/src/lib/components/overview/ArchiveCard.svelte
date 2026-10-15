@@ -14,12 +14,21 @@
 	const other = $derived(Math.max(pct(vault.used_bytes) - archive, 0));
 	const cap = $derived(vault.cap_bytes ? Math.min(pct(vault.cap_bytes), 100) : null);
 	const low = $derived(vault.days_headroom != null && vault.days_headroom < 30);
+	const room = $derived(
+		vault.days_headroom == null
+			? null
+			: vault.days_headroom > 3650
+				? '10+ years'
+				: `about ${count(vault.days_headroom)} days`
+	);
 </script>
 
 <Card.Root>
 	<Card.Header>
-		<Card.Description>Archive</Card.Description>
-		<Card.Title class="text-3xl tabular-nums">{bytes(vault.free_bytes)} free</Card.Title>
+		<Card.Description>Archive disk</Card.Description>
+		<Card.Title class="text-lg tabular-nums {low ? 'text-warn' : ''}">
+			{room ? `Room for ${room} at the current rate` : `${bytes(vault.free_bytes)} free`}
+		</Card.Title>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
 		{#if vault.total_bytes}
@@ -50,9 +59,9 @@
 				<dd class="font-medium">{vault.first_start_utc ? shortDay(vault.first_start_utc.slice(0, 10)) : '-'} to now</dd>
 			</div>
 			<div>
-				<dt class="text-subtle text-xs">Room left</dt>
-				<dd class="font-medium tabular-nums {low ? 'text-warn' : ''}">
-					{vault.days_headroom == null ? '-' : vault.days_headroom > 3650 ? '10+ years' : `~${count(vault.days_headroom)} days`}
+				<dt class="text-subtle text-xs">Free</dt>
+				<dd class="font-medium tabular-nums">
+					{bytes(vault.free_bytes)}
 					<span class="text-subtle text-xs font-normal">at {bytes(vault.avg_per_day)}/day</span>
 				</dd>
 			</div>

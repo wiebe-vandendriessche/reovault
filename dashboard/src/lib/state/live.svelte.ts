@@ -13,7 +13,9 @@ export const live = $state({
 	settings: 0,
 	/** Bumped only for edits made to reovault.toml outside the dashboard. */
 	fileEdits: 0,
-	connected: false
+	connected: false,
+	/** Set on the first connect, so a page load doesn't flash "reconnecting". */
+	everConnected: false
 });
 
 let source: EventSource | null = null;
@@ -31,6 +33,7 @@ export function connectLive(onAlert?: () => void) {
 	source = new EventSource(`${API}/events`);
 	source.addEventListener('hello', () => {
 		live.connected = true;
+		live.everConnected = true;
 		bumpAll();
 	});
 	source.addEventListener('resync', bumpAll);
@@ -62,4 +65,5 @@ export function disconnectLive() {
 	source?.close();
 	source = null;
 	live.connected = false;
+	live.everConnected = false;
 }

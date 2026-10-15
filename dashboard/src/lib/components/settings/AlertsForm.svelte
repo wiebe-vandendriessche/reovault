@@ -14,6 +14,7 @@
 	import { relative } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 	import Send from '@lucide/svelte/icons/send';
+	import { trackUnsaved } from '$lib/state/unsaved.svelte';
 
 	const loaded = query(() => {
 		void live.alert;
@@ -21,7 +22,7 @@
 		return api<Alerts>('/alerts');
 	});
 	let rules = $state<AlertRules | null>(null);
-	let lastSaved = '';
+	let lastSaved = $state('');
 	$effect(() => {
 		// Reset the form only when the saved rules changed (a save, or an edit
 		// of reovault.toml), not on every alert event, so typing isn't lost.
@@ -31,6 +32,8 @@
 			rules = { ...loaded.data.rules };
 		}
 	});
+	const dirty = $derived(!!rules && JSON.stringify(rules) !== lastSaved);
+	trackUnsaved(() => dirty);
 	let busy = $state<'save' | 'test' | null>(null);
 	let error = $state<string | null>(null);
 	const pinned = $derived(loaded.data?.env_pinned ?? false);
@@ -44,6 +47,7 @@
 		try {
 			loaded.data = await api<Alerts>('/alerts/rules', { method: 'PUT', body: rules });
 			rules = { ...loaded.data.rules };
+			lastSaved = JSON.stringify(loaded.data.rules);
 			toast.success('Alert rules saved.');
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
@@ -175,7 +179,8 @@
 					</fieldset>
 				</Card.Content>
 				<Card.Footer class="flex items-center gap-3 border-t">
-					<Button type="submit" disabled={!!busy || pinned}>{#if busy === 'save'}<Spinner />{/if} Save rules</Button>
+					<Button type="submit" disabled={!!busy || pinned || !dirty}>{#if busy === 'save'}<Spinner />{/if} Save rules</Button>
+					{#if dirty && !error}<p class="text-muted-foreground text-sm">Unsaved changes</p>{/if}
 					{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 				</Card.Footer>
 			</Card.Root>

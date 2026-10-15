@@ -1220,10 +1220,17 @@ class Repository:
         )
 
     def recent_runs(
-        self, *, device_id: int, limit: int = 50, before_id: int | None = None
+        self,
+        *,
+        device_id: int,
+        limit: int = 50,
+        before_id: int | None = None,
+        failures_only: bool = False,
     ) -> list[RunRow]:
         clauses = ["device_id = ?"]
         params: list[object] = [device_id]
+        if failures_only:
+            clauses.append("outcome IN ('partial', 'failed', 'aborted')")
         if before_id is not None:
             clauses.append("id < ?")
             params.append(before_id)

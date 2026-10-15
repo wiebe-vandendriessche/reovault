@@ -1,14 +1,14 @@
 <script lang="ts">
 	import './layout.css';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { api, setUnauthorizedHandler, type Session } from '$lib/api';
 	import { applySession, loadSession, session } from '$lib/state/session.svelte';
 	import { devices, deviceLabel, loadDevices, selectDevice } from '$lib/state/devices.svelte';
 	import { connectLive, disconnectLive, live } from '$lib/state/live.svelte';
 	import { initTheme, theme, toggleTheme } from '$lib/state/theme.svelte';
-	import { query } from '$lib/state/query.svelte';
+	import { confirmDiscard, hasUnsaved } from '$lib/state/unsaved.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Sheet from '$lib/components/ui/sheet';
@@ -80,21 +80,50 @@
 			if (!isLogin) toLogin();
 			return;
 		}
-		const fromUrl = Number(page.url.searchParams.get('device')) || null;
+		const fromUrl = untrack(() => urlDevice());
 		loadDevices(fromUrl).catch(() => {});
 		connectLive();
 	});
 
-	// Re-read the camera list when the server says the fleet changed.
+	// Re-read the camera list (and its per-camera problem counts) when the
+	// server says the fleet or its problems changed.
 	$effect(() => {
-		if (live.devices && session.authenticated) loadDevices().catch(() => {});
+		if ((live.devices || live.problems) && session.authenticated) loadDevices().catch(() => {});
 	});
 
-	const problems = query(() => {
-		void live.problems;
-		const device = devices.currentId;
-		if (!session.authenticated || device == null) return null;
-		return api<{ count: number }>('/problems/count', { query: { device } });
+	// The camera-scoped pages carry the camera in the URL, so a link (from
+	// an Overview tile, an alert, a second tab) opens the right one. The URL
+	// wins; a scoped page opened without one gets the current camera added.
+	const urlDevice = () => Number(page.url.searchParams.get('device')) || null;
+	const onScoped = $derived(scoped.some((s) => active(s.href)));
+	$effect(() => {
+		const id = urlDevice();
+		if (id != null && id !== untrack(() => devices.currentId) && devices.list.some((d) => d.id === id))
+			selectDevice(id);
+	});
+	$effect(() => {
+		const id = devices.currentId;
+		if (!onScoped || id == null || untrack(urlDevice) != null) return;
+		const url = new URL(page.url);
+		url.searchParams.set('device', String(id));
+		goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+	});
+
+	function pickDevice(id: number) {
+		if (!onScoped) return selectDevice(id);
+		const url = new URL(page.url);
+		url.searchParams.set('device', String(id));
+		goto(url, { noScroll: true, keepFocus: true });
+	}
+
+	const scopedHref = (href: string) =>
+		devices.currentId == null ? href : `${href}?device=${devices.currentId}`;
+
+	// Ask before a navigation drops a form's unsaved edits.
+	beforeNavigate((nav) => {
+		if (!hasUnsaved()) return;
+		if (nav.type === 'leave') nav.cancel(); // the browser shows its own prompt
+		else if (!confirmDiscard()) nav.cancel();
 	});
 
 	async function signOut() {
@@ -106,9 +135,11 @@
 	}
 
 	const current = $derived(devices.list.find((d) => d.id === devices.currentId));
+	const fleetProblems = $derived(devices.list.reduce((n, d) => n + d.problems, 0));
+	const otherProblems = $derived(fleetProblems - (current?.problems ?? 0));
 </script>
 
-<Toaster richColors closeButton position="bottom-right" />
+<Toaster richColors closeButton position="bottom-right" mobileOffset={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }} />
 
 <Tooltip.Provider delayDuration={300}>
 {#if !session.ready}
@@ -123,7 +154,7 @@
 {:else if isLogin || !session.authenticated}
 	{@render children()}
 {:else}
-	<div class="flex min-h-dvh flex-col">
+	<div class="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
 		<header class="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
 			<div class="mx-auto flex h-16 max-w-[1180px] items-center gap-3 px-4 sm:px-6">
 				<a href="/" class="mr-2 flex shrink-0 items-center" aria-label="ReoVault home">
@@ -147,9 +178,18 @@
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
 							{#snippet child({ props })}
-								<Button {...props} variant="outline" size="sm" class="max-w-48 gap-2">
+								<Button
+									{...props}
+									variant="outline"
+									size="sm"
+									class="max-w-48 min-w-0 shrink gap-2 lg:shrink-0"
+									aria-label="Camera: {deviceLabel(current)}{otherProblems ? `, ${otherProblems} problems on other cameras` : ''}"
+								>
 									<Cctv class="size-4" />
 									<span class="truncate">{deviceLabel(current)}</span>
+									{#if otherProblems}
+										<span class="bg-bad size-2 shrink-0 rounded-full" aria-hidden="true"></span>
+									{/if}
 									<ChevronsUpDown class="text-muted-foreground size-3.5" />
 								</Button>
 							{/snippet}
@@ -157,11 +197,11 @@
 						<DropdownMenu.Content align="start" class="w-60">
 							<DropdownMenu.Label>Camera</DropdownMenu.Label>
 							{#each devices.list as d (d.id)}
-								<DropdownMenu.Item onSelect={() => selectDevice(d.id)}>
+								<DropdownMenu.Item onSelect={() => pickDevice(d.id)}>
 									<Check class={cn('size-4', d.id !== devices.currentId && 'invisible')} />
 									<span class="truncate">{deviceLabel(d)}</span>
 									{#if d.problems}
-										<span class="text-bad ml-auto text-xs tabular-nums">{d.problems}</span>
+										<span class="text-bad ml-auto text-xs tabular-nums" aria-label="{d.problems} problems">{d.problems}</span>
 									{/if}
 								</DropdownMenu.Item>
 							{/each}
@@ -171,7 +211,7 @@
 				<nav class="hidden items-center gap-1 lg:flex" aria-label="Camera">
 					{#each scoped as item (item.href)}
 						<a
-							href={item.href}
+							href={scopedHref(item.href)}
 							aria-current={active(item.href) ? 'page' : undefined}
 							class={cn(
 								'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
@@ -180,9 +220,9 @@
 						>
 							<item.icon class="size-4" />
 							{item.label}
-							{#if item.href === '/problems' && problems.data?.count}
+							{#if item.href === '/problems' && current?.problems}
 								<span class="bg-bad text-background rounded-full px-1.5 text-xs font-semibold tabular-nums">
-									{problems.data.count}
+									{current.problems}
 								</span>
 							{/if}
 						</a>
@@ -218,22 +258,75 @@
 						<LogOut />
 					</Button>
 
+				</div>
+			</div>
+			{#if live.everConnected && !live.connected}
+				<p class="bg-warn text-on-warn px-4 py-1 text-center text-xs font-medium" role="status">
+					Live updates paused, reconnecting. What you see may be out of date.
+				</p>
+			{/if}
+		</header>
+
+		<main class="mx-auto w-full max-w-[1180px] flex-1 px-4 py-6 sm:px-6 sm:py-8">
+			{@render children()}
+		</main>
+
+		<footer
+			class="text-subtle flex flex-wrap justify-center gap-x-4 gap-y-1 border-t px-4 py-4 text-xs sm:px-6"
+		>
+			<span>ReoVault {session.version}</span>
+			<span>reolink-cli {session.pinnedCli}</span>
+			<a href="https://wiebe-vandendriessche.github.io/reovault/" class="hover:text-foreground underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Docs</a>
+		</footer>
+
+		<!-- Phones: the main pages within thumb reach, the rest under Menu. -->
+		<nav
+			class="bg-background/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+			aria-label="Main"
+		>
+			{#each [home, ...scoped.filter((i) => i.href !== '/runs')] as item (item.href)}
+				<a
+					href={scoped.includes(item) ? scopedHref(item.href) : item.href}
+					aria-current={active(item.href) ? 'page' : undefined}
+					class={cn(
+						'text-muted-foreground relative flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium',
+						active(item.href) && 'text-foreground'
+					)}
+				>
+					<item.icon class="size-5" />
+					{item.label}
+					{#if item.href === '/problems' && current?.problems}
+						<span
+							class="bg-bad text-background absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full px-1 text-center text-[0.625rem] leading-4 font-semibold tabular-nums"
+							aria-label="{current.problems} problems">{current.problems}</span
+						>
+					{/if}
+				</a>
+			{/each}
 					<Sheet.Root bind:open={menuOpen}>
 						<Sheet.Trigger>
 							{#snippet child({ props })}
-								<Button {...props} variant="ghost" size="icon" class="lg:hidden" aria-label="Menu">
-									<Menu />
-								</Button>
+								<button
+									{...props}
+									class="text-muted-foreground relative flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium"
+									aria-label={otherProblems ? `Menu, ${otherProblems} problems on other cameras` : 'Menu'}
+								>
+									<Menu class="size-5" />
+									Menu
+									{#if otherProblems}
+										<span class="bg-bad absolute top-2 left-1/2 ml-2 size-2 rounded-full" aria-hidden="true"></span>
+									{/if}
+								</button>
 							{/snippet}
 						</Sheet.Trigger>
-						<Sheet.Content side="right" class="w-80">
+						<Sheet.Content side="right" class="w-80 overflow-y-auto">
 							<Sheet.Header>
 								<Sheet.Title>Menu</Sheet.Title>
 							</Sheet.Header>
 							<nav class="flex flex-col gap-1 px-4">
 								{#each [home, ...scoped, ...fleet] as item (item.href)}
 									<a
-										href={item.href}
+										href={scoped.includes(item) ? scopedHref(item.href) : item.href}
 										onclick={() => (menuOpen = false)}
 										aria-current={active(item.href) ? 'page' : undefined}
 										class={cn(
@@ -246,9 +339,9 @@
 											<span class="text-sm font-medium">{item.label}</span>
 											<span class="text-subtle text-xs">{item.desc}</span>
 										</span>
-										{#if item.href === '/problems' && problems.data?.count}
+										{#if item.href === '/problems' && fleetProblems}
 											<span class="text-bad ml-auto text-xs font-semibold tabular-nums">
-												{problems.data.count}
+												{current?.problems ?? 0} here, {fleetProblems} total
 											</span>
 										{/if}
 									</a>
@@ -262,23 +355,7 @@
 							</nav>
 						</Sheet.Content>
 					</Sheet.Root>
-				</div>
-			</div>
-		</header>
-
-		<main class="mx-auto w-full max-w-[1180px] flex-1 px-4 py-6 sm:px-6 sm:py-8">
-			{@render children()}
-		</main>
-
-		<footer
-			class="text-subtle flex flex-wrap justify-center gap-x-4 gap-y-1 border-t px-4 py-4 text-xs sm:px-6"
-		>
-			<span>ReoVault {session.version}</span>
-			<span>reolink-cli {session.pinnedCli}</span>
-			{#if !live.connected}
-				<span class="text-warn">Live updates reconnecting</span>
-			{/if}
-		</footer>
+		</nav>
 	</div>
 {/if}
 </Tooltip.Provider>

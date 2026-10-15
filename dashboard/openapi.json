@@ -727,6 +727,17 @@
             "title": "Archived Count",
             "type": "integer"
           },
+          "card_state": {
+            "enum": [
+              "not_mounted",
+              "at_risk",
+              "waiting",
+              "all_archived",
+              "unknown"
+            ],
+            "title": "Card State",
+            "type": "string"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -793,6 +804,21 @@
             ],
             "title": "Name"
           },
+          "problems_count": {
+            "title": "Problems Count",
+            "type": "integer"
+          },
+          "safe_for_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe For Seconds"
+          },
           "sample": {
             "anyOf": [
               {
@@ -816,6 +842,10 @@
           "timezone": {
             "title": "Timezone",
             "type": "string"
+          },
+          "waiting_count": {
+            "title": "Waiting Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -832,7 +862,11 @@
           "sd",
           "last_run",
           "gateway_down",
-          "has_own_schedule"
+          "has_own_schedule",
+          "card_state",
+          "waiting_count",
+          "safe_for_seconds",
+          "problems_count"
         ],
         "title": "DeviceOut",
         "type": "object"
@@ -1381,6 +1415,43 @@
         "title": "HourOut",
         "type": "object"
       },
+      "IssueOut": {
+        "description": "One open condition on one camera, for the Overview's \"needs\nattention\" list. `link` is the page that resolves it.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "integer"
+          },
+          "level": {
+            "enum": [
+              "warn",
+              "bad"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "link": {
+            "enum": [
+              "problems",
+              "health"
+            ],
+            "title": "Link",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "level",
+          "text",
+          "link"
+        ],
+        "title": "IssueOut",
+        "type": "object"
+      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -1457,16 +1528,6 @@
       },
       "OverviewOut": {
         "properties": {
-          "banner": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BannerOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "cards": {
             "items": {
               "$ref": "#/components/schemas/FleetCardOut"
@@ -1474,12 +1535,19 @@
             "title": "Cards",
             "type": "array"
           },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
           "vault": {
             "$ref": "#/components/schemas/VaultOut"
           }
         },
         "required": [
-          "banner",
+          "issues",
           "vault",
           "cards"
         ],
@@ -4315,6 +4383,16 @@
                 }
               ],
               "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "failures_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Failures Only",
+              "type": "boolean"
             }
           },
           {

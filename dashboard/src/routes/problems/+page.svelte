@@ -17,6 +17,8 @@
 	import { buttonVariants } from '$lib/components/ui/button';
 	import { plural } from '$lib/format';
 	import { toast } from 'svelte-sonner';
+	import { toastQueued } from '$lib/queued';
+	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 
 	const first = query(() => {
 		void live.problems;
@@ -54,7 +56,7 @@
 				method: 'POST',
 				query: { device: devices.currentId }
 			});
-			toast.success(`${plural(r.count, 'clip')} queued for the next run.`);
+			toastQueued(`${plural(r.count, 'clip')} queued for the next run.`, devices.currentId);
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -69,6 +71,8 @@
 			const page = await api<RecordingsPage>('/problems', { query: { device: devices.currentId, after: next } });
 			older = [...older, ...page.items];
 			cursor = page.next ?? null;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
 			loadingMore = false;
 		}
@@ -115,9 +119,15 @@
 	<Empty.Root class="border">
 		<Empty.Header>
 			<Empty.Media variant="icon"><ShieldCheck /></Empty.Media>
-			<Empty.Title>Nothing needs attention</Empty.Title>
-			<Empty.Description>Every recording ReoVault found has been archived and verified.</Empty.Description>
+			<Empty.Title>No failed or quarantined recordings</Empty.Title>
+			<Empty.Description>
+				Clips still waiting on the SD card aren't problems yet. Health shows how many there are and how
+				long they're safe for.
+			</Empty.Description>
 		</Empty.Header>
+		<Empty.Content>
+			<Button variant="outline" href="/health?device={devices.currentId}"><HeartPulse /> Open Health</Button>
+		</Empty.Content>
 	</Empty.Root>
 {:else}
 	<div class="flex flex-col gap-2">

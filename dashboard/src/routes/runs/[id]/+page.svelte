@@ -8,7 +8,8 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
 	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
-	import { bytes, localTime } from '$lib/format';
+	import { bytes, localTime, plural } from '$lib/format';
+	import { triggerLabel } from '$lib/labels';
 
 	const detail = query(() => {
 		void live.activity;
@@ -20,7 +21,7 @@
 
 <Breadcrumb.Root class="mb-4">
 	<Breadcrumb.List>
-		<Breadcrumb.Item><Breadcrumb.Link href="/runs">Runs</Breadcrumb.Link></Breadcrumb.Item>
+		<Breadcrumb.Item><Breadcrumb.Link href={detail.data?.run.device_id ? `/runs?device=${detail.data.run.device_id}` : '/runs'}>Runs</Breadcrumb.Link></Breadcrumb.Item>
 		<Breadcrumb.Separator />
 		<Breadcrumb.Item><Breadcrumb.Page>Run {page.params.id}</Breadcrumb.Page></Breadcrumb.Item>
 	</Breadcrumb.List>
@@ -35,7 +36,7 @@
 	{@const tz = detail.data.timezone}
 	<Card.Root>
 		<Card.Header>
-			<Card.Description>{r.trigger} run</Card.Description>
+			<Card.Description>{triggerLabel(r.trigger)} run</Card.Description>
 			<Card.Title class="text-xl">{localTime(r.started_at, tz)}</Card.Title>
 			<Card.Action><RunOutcome run={r} /></Card.Action>
 		</Card.Header>
@@ -59,6 +60,15 @@
 					<dd>{localTime(r.window_from_utc, tz)} to {localTime(r.window_to_utc, tz)}</dd>
 				</div>
 			</dl>
+			{#if r.failed}
+				<p class="text-sm">
+					{plural(r.failed, 'clip')} failed in this run.
+					<a href="/problems?device={r.device_id}" class="text-brand-text underline-offset-4 hover:underline">
+						Review this camera's problems
+					</a>
+					to see why and retry them.
+				</p>
+			{/if}
 			{#if r.error}
 				<div>
 					<p class="text-subtle mb-1 text-xs">Error</p>

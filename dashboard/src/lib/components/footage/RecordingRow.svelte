@@ -9,12 +9,14 @@
 	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
 	import { bytes, duration, plural, relative } from '$lib/format';
 	import { toast } from 'svelte-sonner';
+	import { toastQueued } from '$lib/queued';
 	import { cn } from '$lib/utils';
 	import Play from '@lucide/svelte/icons/play';
 	import Download from '@lucide/svelte/icons/download';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import X from '@lucide/svelte/icons/x';
+	import { stateLabel, typeLabel } from '$lib/labels';
 
 	let {
 		rec: initial,
@@ -41,6 +43,8 @@
 	let open = $state(false);
 	let unsupported = $state(false);
 	let busy = $state<'verify' | 'retry' | null>(null);
+	// Stays on the row, not just in a toast: a corrupt clip is worth seeing twice.
+	let verifyFailed = $state(false);
 
 	const archived = $derived(rec.state === 'archived');
 	const isProblem = $derived(rec.state === 'failed' || rec.state === 'quarantined');
@@ -52,8 +56,8 @@
 		try {
 			const r = await api<Verify>(`/recordings/${rec.id}/verify`, { method: 'POST' });
 			rec = r.recording;
+			verifyFailed = !r.ok;
 			if (r.ok) toast.success('Integrity verified: the stored clip matches its hash.');
-			else toast.error('Integrity check failed: the stored clip does not match its hash.');
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -65,7 +69,7 @@
 		busy = 'retry';
 		try {
 			rec = await api<Recording>(`/recordings/${rec.id}/retry`, { method: 'POST' });
-			toast.success('Queued for the next run.');
+			toastQueued('Queued for the next run.', rec.device_id);
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -85,10 +89,10 @@
 			{problemView ? rec.local_datetime : rec.local_time}
 		</span>
 		<div class="flex flex-wrap gap-1">
-			{#each rec.types as t (t)}<Badge variant="secondary">{t}</Badge>{/each}
+			{#each rec.types as t (t)}<Badge variant="secondary">{typeLabel(t)}</Badge>{/each}
 		</div>
 		{#if !archived}
-			<StatusBadge level={isProblem ? 'bad' : rec.state === 'pruned' ? 'idle' : 'warn'}>{rec.state}</StatusBadge>
+			<StatusBadge level={isProblem ? 'bad' : rec.state === 'pruned' ? 'idle' : 'warn'}>{stateLabel(rec.state)}</StatusBadge>
 		{/if}
 		<span class="text-muted-foreground ml-auto flex gap-x-3 text-sm tabular-nums">
 			<span>{duration(rec.duration_s)}</span>
@@ -132,6 +136,13 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if verifyFailed}
+		<p class="text-bad border-t px-3 py-2.5 text-sm" role="alert">
+			Integrity check failed: the stored file no longer matches the hash recorded when it was
+			archived.
+		</p>
+	{/if}
 
 	{#if isProblem && (rec.last_error_class_text || rec.last_error)}
 		<div class="border-t px-3 py-2.5 text-sm">
