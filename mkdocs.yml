@@ -36,6 +36,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Compatible devices: compatibility.md
+  - Dashboard: dashboard.md
   - Configuration: configuration.md
   - CLI reference: cli-reference.md
   - Architecture: architecture.md

@@ -154,10 +154,10 @@ read-only.
 
 ## `[alerts]`
 
-Where alerts go. These fields are config-only, never stored in the database
-or editable from the dashboard: a webhook URL or an ntfy token is a
-credential, so anything secret is read from a file (mount it as a Docker
-secret).
+Where alerts go. A webhook URL or an ntfy token is a credential, so anything
+secret is read from a file (mount it as a Docker secret) and the config only
+holds the file's path. Settings, Alerts can edit these fields, which apply
+live; the secrets themselves are never written to the file or the database.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|

@@ -239,16 +239,16 @@
 											aria-current={active(item.href) ? 'page' : undefined}
 											aria-label={item.label}
 											class={cn(
-												'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors xl:px-3',
+												'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors min-[1400px]:px-3',
 												active(item.href) && 'bg-muted text-foreground'
 											)}
 										>
 											<item.icon class="size-4" />
-											<span class="hidden xl:inline">{item.label}</span>
+											<span class="hidden min-[1400px]:inline">{item.label}</span>
 										</a>
 									{/snippet}
 								</Tooltip.Trigger>
-								<Tooltip.Content class="xl:hidden">{item.label}</Tooltip.Content>
+								<Tooltip.Content class="min-[1400px]:hidden">{item.label}</Tooltip.Content>
 							</Tooltip.Root>
 						{/each}
 					</nav>

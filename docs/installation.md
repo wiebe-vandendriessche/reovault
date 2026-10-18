@@ -42,9 +42,10 @@ If your user isn't uid 1000, run `sudo chown -R 1000:1000 data` once.
   (firewall, VPN, trusted LAN only) is then on you, same as any other
   self-hosted app you publish a port for.
 * **Reverse proxy** (Traefik, Nginx Proxy Manager, Caddy, ...) on a shared
-  Docker network, the active default in `compose.yaml`. Set
-  `REOVAULT_WEB__FORWARDED_ALLOW_IPS` to the proxy's own address (never
-  `"*"`, see [Security](security.md)).
+  Docker network, the active default in `compose.yaml`. Uncomment the
+  service's `networks:` and the top-level `networks:` block and name your
+  proxy's network there. Set `REOVAULT_WEB__FORWARDED_ALLOW_IPS` to the
+  proxy's own address or subnet (never `"*"`, see [Security](security.md)).
 
 `./config/` holds `reovault.toml` and is mounted read-write: the dashboard's
 Settings page writes changes back into the file (comments and layout kept,
@@ -90,6 +91,7 @@ dashboard (schedules, retention, alert rules, cameras added from the
 dashboard) are written into `reovault.toml` once; from then on the file is
 the single source of truth. Until the folder is writable, the dashboard shows
 settings read-only and nothing is migrated.
+
 ### Verifying the image
 
 Release images are signed keylessly with [cosign](https://docs.sigstore.dev/)
@@ -115,9 +117,10 @@ builds and starts it; everything else above stays the same.
 
 ReoVault can tell you when archiving needs attention: a failed run, recordings
 that failed or were quarantined, clips on a camera's SD card at risk of being
-overwritten before they're archived, or the camera gateway being down. Channels are configured in `reovault.toml` (or
-`REOVAULT_ALERTS__*` env vars), with anything secret in a file, the same way
-as the master passphrase:
+overwritten before they're archived, or the camera gateway being down.
+Channels are configured in `reovault.toml` (or `REOVAULT_ALERTS__*` env vars,
+or the dashboard under Settings, Alerts), with anything secret in a file, the
+same way as the master passphrase:
 
 ```toml
 [alerts]
@@ -146,3 +149,6 @@ also has a "Send test" button. See [Configuration](configuration.md#alerts).
 4. `[web] email` is set, and `reovault web set-password` is run before exposing the dashboard.
    Until a password is set, the API answers 503 and the dashboard says so (the healthcheck
    still works).
+
+Then open the dashboard and log in; [Dashboard](dashboard.md) walks through
+each page.
