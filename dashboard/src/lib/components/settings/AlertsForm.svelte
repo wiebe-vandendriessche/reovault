@@ -2,6 +2,7 @@
 	import { api, type AlertRules, type Alerts, type TestResult } from '$lib/api';
 	import { live } from '$lib/state/live.svelte';
 	import { query } from '$lib/state/query.svelte';
+	import * as Alert from '$lib/components/ui/alert';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as InputGroup from '$lib/components/ui/input-group';
@@ -14,6 +15,7 @@
 	import { relative } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 	import Send from '@lucide/svelte/icons/send';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { trackUnsaved } from '$lib/state/unsaved.svelte';
 
 	const loaded = query(() => {
@@ -84,6 +86,16 @@
 	<Skeleton class="h-96 w-full rounded-xl" />
 {:else}
 	<div class="flex flex-col gap-4">
+		{#if loaded.data.rules.enabled && !anyChannel}
+			<Alert.Root class="border-warn/40">
+				<TriangleAlert class="text-warn" />
+				<Alert.Title>Alerts are on, but nobody will be notified</Alert.Title>
+				<Alert.Description>
+					No channel is set up. Set <code>ntfy_url</code>, <code>webhook_url_file</code>, or
+					<code>smtp_host</code> and <code>smtp_to</code> under <code>[alerts]</code> in reovault.toml, then restart.
+				</Alert.Description>
+			</Alert.Root>
+		{/if}
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Channels</Card.Title>

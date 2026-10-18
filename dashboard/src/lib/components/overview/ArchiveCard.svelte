@@ -2,6 +2,7 @@
 	import type { components } from '$lib/api/schema';
 	import * as Card from '$lib/components/ui/card';
 	import Legend from '$lib/components/app/Legend.svelte';
+	import Meter from '$lib/components/app/Meter.svelte';
 	import { bytes, count, shortDay } from '$lib/format';
 
 	/** The archive's disk: how much ReoVault uses, what else is on the
@@ -32,14 +33,15 @@
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
 		{#if vault.total_bytes}
-			<svg class="bg-muted block h-4 w-full overflow-visible rounded-full" role="img"
-				aria-label="Disk: {bytes(vault.archive_bytes)} ReoVault, {bytes(vault.used_bytes! - vault.archive_bytes)} other, {bytes(vault.free_bytes)} free of {bytes(vault.total_bytes)}">
-				<rect x="0" y="0" width="{archive}%" height="100%" rx="4" class="fill-brand" />
-				<rect x="{archive}%" y="0" width="{other}%" height="100%" class="fill-idle" />
-				{#if cap != null}
-					<line x1="{cap}%" x2="{cap}%" y1="-4" y2="20" class="stroke-foreground" stroke-width="2" />
-				{/if}
-			</svg>
+			<Meter
+				class="h-4"
+				label="Disk: {bytes(vault.archive_bytes)} ReoVault, {bytes(Math.max(vault.used_bytes! - vault.archive_bytes, 0))} other, {bytes(vault.free_bytes)} free of {bytes(vault.total_bytes)}"
+				segments={[
+					{ value: archive, class: 'fill-brand' },
+					{ value: other, class: 'fill-idle' }
+				]}
+				marker={cap}
+			/>
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				<Legend
 					items={[

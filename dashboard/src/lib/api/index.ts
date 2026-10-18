@@ -14,6 +14,7 @@ export type Run = S['RunOut'];
 export type RunsPage = S['RunsOut'];
 export type RunDetail = S['RunDetailOut'];
 export type RecordingsPage = S['Page_RecordingOut_'];
+export type Lost = S['LostOut'];
 export type Calendar = S['CalendarOut'];
 export type Day = S['DayOut'];
 export type Verify = S['VerifyOut'];

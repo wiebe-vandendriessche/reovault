@@ -26,7 +26,8 @@ const STATES: Record<string, string> = {
 	archived: 'Archived',
 	failed: 'Failed',
 	quarantined: 'Quarantined',
-	pruned: 'Removed by retention'
+	pruned: 'Removed by retention',
+	lost: 'Lost, overwritten on the camera'
 };
 export const stateLabel = (s: string) => STATES[s] ?? words(s);
 

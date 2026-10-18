@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type Recording, type RecordingsPage } from '$lib/api';
+	import { api, type Lost, type Recording, type RecordingsPage } from '$lib/api';
 	import { devices } from '$lib/state/devices.svelte';
 	import { live } from '$lib/state/live.svelte';
 	import { query } from '$lib/state/query.svelte';
@@ -15,7 +15,9 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { buttonVariants } from '$lib/components/ui/button';
-	import { plural } from '$lib/format';
+	import { localTime, plural } from '$lib/format';
+	import * as Card from '$lib/components/ui/card';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { toast } from 'svelte-sonner';
 	import { toastQueued } from '$lib/queued';
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
@@ -47,6 +49,30 @@
 		return device == null ? null : api<{ count: number }>('/problems/count', { query: { device } });
 	});
 	let retrying = $state(false);
+
+	const lost = query(() => {
+		void live.problems;
+		const device = devices.currentId;
+		return device == null ? null : api<Lost>('/problems/lost', { query: { device } });
+	});
+	const tz = $derived(devices.list.find((d) => d.id === devices.currentId)?.timezone ?? 'UTC');
+	let dismissing = $state(false);
+
+	async function dismissLost() {
+		if (devices.currentId == null) return;
+		dismissing = true;
+		try {
+			const r = await api<{ count: number }>('/problems/lost/dismiss', {
+				method: 'POST',
+				query: { device: devices.currentId }
+			});
+			toast.success(`${plural(r.count, 'lost clip')} dismissed.`);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+		} finally {
+			dismissing = false;
+		}
+	}
 
 	async function retryAll() {
 		if (devices.currentId == null) return;
@@ -109,6 +135,40 @@
 	{/snippet}
 </PageHeader>
 
+{#if lost.data?.count}
+	{@const l = lost.data}
+	<Card.Root class="border-warn/40 mb-4">
+		<Card.Header>
+			<Card.Title>{plural(l.count, 'clip')} lost before archiving</Card.Title>
+			<Card.Description>
+				The camera overwrote {l.count === 1 ? 'this clip' : 'these clips'} before ReoVault could archive
+				{l.count === 1 ? 'it' : 'them'}, so there is nothing to retry. Recorded between
+				{localTime(l.first_utc, tz)} and {localTime(l.last_utc, tz)}. Health shows how close the card is to
+				overwriting the clips still waiting.
+			</Card.Description>
+			<Card.Action>
+				<AlertDialog.Root>
+					<AlertDialog.Trigger class={buttonVariants({ variant: 'outline', size: 'sm' })} disabled={dismissing}>
+						{#if dismissing}<Spinner />{:else}<EyeOff />{/if} Dismiss
+					</AlertDialog.Trigger>
+					<AlertDialog.Content>
+						<AlertDialog.Header>
+							<AlertDialog.Title>Dismiss {plural(l.count, 'lost clip')}?</AlertDialog.Title>
+							<AlertDialog.Description>
+								They stop showing as an issue on the Overview. They stay listed in Footage as lost.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+						<AlertDialog.Footer>
+							<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+							<AlertDialog.Action onclick={dismissLost}>Dismiss</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Root>
+			</Card.Action>
+		</Card.Header>
+	</Card.Root>
+{/if}
+
 {#if devices.loaded && devices.currentId == null}
 	<NoDevice />
 {:else if first.error}
@@ -119,7 +179,7 @@
 	<Empty.Root class="border">
 		<Empty.Header>
 			<Empty.Media variant="icon"><ShieldCheck /></Empty.Media>
-			<Empty.Title>No failed or quarantined recordings</Empty.Title>
+			<Empty.Title>Nothing to retry</Empty.Title>
 			<Empty.Description>
 				Clips still waiting on the SD card aren't problems yet. Health shows how many there are and how
 				long they're safe for.

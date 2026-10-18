@@ -16,7 +16,7 @@
 	import MonthCalendar from '$lib/components/footage/MonthCalendar.svelte';
 	import HourGroup from '$lib/components/footage/HourGroup.svelte';
 	import ExportDialog from '$lib/components/footage/ExportDialog.svelte';
-	import { addDays, bytes, plural } from '$lib/format';
+	import { addDays, bytes, plural, shortDay } from '$lib/format';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import VideoOff from '@lucide/svelte/icons/video-off';
@@ -161,10 +161,15 @@
 					</Empty.Header>
 					{#if types}
 						<Empty.Content><Button variant="outline" onclick={() => nav({ types: '' })}>Clear filter</Button></Empty.Content>
+					{:else if day.data.latest && day.data.latest !== shown}
+						{@const latest = day.data.latest}
+						<Empty.Content>
+							<Button variant="outline" onclick={() => nav({ date: latest })}>Go to latest clips ({shortDay(latest)})</Button>
+						</Empty.Content>
 					{/if}
 				</Empty.Root>
 			{:else}
-				{#each day.data.hours as h, i (`${day.data.date}-${h.hour}-${types}`)}
+				{#each day.data.hours as h (`${day.data.date}-${h.hour}-${types}`)}
 					<HourGroup
 						device={devices.currentId}
 						date={day.data.date}
@@ -172,7 +177,6 @@
 						total={h.total}
 						size={h.bytes}
 						{types}
-						initiallyOpen={i === 0}
 					/>
 				{/each}
 			{/if}

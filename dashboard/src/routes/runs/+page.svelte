@@ -125,7 +125,24 @@
 				</Empty.Header>
 			</Empty.Root>
 		{:else}
-			<Card.Root class="py-0">
+			<!-- Phones: one stacked row per run instead of seven columns. -->
+			<Card.Root class="gap-0 divide-y py-0 md:hidden">
+				{#each runs as r (r.id)}
+					<div class="relative flex flex-col gap-1 px-4 py-3">
+						<div class="flex items-center justify-between gap-3">
+							<a href="/runs/{r.id}" class="truncate font-medium after:absolute after:inset-0 hover:underline">
+								{localTime(r.started_at, tz)}
+							</a>
+							<RunOutcome run={r} />
+						</div>
+						<p class="text-muted-foreground text-sm tabular-nums">
+							{triggerLabel(r.trigger)}: {r.discovered} found, {r.downloaded} archived,
+							<span class={r.failed ? 'text-bad' : ''}>{r.failed} failed</span>, {bytes(r.bytes_archived)}
+						</p>
+					</div>
+				{/each}
+			</Card.Root>
+			<Card.Root class="hidden py-0 md:flex">
 				<Table.Root>
 					<Table.Header>
 						<Table.Row>

@@ -157,93 +157,99 @@
 	<div class="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
 		<header class="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
 			<div class="mx-auto flex h-16 max-w-[1180px] items-center gap-3 px-4 sm:px-6">
-				<a href="/" class="mr-2 flex shrink-0 items-center" aria-label="ReoVault home">
+				<a href="/" class="mr-1 flex shrink-0 items-center" aria-label="ReoVault home">
 					<img src="/icons/wordmark-dark.png" alt="ReoVault" class="hidden h-7 w-auto dark:block" />
 					<img src="/icons/wordmark-light.png" alt="ReoVault" class="block h-7 w-auto dark:hidden" />
 				</a>
 
-				<a
-					href={home.href}
-					aria-current={active(home.href) ? 'page' : undefined}
-					class={cn(
-						'text-muted-foreground hover:text-foreground hover:bg-muted hidden h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors lg:flex',
-						active(home.href) && 'bg-muted text-foreground'
-					)}
-				>
-					<home.icon class="size-4" />
-					{home.label}
-				</a>
-				<div class="bg-border hidden h-6 w-px lg:block" aria-hidden="true"></div>
-				{#if devices.list.length > 1 && current}
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="outline"
-									size="sm"
-									class="max-w-48 min-w-0 shrink gap-2 lg:shrink-0"
-									aria-label="Camera: {deviceLabel(current)}{otherProblems ? `, ${otherProblems} problems on other cameras` : ''}"
-								>
-									<Cctv class="size-4" />
-									<span class="truncate">{deviceLabel(current)}</span>
-									{#if otherProblems}
-										<span class="bg-bad size-2 shrink-0 rounded-full" aria-hidden="true"></span>
-									{/if}
-									<ChevronsUpDown class="text-muted-foreground size-3.5" />
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="start" class="w-60">
-							<DropdownMenu.Label>Camera</DropdownMenu.Label>
-							{#each devices.list as d (d.id)}
-								<DropdownMenu.Item onSelect={() => pickDevice(d.id)}>
-									<Check class={cn('size-4', d.id !== devices.currentId && 'invisible')} />
-									<span class="truncate">{deviceLabel(d)}</span>
-									{#if d.problems}
-										<span class="text-bad ml-auto text-xs tabular-nums" aria-label="{d.problems} problems">{d.problems}</span>
-									{/if}
-								</DropdownMenu.Item>
-							{/each}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
-				<nav class="hidden items-center gap-1 lg:flex" aria-label="Camera">
-					{#each scoped as item (item.href)}
-						<a
-							href={scopedHref(item.href)}
-							aria-current={active(item.href) ? 'page' : undefined}
-							class={cn(
-								'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
-								active(item.href) && 'bg-muted text-foreground'
-							)}
-						>
-							<item.icon class="size-4" />
-							{item.label}
-							{#if item.href === '/problems' && current?.problems}
-								<span class="bg-bad text-background rounded-full px-1.5 text-xs font-semibold tabular-nums">
-									{current.problems}
-								</span>
-							{/if}
-						</a>
-					{/each}
-				</nav>
-
-
-				<div class="ml-auto flex items-center gap-1">
-					<nav class="hidden items-center gap-1 lg:flex" aria-label="Fleet">
-						{#each fleet as item (item.href)}
+				<!-- Left: one group for the current camera and its pages. -->
+				<div class="hidden min-w-0 items-center gap-0.5 rounded-lg border p-0.5 lg:flex">
+					{#if devices.list.length > 1 && current}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="sm"
+										class="h-8 max-w-44 min-w-0 shrink gap-2"
+										aria-label="Camera: {deviceLabel(current)}{otherProblems ? `, ${otherProblems} problems on other cameras` : ''}"
+									>
+										<Cctv class="size-4" />
+										<span class="truncate">{deviceLabel(current)}</span>
+										{#if otherProblems}
+											<span class="bg-bad size-2 shrink-0 rounded-full" aria-hidden="true"></span>
+										{/if}
+										<ChevronsUpDown class="text-muted-foreground size-3.5" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="start" class="w-60">
+								<DropdownMenu.Label>Camera</DropdownMenu.Label>
+								{#each devices.list as d (d.id)}
+									<DropdownMenu.Item onSelect={() => pickDevice(d.id)}>
+										<Check class={cn('size-4', d.id !== devices.currentId && 'invisible')} />
+										<span class="truncate">{deviceLabel(d)}</span>
+										{#if d.problems}
+											<span class="text-bad ml-auto text-xs tabular-nums" aria-label="{d.problems} problems">{d.problems}</span>
+										{/if}
+									</DropdownMenu.Item>
+								{/each}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					{:else if current}
+						<span class="text-muted-foreground flex h-8 max-w-44 min-w-0 items-center gap-2 px-2.5 text-sm font-medium">
+							<Cctv class="size-4 shrink-0" />
+							<span class="truncate">{deviceLabel(current)}</span>
+						</span>
+					{/if}
+					<div class="bg-border mx-0.5 h-5 w-px shrink-0" aria-hidden="true"></div>
+					<nav class="flex items-center gap-0.5" aria-label="Camera">
+						{#each scoped as item (item.href)}
 							<a
-								href={item.href}
+								href={scopedHref(item.href)}
 								aria-current={active(item.href) ? 'page' : undefined}
 								class={cn(
-									'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+									'text-muted-foreground hover:text-foreground hover:bg-muted flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors',
 									active(item.href) && 'bg-muted text-foreground'
 								)}
 							>
 								<item.icon class="size-4" />
 								{item.label}
+								{#if item.href === '/problems' && current?.problems}
+									<span class="bg-bad text-background rounded-full px-1.5 text-xs font-semibold tabular-nums">
+										{current.problems}
+									</span>
+								{/if}
 							</a>
+						{/each}
+					</nav>
+				</div>
+
+				<!-- Right: pages about the whole system, then the account menu. -->
+				<div class="ml-auto flex shrink-0 items-center gap-1">
+					<nav class="hidden items-center gap-1 lg:flex" aria-label="System">
+						{#each [home, ...fleet] as item (item.href)}
+							<Tooltip.Root>
+								<Tooltip.Trigger>
+									{#snippet child({ props })}
+										<a
+											{...props}
+											href={item.href}
+											aria-current={active(item.href) ? 'page' : undefined}
+											aria-label={item.label}
+											class={cn(
+												'text-muted-foreground hover:text-foreground hover:bg-muted flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors xl:px-3',
+												active(item.href) && 'bg-muted text-foreground'
+											)}
+										>
+											<item.icon class="size-4" />
+											<span class="hidden xl:inline">{item.label}</span>
+										</a>
+									{/snippet}
+								</Tooltip.Trigger>
+								<Tooltip.Content class="xl:hidden">{item.label}</Tooltip.Content>
+							</Tooltip.Root>
 						{/each}
 					</nav>
 					<Button
@@ -254,10 +260,9 @@
 					>
 						{#if theme.value === 'dark'}<Sun />{:else}<Moon />{/if}
 					</Button>
-					<Button variant="ghost" size="icon" class="hidden lg:inline-flex" onclick={signOut} aria-label="Sign out">
+					<Button variant="ghost" size="icon" onclick={signOut} aria-label="Sign out">
 						<LogOut />
 					</Button>
-
 				</div>
 			</div>
 			{#if live.everConnected && !live.connected}
@@ -279,82 +284,101 @@
 			<a href="https://wiebe-vandendriessche.github.io/reovault/" class="hover:text-foreground underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Docs</a>
 		</footer>
 
-		<!-- Phones: the main pages within thumb reach, the rest under Menu. -->
+		<!-- Phones: fleet-wide pages in the bar, the camera's pages under Menu. -->
 		<nav
-			class="bg-background/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+			class="bg-background/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
 			aria-label="Main"
 		>
-			{#each [home, ...scoped.filter((i) => i.href !== '/runs')] as item (item.href)}
+			{#each [home, ...fleet] as item (item.href)}
 				<a
-					href={scoped.includes(item) ? scopedHref(item.href) : item.href}
+					href={item.href}
 					aria-current={active(item.href) ? 'page' : undefined}
 					class={cn(
-						'text-muted-foreground relative flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium',
+						'text-muted-foreground flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium',
 						active(item.href) && 'text-foreground'
 					)}
 				>
 					<item.icon class="size-5" />
 					{item.label}
-					{#if item.href === '/problems' && current?.problems}
-						<span
-							class="bg-bad text-background absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full px-1 text-center text-[0.625rem] leading-4 font-semibold tabular-nums"
-							aria-label="{current.problems} problems">{current.problems}</span
-						>
-					{/if}
 				</a>
 			{/each}
-					<Sheet.Root bind:open={menuOpen}>
-						<Sheet.Trigger>
-							{#snippet child({ props })}
+			<Sheet.Root bind:open={menuOpen}>
+				<Sheet.Trigger>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							class={cn(
+								'text-muted-foreground relative flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium',
+								onScoped && 'text-foreground'
+							)}
+							aria-label={fleetProblems ? `Menu, ${fleetProblems} problems` : 'Menu'}
+						>
+							<Menu class="size-5" />
+							Menu
+							{#if fleetProblems}
+								<span class="bg-bad absolute top-2 left-1/2 ml-2 size-2 rounded-full" aria-hidden="true"></span>
+							{/if}
+						</button>
+					{/snippet}
+				</Sheet.Trigger>
+				<Sheet.Content side="right" class="w-80 overflow-y-auto">
+					<Sheet.Header>
+						<Sheet.Title>Camera</Sheet.Title>
+					</Sheet.Header>
+					{#if devices.list.length > 1}
+						<div class="flex flex-col gap-1 px-4" role="radiogroup" aria-label="Camera">
+							{#each devices.list as d (d.id)}
 								<button
-									{...props}
-									class="text-muted-foreground relative flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium"
-									aria-label={otherProblems ? `Menu, ${otherProblems} problems on other cameras` : 'Menu'}
+									role="radio"
+									aria-checked={d.id === devices.currentId}
+									onclick={() => {
+										pickDevice(d.id);
+										if (onScoped) menuOpen = false;
+									}}
+									class={cn(
+										'hover:bg-muted flex min-h-11 items-center gap-3 rounded-md px-3 text-left text-sm font-medium',
+										d.id === devices.currentId && 'bg-muted'
+									)}
 								>
-									<Menu class="size-5" />
-									Menu
-									{#if otherProblems}
-										<span class="bg-bad absolute top-2 left-1/2 ml-2 size-2 rounded-full" aria-hidden="true"></span>
+									<Check class={cn('size-4 shrink-0', d.id !== devices.currentId && 'invisible')} />
+									<span class="truncate">{deviceLabel(d)}</span>
+									{#if d.problems}
+										<span class="text-bad ml-auto text-xs font-semibold tabular-nums" aria-label="{d.problems} problems">{d.problems}</span>
 									{/if}
 								</button>
-							{/snippet}
-						</Sheet.Trigger>
-						<Sheet.Content side="right" class="w-80 overflow-y-auto">
-							<Sheet.Header>
-								<Sheet.Title>Menu</Sheet.Title>
-							</Sheet.Header>
-							<nav class="flex flex-col gap-1 px-4">
-								{#each [home, ...scoped, ...fleet] as item (item.href)}
-									<a
-										href={scoped.includes(item) ? scopedHref(item.href) : item.href}
-										onclick={() => (menuOpen = false)}
-										aria-current={active(item.href) ? 'page' : undefined}
-										class={cn(
-											'hover:bg-muted flex min-h-11 items-start gap-3 rounded-md p-3',
-											active(item.href) && 'bg-muted'
-										)}
-									>
-										<item.icon class="mt-0.5 size-4 shrink-0" />
-										<span class="flex flex-col">
-											<span class="text-sm font-medium">{item.label}</span>
-											<span class="text-subtle text-xs">{item.desc}</span>
-										</span>
-										{#if item.href === '/problems' && fleetProblems}
-											<span class="text-bad ml-auto text-xs font-semibold tabular-nums">
-												{current?.problems ?? 0} here, {fleetProblems} total
-											</span>
-										{/if}
-									</a>
-								{/each}
-								<button
-									class="hover:bg-muted mt-2 flex min-h-11 items-center gap-3 rounded-md p-3 text-left text-sm font-medium"
-									onclick={signOut}
-								>
-									<LogOut class="size-4" /> Sign out
-								</button>
-							</nav>
-						</Sheet.Content>
-					</Sheet.Root>
+							{/each}
+						</div>
+						<div class="bg-border mx-4 my-2 h-px" aria-hidden="true"></div>
+					{:else if current}
+						<p class="text-muted-foreground flex items-center gap-2 px-7 pb-2 text-sm">
+							<Cctv class="size-4" />
+							<span class="truncate">{deviceLabel(current)}</span>
+						</p>
+					{/if}
+					<nav class="flex flex-col gap-1 px-4" aria-label="Camera pages">
+						{#each scoped as item (item.href)}
+							<a
+								href={scopedHref(item.href)}
+								onclick={() => (menuOpen = false)}
+								aria-current={active(item.href) ? 'page' : undefined}
+								class={cn(
+									'hover:bg-muted flex min-h-11 items-start gap-3 rounded-md p-3',
+									active(item.href) && 'bg-muted'
+								)}
+							>
+								<item.icon class="mt-0.5 size-4 shrink-0" />
+								<span class="flex flex-col">
+									<span class="text-sm font-medium">{item.label}</span>
+									<span class="text-subtle text-xs">{item.desc}</span>
+								</span>
+								{#if item.href === '/problems' && current?.problems}
+									<span class="text-bad ml-auto text-xs font-semibold tabular-nums">{current.problems}</span>
+								{/if}
+							</a>
+						{/each}
+					</nav>
+				</Sheet.Content>
+			</Sheet.Root>
 		</nav>
 	</div>
 {/if}

@@ -507,6 +507,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/problems/lost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lost */
+        get: operations["get_lost_api_v1_problems_lost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/lost/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Lost
+         * @description Acknowledges this camera's lost clips: nothing can bring them back,
+         *     so they stop counting as an open issue.
+         */
+        post: operations["dismiss_lost_api_v1_problems_lost_dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/problems/retry": {
         parameters: {
             query?: never;
@@ -1026,6 +1064,8 @@ export interface components {
             date: string;
             /** Hours */
             hours: components["schemas"]["HourOut"][];
+            /** Latest */
+            latest: string | null;
             /** Today */
             today: string;
             /** Total */
@@ -1250,7 +1290,7 @@ export interface components {
          */
         IssueOut: {
             /** Device Id */
-            device_id: number;
+            device_id: number | null;
             /**
              * Level
              * @enum {string}
@@ -1260,7 +1300,7 @@ export interface components {
              * Link
              * @enum {string}
              */
-            link: "problems" | "health";
+            link: "problems" | "health" | "settings";
             /** Text */
             text: string;
         };
@@ -1270,6 +1310,18 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * LostOut
+         * @description Undismissed clips the card overwrote before they were archived.
+         */
+        LostOut: {
+            /** Count */
+            count: number;
+            /** First Utc */
+            first_utc: string | null;
+            /** Last Utc */
+            last_utc: string | null;
         };
         /** OpenAlertOut */
         OpenAlertOut: {
@@ -2555,6 +2607,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lost_api_v1_problems_lost_get: {
+        parameters: {
+            query?: {
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_lost_api_v1_problems_lost_dismiss_post: {
+        parameters: {
+            query?: {
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetriedOut"];
                 };
             };
             /** @description Validation Error */

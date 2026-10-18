@@ -689,6 +689,17 @@
             "title": "Hours",
             "type": "array"
           },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
           "today": {
             "title": "Today",
             "type": "string"
@@ -708,7 +719,8 @@
           "total",
           "total_bytes",
           "hours",
-          "available_types"
+          "available_types",
+          "latest"
         ],
         "title": "DayOut",
         "type": "object"
@@ -1419,8 +1431,15 @@
         "description": "One open condition on one camera, for the Overview's \"needs\nattention\" list. `link` is the page that resolves it.",
         "properties": {
           "device_id": {
-            "title": "Device Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
           },
           "level": {
             "enum": [
@@ -1433,7 +1452,8 @@
           "link": {
             "enum": [
               "problems",
-              "health"
+              "health",
+              "settings"
             ],
             "title": "Link",
             "type": "string"
@@ -1470,6 +1490,46 @@
           "password"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "LostOut": {
+        "description": "Undismissed clips the card overwrote before they were archived.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "first_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Utc"
+          },
+          "last_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Utc"
+          }
+        },
+        "required": [
+          "count",
+          "first_utc",
+          "last_utc"
+        ],
+        "title": "LostOut",
         "type": "object"
       },
       "OpenAlertOut": {
@@ -4077,6 +4137,105 @@
         "summary": "Get Problems Count",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/problems/lost": {
+      "get": {
+        "operationId": "get_lost_api_v1_problems_lost_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lost",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/problems/lost/dismiss": {
+      "post": {
+        "description": "Acknowledges this camera's lost clips: nothing can bring them back,\nso they stop counting as an open issue.",
+        "operationId": "dismiss_lost_api_v1_problems_lost_dismiss_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetriedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Lost",
+        "tags": [
+          "runs"
         ]
       }
     },

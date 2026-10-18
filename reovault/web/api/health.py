@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from reovault import health
+from reovault import health, notify
 from reovault import retention as retention_policy
 from reovault.db.repository import OnCardBytesRow, RunRow, StorageSampleRow, parse_iso_utc
 from reovault.providers.reolink_cli import ReolinkCliProvider
@@ -76,10 +76,10 @@ class IssueOut(BaseModel):
     """One open condition on one camera, for the Overview's "needs
     attention" list. `link` is the page that resolves it."""
 
-    device_id: int
+    device_id: int | None  # None: fleet-wide, not one camera's
     level: Literal["warn", "bad"]
     text: str
-    link: Literal["problems", "health"]
+    link: Literal["problems", "health", "settings"]
 
 
 class TodayOut(BaseModel):
@@ -153,7 +153,8 @@ class FleetCardOut(BaseModel):
 class OverviewOut(BaseModel):
     # Every open condition across the fleet, most urgent first: a card not
     # recording, then clips about to be overwritten (soonest first), then a
-    # gateway outage, then failed clips (already lost or retryable later).
+    # gateway outage, then clips already lost, then failed clips, then
+    # fleet-wide config (alerts with no channel).
     issues: list[IssueOut]
     vault: VaultOut
     cards: list[FleetCardOut]
@@ -305,10 +306,17 @@ def _issues(
         out.append((1, left, BannerOut(level="warn", text=text)))
     if is_gateway_down:
         out.append((2, 0.0, BannerOut(level="warn", text="The camera gateway is unreachable.")))
+    if card.lost_count > 0:
+        n = card.lost_count
+        text = (
+            f"{n} clip{'s were' if n != 1 else ' was'} overwritten on the camera "
+            f"before {'they' if n != 1 else 'it'} could be archived."
+        )
+        out.append((3, 0.0, BannerOut(level="warn", text=text, link="problems")))
     if problems > 0:
         plural = "s" if problems != 1 else ""
         text = f"{problems} recording{plural} {'needs' if problems == 1 else 'need'} attention."
-        out.append((3, 0.0, BannerOut(level="bad", text=text, link="problems")))
+        out.append((4, 0.0, BannerOut(level="bad", text=text, link="problems")))
     return out
 
 
@@ -405,6 +413,11 @@ def get_overview(st: State) -> OverviewOut:
                 problems_count=problems,
             )
         )
+    alerts = st.settings.alerts
+    if alerts.rules.enabled and not any(c["configured"] for c in notify.channel_status(alerts)):
+        text = "Alerts are on, but no channel is set up, so nobody will be notified."
+        issue = IssueOut(device_id=None, level="warn", text=text, link="settings")
+        issues.append((5, 0.0, issue))
     try:
         usage = shutil.disk_usage(st.settings.storage.vault_dir)
     except OSError:

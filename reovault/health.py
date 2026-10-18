@@ -77,7 +77,8 @@ def record_storage_sample(
     *, repository: Repository, provider: CameraProvider, device_id: int
 ) -> None:
     """Runs on every archive run (scheduled, backfill, or manual), not on
-    its own schedule."""
+    its own schedule. Also the one place the card's oldest clip is learned,
+    so it marks what the card has already overwritten as lost."""
     storage = provider.storage_status()
     oldest_on_card = _find_oldest_recording_utc(provider)
     repository.record_storage_sample(
@@ -88,6 +89,10 @@ def record_storage_sample(
         mounted=storage.mounted,
         oldest_recording_utc=oldest_on_card,
     )
+    if oldest_on_card is not None:
+        lost = repository.mark_lost(device_id, oldest_on_card)
+        if lost:
+            logger.warning("health.recordings_lost", device_id=device_id, count=lost)
 
 
 def _find_oldest_recording_utc(provider: CameraProvider) -> datetime | None:

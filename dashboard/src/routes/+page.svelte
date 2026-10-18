@@ -97,8 +97,10 @@
 									<Button
 										size="sm"
 										variant="outline"
-										href={issue.link === 'problems' ? `/problems?device=${issue.device_id}` : `/health?device=${issue.device_id}`}
-										aria-label="{issue.link === 'problems' ? 'Review problems' : 'Open health'}: {issue.text}"
+										href={issue.link === 'settings'
+											? '/settings?tab=alerts'
+											: `/${issue.link}?device=${issue.device_id}`}
+										aria-label="{issue.link === 'problems' ? 'Review problems' : `Open ${issue.link}`}: {issue.text}"
 									>
 										{issue.link === 'problems' ? 'Review' : 'Open'}
 									</Button>

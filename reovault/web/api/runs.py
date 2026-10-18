@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from reovault.db.repository import parse_iso_utc
 from reovault.scheduler import next_run_times
 from reovault.web.api.common import (
     Page,
@@ -90,6 +91,33 @@ def retry_all_problems(dev: Device, st: State) -> RetriedOut:
     """Re-queues every failed or quarantined recording of this camera for
     the next run, the bulk form of `POST /recordings/{id}/retry`."""
     count = st.repo.retry_all_problems(dev.device_id)
+    st.bus.publish("problems", device_id=dev.device_id)
+    return RetriedOut(count=count)
+
+
+class LostOut(BaseModel):
+    """Undismissed clips the card overwrote before they were archived."""
+
+    count: int
+    first_utc: datetime | None
+    last_utc: datetime | None
+
+
+@router.get("/problems/lost")
+def get_lost(dev: Device, st: State) -> LostOut:
+    count, first, last = st.repo.lost_summary(dev.device_id)
+    return LostOut(
+        count=count,
+        first_utc=parse_iso_utc(first) if first else None,
+        last_utc=parse_iso_utc(last) if last else None,
+    )
+
+
+@router.post("/problems/lost/dismiss")
+def dismiss_lost(dev: Device, st: State) -> RetriedOut:
+    """Acknowledges this camera's lost clips: nothing can bring them back,
+    so they stop counting as an open issue."""
+    count = st.repo.dismiss_lost(dev.device_id)
     st.bus.publish("problems", device_id=dev.device_id)
     return RetriedOut(count=count)
 

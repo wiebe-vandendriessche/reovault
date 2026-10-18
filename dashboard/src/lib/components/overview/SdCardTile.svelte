@@ -70,7 +70,7 @@
 
 	const used = $derived(card.used_fraction);
 	const fill = $derived([{ key: 'used', value: Math.round((used ?? 0) * 100) }]);
-	const fillColor = $derived(used == null ? 'var(--idle)' : used > 0.97 ? 'var(--warn)' : 'var(--brand)');
+	const fillColor = $derived(used == null ? 'var(--idle)' : 'var(--brand)');
 	const runs = $derived(
 		running
 			? 'Running now'

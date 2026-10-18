@@ -92,7 +92,7 @@
 			{#each rec.types as t (t)}<Badge variant="secondary">{typeLabel(t)}</Badge>{/each}
 		</div>
 		{#if !archived}
-			<StatusBadge level={isProblem ? 'bad' : rec.state === 'pruned' ? 'idle' : 'warn'}>{stateLabel(rec.state)}</StatusBadge>
+			<StatusBadge level={isProblem ? 'bad' : rec.state === 'pruned' || rec.state === 'lost' ? 'idle' : 'warn'}>{stateLabel(rec.state)}</StatusBadge>
 		{/if}
 		<span class="text-muted-foreground ml-auto flex gap-x-3 text-sm tabular-nums">
 			<span>{duration(rec.duration_s)}</span>

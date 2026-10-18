@@ -38,7 +38,16 @@ _DEVICE_COLS = (
 # value before it's inlined as a SQL literal (see `problems()`), never to
 # validate arbitrary external input.
 _VALID_STATES = frozenset(
-    {"discovered", "downloading", "verifying", "archived", "failed", "quarantined", "pruned"}
+    {
+        "discovered",
+        "downloading",
+        "verifying",
+        "archived",
+        "failed",
+        "quarantined",
+        "pruned",
+        "lost",
+    }
 )
 
 
@@ -507,6 +516,13 @@ class Repository:
                 """,
                 (device_id, channel, recording.remote_name, start_utc),
             ).fetchone()
+            # The camera still lists it, so `mark_lost` guessed wrong (the
+            # oldest-clip scan stops at a gap): back to the queue.
+            conn.execute(
+                "UPDATE recordings SET state = 'discovered', dismissed_at = NULL "
+                "WHERE id = ? AND state = 'lost'",
+                (row["id"],),
+            )
             return int(row["id"]), created
 
     def get(self, recording_id: int) -> RecordingRow | None:
@@ -859,16 +875,19 @@ class Repository:
     def card_backlog(self, device_id: int, boundary_utc: datetime | None) -> CardBacklogRow:
         """Unarchived recordings split at the card's oldest clip: at or after
         it they're still on the card (`waiting`), before it the card has
-        overwritten them (`lost`). No boundary: everything counts as
+        overwritten them (`lost`, whether `mark_lost` has run yet or not,
+        until dismissed). No boundary: everything not lost counts as
         waiting."""
         boundary = _iso(boundary_utc) if boundary_utc else ""
         row = self._fetchone(
             """
-            SELECT SUM(start_utc >= ?) AS waiting,
-                   MIN(CASE WHEN start_utc >= ? THEN start_utc END) AS oldest_waiting,
-                   SUM(start_utc < ?) AS lost
+            SELECT SUM(state != 'lost' AND start_utc >= ?) AS waiting,
+                   MIN(CASE WHEN state != 'lost' AND start_utc >= ? THEN start_utc END)
+                     AS oldest_waiting,
+                   SUM(state = 'lost' OR start_utc < ?) AS lost
             FROM recordings
             WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
+              AND dismissed_at IS NULL
             """,
             (boundary, boundary, boundary, device_id),
         )
@@ -880,6 +899,48 @@ class Repository:
             ),
             lost_count=row["lost"] or 0,
         )
+
+    def mark_lost(self, device_id: int, boundary_utc: datetime) -> int:
+        """Queued, failed, or quarantined recordings older than the card's
+        oldest clip -> `lost`: the card overwrote them, so no retry can
+        succeed. Never touches a download in flight. Returns how many."""
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET state = 'lost', next_attempt_at = NULL
+                WHERE device_id = ? AND start_utc < ?
+                  AND state IN ('discovered', 'failed', 'quarantined')
+                """,
+                (device_id, _iso(boundary_utc)),
+            )
+            return cur.rowcount
+
+    def lost_summary(self, device_id: int) -> tuple[int, str | None, str | None]:
+        """(count, first start_utc, last start_utc) of undismissed lost
+        recordings."""
+        row = self._fetchone(
+            """
+            SELECT COUNT(*) AS n, MIN(start_utc) AS first, MAX(start_utc) AS last
+            FROM recordings
+            WHERE device_id = ? AND state = 'lost' AND dismissed_at IS NULL
+            """,
+            (device_id,),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["n"]), row["first"], row["last"]
+
+    def dismiss_lost(self, device_id: int) -> int:
+        """Acknowledges every lost recording of one device, so it stops
+        counting as an open issue. Returns how many."""
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET dismissed_at = ?
+                WHERE device_id = ? AND state = 'lost' AND dismissed_at IS NULL
+                """,
+                (_now(), device_id),
+            )
+            return cur.rowcount
 
     def recorded_bytes_since(self, device_id: int, since_utc: datetime) -> int:
         """What the camera wrote to its card since `since_utc`, by its own
@@ -898,7 +959,7 @@ class Repository:
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, buckets: int
     ) -> list[TimelineBucketRow]:
         """Clip counts per equal time slice of `[from_utc, to_utc)`, split
-        archived (incl. pruned) / waiting / quarantined. Every bucket is
+        archived (incl. pruned) / waiting / quarantined (incl. lost). Every bucket is
         returned, empty ones as zeroes. Served by `idx_rec_start`."""
         span = (to_utc - from_utc).total_seconds()
         if span <= 0 or buckets <= 0:
@@ -907,8 +968,8 @@ class Repository:
             """
             SELECT CAST((julianday(start_utc) - julianday(?)) * 86400.0 / ? AS INTEGER) AS b,
                    SUM(state IN ('archived', 'pruned')) AS archived,
-                   SUM(state NOT IN ('archived', 'pruned', 'quarantined')) AS waiting,
-                   SUM(state = 'quarantined') AS quarantined
+                   SUM(state NOT IN ('archived', 'pruned', 'quarantined', 'lost')) AS waiting,
+                   SUM(state IN ('quarantined', 'lost')) AS quarantined
             FROM recordings
             WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
             GROUP BY b
@@ -1207,7 +1268,9 @@ class Repository:
             SELECT
               COALESCE(SUM(CASE WHEN state IN ('archived', 'pruned') THEN remote_size END), 0)
                 AS archived_bytes,
-              COALESCE(SUM(CASE WHEN state NOT IN ('archived', 'pruned') THEN remote_size END), 0)
+              COALESCE(
+                SUM(CASE WHEN state NOT IN ('archived', 'pruned', 'lost') THEN remote_size END), 0
+              )
                 AS pending_bytes
             FROM recordings
             WHERE device_id = ? AND start_utc >= ?
