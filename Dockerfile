@@ -23,7 +23,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY dashboard/ ./
 RUN npm run build
 
-FROM python:3.14-slim AS reolink-cli-download
+FROM python:3.15-slim AS reolink-cli-download
 ARG REOLINK_CLI_VERSION
 ARG TARGETARCH
 WORKDIR /dl
@@ -47,7 +47,7 @@ RUN set -eu; \
     chmod +x /out/reolink-cli /out/reolink-gateway; \
     /out/reolink-cli --version | grep -qF "$REOLINK_CLI_VERSION"
 
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 ARG REOLINK_CLI_VERSION
 ARG REOVAULT_VERSION=dev
 ENV REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \
