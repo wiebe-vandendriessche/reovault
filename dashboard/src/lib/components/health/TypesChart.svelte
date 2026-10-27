@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { api } from '$lib/api';
-	import type { components } from '$lib/api/schema';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as Chart from '$lib/components/ui/chart';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { api } from '#lib/api/index.js';
+	import type { components } from '#lib/api/schema.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Chart from '#lib/components/ui/chart/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import { BarChart } from 'layerchart';
 	import { scaleBand } from 'd3-scale';
-	import { plural, shortDay } from '$lib/format';
+	import { plural, shortDay } from '#lib/format.js';
 
 	type TypeStats = components['schemas']['TypeStatsOut'];
 

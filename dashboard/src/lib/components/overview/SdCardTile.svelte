@@ -1,14 +1,14 @@
 <script lang="ts">
-	import type { components } from '$lib/api/schema';
-	import * as Card from '$lib/components/ui/card';
-	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import * as Chart from '$lib/components/ui/chart';
-	import { Badge } from '$lib/components/ui/badge';
-	import Legend from '$lib/components/app/Legend.svelte';
+	import type { components } from '#lib/api/schema.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
+	import * as Chart from '#lib/components/ui/chart/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import Legend from '#lib/components/app/Legend.svelte';
 	import CardTimeline from './CardTimeline.svelte';
 	import { ArcChart } from 'layerchart';
-	import { plural, relative, span } from '$lib/format';
-	import { cn } from '$lib/utils';
+	import { plural, relative, span } from '#lib/format.js';
+	import { cn } from '#lib/utils.js';
 
 	type S = components['schemas'];
 	type Level = 'ok' | 'warn' | 'bad' | 'idle';

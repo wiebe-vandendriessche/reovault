@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { components } from '$lib/api/schema';
-	import * as Card from '$lib/components/ui/card';
-	import Legend from '$lib/components/app/Legend.svelte';
-	import { bytes, count, shortDay } from '$lib/format';
+	import type { components } from '#lib/api/schema.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import Legend from '#lib/components/app/Legend.svelte';
+	import { bytes, count, shortDay } from '#lib/format.js';
 
 	/** The archive's disk: how much ReoVault uses, what else is on the
 	 * volume, what's free, and how long that free space lasts. */

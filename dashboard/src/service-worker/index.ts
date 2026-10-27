@@ -9,12 +9,16 @@
  * can be served to anyone else, or after logout, from this cache. The shell
  * itself holds no user data, which is what makes caching it safe.
  */
-import { build, files, version } from '$service-worker';
+import { version } from '$app/env';
+import { assets, immutable } from '$app/manifest';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `reovault-${version}`;
 const SHELL = '/index.html';
-const PRECACHE = [...build, ...files, SHELL];
+// Manifest paths are relative to the base path; the fetch handler below
+// compares absolute pathnames.
+const PRECACHE = [...immutable, ...assets].map((f) => new URL(f.path, `${sw.location.origin}/`).pathname);
+PRECACHE.push(SHELL);
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(

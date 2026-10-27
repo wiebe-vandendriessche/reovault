@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { api, apiUrl, type ExportPreview } from '$lib/api';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import * as Popover from '$lib/components/ui/popover';
-	import { RangeCalendar } from '$lib/components/ui/range-calendar';
-	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import { bytes, plural } from '$lib/format';
+	import { api, apiUrl, type ExportPreview } from '#lib/api/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import * as Popover from '#lib/components/ui/popover/index.js';
+	import { RangeCalendar } from '#lib/components/ui/range-calendar/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import { bytes, plural } from '#lib/format.js';
 	import { parseDate, type DateValue } from '@internationalized/date';
 	import type { DateRange } from 'bits-ui';
 	import Download from '@lucide/svelte/icons/download';
