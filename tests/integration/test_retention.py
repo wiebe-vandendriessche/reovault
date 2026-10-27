@@ -170,13 +170,6 @@ def test_reconcile_never_readopts_a_file_for_a_pruned_row(env):
     assert env.vault.list_vault_paths() == []
 
 
-def test_pruned_clips_are_not_backlog_for_the_coverage_alarm(env):
-    _archive(env, _provider(0))
-    retention.enforce(env.repository, env.vault, RetentionConfig(max_vault_gb=1))
-
-    assert env.repository.oldest_unarchived_start_utc(env.device_id) is None
-
-
 def test_retention_save_requires_confirmation_when_it_would_delete(env, auth_client):
     _archive(env, _provider(0, 1))
     body = {"max_age_days": None, "max_vault_gb": 1}

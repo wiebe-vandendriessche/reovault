@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from reovault.config import RetentionConfig, Settings
 from reovault.db.repository import RecordingRow, Repository, parse_iso_utc
 from reovault.logging import get_logger
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ GB = 1024**3
 
 
 def archiver_hook(
-    current_settings: Callable[[], Settings], repository: Repository, vault: VaultStore
+    current_settings: Callable[[], Settings], repository: Repository, vault: EncryptedFsVault
 ) -> Callable[[], PruneResult]:
     """The `Archiver.retention` callable. Reads the live policy on every
     call, so an edit (dashboard or file) applies from the next clip on."""
@@ -89,7 +89,7 @@ def preview(
 
 def enforce(
     repository: Repository,
-    vault: VaultStore,
+    vault: EncryptedFsVault,
     policy: RetentionConfig,
     now: datetime | None = None,
 ) -> PruneResult:

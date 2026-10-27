@@ -5,6 +5,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import TimezoneInput from '#lib/components/app/TimezoneInput.svelte';
 	import { toast } from 'svelte-sonner';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Radar from '@lucide/svelte/icons/radar';
@@ -117,7 +118,7 @@
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="cam-tz">Timezone</Field.Label>
-					<Input id="cam-tz" required bind:value={form.timezone} />
+					<TimezoneInput id="cam-tz" bind:value={form.timezone} />
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="cam-user">Username</Field.Label>

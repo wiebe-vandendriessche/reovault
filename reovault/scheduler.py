@@ -68,7 +68,6 @@ _STANDING_JOB_BASES = ("scheduled_archive", "deep_backfill", "reconcile", "integ
 # hitting the one shared gateway at exactly the same second.
 _JITTER_SECS = 300
 
-SCHEDULE_SETTING_KEY = "schedule"
 _SCHEDULE_ENV_PREFIX = "REOVAULT_SCHEDULE__"
 
 

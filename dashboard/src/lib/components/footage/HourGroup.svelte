@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import { api, type Recording, type RecordingsPage } from '#lib/api/index.js';
 	import * as Collapsible from '#lib/components/ui/collapsible/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -17,8 +16,7 @@
 		hour,
 		total,
 		size,
-		types,
-		initiallyOpen
+		types
 	}: {
 		device: number;
 		date: string;
@@ -26,10 +24,9 @@
 		total: number;
 		size: number;
 		types: string;
-		initiallyOpen: boolean;
 	} = $props();
 
-	let open = $state(untrack(() => initiallyOpen));
+	let open = $state(false);
 	let rows = $state<Recording[] | null>(null);
 	let next = $state<string | null>(null);
 	let error = $state<string | null>(null);

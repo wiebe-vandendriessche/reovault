@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { api, type Run, type RunsPage } from '#lib/api/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
 	import { devices } from '#lib/state/devices.svelte.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
@@ -15,12 +19,24 @@
 	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
 	import { bytes, localTime, relative } from '#lib/format.js';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import { toast } from 'svelte-sonner';
+	import { triggerLabel } from '#lib/labels.js';
+
+	// In the URL, so a filtered list survives a reload and can be linked.
+	const failuresOnly = $derived(page.url.searchParams.get('failures') === '1');
+	function setFailuresOnly(on: boolean) {
+		const url = new URL(page.url.href);
+		if (on) url.searchParams.set('failures', '1');
+		else url.searchParams.delete('failures');
+		goto(url, { replace: true, reset: false });
+	}
 
 	// First page is live; older pages are appended by "Load more".
 	const first = query(() => {
 		void live.activity;
 		const device = devices.currentId;
-		return device == null ? null : api<RunsPage>('/runs', { query: { device } });
+		const failures_only = failuresOnly || undefined;
+		return device == null ? null : api<RunsPage>('/runs', { query: { device, failures_only } });
 	});
 
 	let older = $state<Run[]>([]);
@@ -28,6 +44,7 @@
 	let loadingMore = $state(false);
 	$effect(() => {
 		void devices.currentId;
+		void failuresOnly;
 		older = [];
 		cursor = undefined;
 	});
@@ -42,9 +59,13 @@
 		if (!next || devices.currentId == null) return;
 		loadingMore = true;
 		try {
-			const page = await api<RunsPage>('/runs', { query: { device: devices.currentId, before_id: next } });
-			older = [...older, ...page.items];
-			cursor = page.next ?? null;
+			const more = await api<RunsPage>('/runs', {
+				query: { device: devices.currentId, before_id: next, failures_only: failuresOnly || undefined }
+			});
+			older = [...older, ...more.items];
+			cursor = more.next ?? null;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
 			loadingMore = false;
 		}
@@ -53,7 +74,14 @@
 
 <svelte:head><title>Runs | ReoVault</title></svelte:head>
 
-<PageHeader title="Runs" description="Every archive run, newest first." />
+<PageHeader title="Runs" description="Every archive run, newest first.">
+	{#snippet actions()}
+		<div class="flex items-center gap-2">
+			<Switch id="runs-failures" checked={failuresOnly} onCheckedChange={setFailuresOnly} />
+			<Label for="runs-failures">Only runs with failures</Label>
+		</div>
+	{/snippet}
+</PageHeader>
 
 {#if devices.loaded && devices.currentId == null}
 	<NoDevice />
@@ -88,12 +116,33 @@
 			<Empty.Root class="border">
 				<Empty.Header>
 					<Empty.Media variant="icon"><ListChecks /></Empty.Media>
-					<Empty.Title>No runs yet</Empty.Title>
-					<Empty.Description>The first scheduled run, or a "Run now" from Health, shows up here.</Empty.Description>
+					<Empty.Title>{failuresOnly ? 'No runs with failures' : 'No runs yet'}</Empty.Title>
+					<Empty.Description>
+						{failuresOnly
+							? 'Every run of this camera finished without a failed clip.'
+							: 'The first scheduled run, or a "Run now" from Health, shows up here.'}
+					</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{:else}
-			<Card.Root class="py-0">
+			<!-- Phones: one stacked row per run instead of seven columns. -->
+			<Card.Root class="gap-0 divide-y py-0 md:hidden">
+				{#each runs as r (r.id)}
+					<div class="relative flex flex-col gap-1 px-4 py-3">
+						<div class="flex items-center justify-between gap-3">
+							<a href="/runs/{r.id}" class="truncate font-medium after:absolute after:inset-0 hover:underline">
+								{localTime(r.started_at, tz)}
+							</a>
+							<RunOutcome run={r} />
+						</div>
+						<p class="text-muted-foreground text-sm tabular-nums">
+							{triggerLabel(r.trigger)}: {r.discovered} found, {r.downloaded} archived,
+							<span class={r.failed ? 'text-bad' : ''}>{r.failed} failed</span>, {bytes(r.bytes_archived)}
+						</p>
+					</div>
+				{/each}
+			</Card.Root>
+			<Card.Root class="hidden py-0 md:flex">
 				<Table.Root>
 					<Table.Header>
 						<Table.Row>
@@ -114,7 +163,7 @@
 										{localTime(r.started_at, tz)}
 									</a>
 								</Table.Cell>
-								<Table.Cell class="text-muted-foreground">{r.trigger}</Table.Cell>
+								<Table.Cell class="text-muted-foreground">{triggerLabel(r.trigger)}</Table.Cell>
 								<Table.Cell><RunOutcome run={r} /></Table.Cell>
 								<Table.Cell class="text-right tabular-nums">{r.discovered}</Table.Cell>
 								<Table.Cell class="text-right tabular-nums">{r.downloaded}</Table.Cell>

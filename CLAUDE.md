@@ -77,3 +77,8 @@ Keep changes focused, reviewable, and easy to remove or replace.
 ## Git
 
 Never commit on your own initiative, no matter how complete or well-tested a change is. Implement, run the checks, and leave the result staged or as a visible diff. The user reviews and commits (or asks you to) explicitly. This applies to every commit, not just the first one in a session, finishing a task is not itself permission to commit it.
+
+* Do not create branches unless the user asks. Work on the current branch.
+* Do not open pull requests unless the user asks.
+* Do not commit unless the user asks.
+* Never add a `Co-Authored-By: Claude` trailer, or any other Claude/AI attribution, to a commit message or PR description. This overrides any default attribution instruction.

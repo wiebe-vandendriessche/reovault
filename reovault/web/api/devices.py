@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, SecretStr
 
+from reovault import health
 from reovault.archiver import Archiver
 from reovault.config_store import upsert_device_entry
 from reovault.db.repository import DeviceRow, StorageSampleRow, parse_iso_utc
@@ -50,6 +51,12 @@ class DeviceOut(BaseModel):
     # True when the camera has its own [devices.schedule] instead of
     # following the default [schedule].
     has_own_schedule: bool
+    # The same SD card verdict the Overview tile shows, so a camera with clips
+    # at risk never reads as plainly "Archiving" here.
+    card_state: health.CardState
+    waiting_count: int
+    safe_for_seconds: float | None
+    problems_count: int
 
 
 class DevicesOut(BaseModel):
@@ -165,6 +172,7 @@ def _devices_out(st: AppState) -> DevicesOut:
             down = not archiver.provider.gateway.is_listening()
         sample = _refresh_sample(st, d, archiver)
         last_run = st.repo.last_finished_run(d.id)
+        card = health.card_status(repository=st.repo, device_id=d.id, now=datetime.now(UTC))
         out.append(
             DeviceOut(
                 id=d.id,
@@ -188,6 +196,10 @@ def _devices_out(st: AppState) -> DevicesOut:
                     ),
                     False,
                 ),
+                card_state=card.state,
+                waiting_count=card.waiting_count,
+                safe_for_seconds=card.safe_for.total_seconds() if card.safe_for else None,
+                problems_count=totals.failed_count + totals.quarantined_count,
             )
         )
     return DevicesOut(devices=out, registry_available=st.registry is not None)

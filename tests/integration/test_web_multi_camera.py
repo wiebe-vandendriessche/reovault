@@ -200,3 +200,24 @@ def test_overview_reports_the_vault_and_every_card(env, web_settings, web_passwo
     assert {c["device_id"] for c in body["cards"]} == {env.device_id, device_b_id}
     assert all(c["card"]["state"] == "unknown" for c in body["cards"])
     assert body["vault"]["clip_count"] == 0
+
+
+def test_overview_flags_alerts_with_no_channel(env, web_settings, web_password_hash):
+    """Alerts on (the default) with nowhere to send them is a fleet-wide
+    issue on the Overview; one configured channel clears it."""
+    app, _device_b_id = _two_device_app(env, web_settings)
+    client = _client(app)
+
+    issues = client.get("/api/v1/overview").json()["issues"]
+    assert [i for i in issues if i["link"] == "settings"] == [
+        {
+            "device_id": None,
+            "level": "warn",
+            "text": "Alerts are on, but no channel is set up, so nobody will be notified.",
+            "link": "settings",
+        }
+    ]
+
+    web_settings.alerts.ntfy_url = "https://ntfy.example/topic"
+    issues = client.get("/api/v1/overview").json()["issues"]
+    assert not [i for i in issues if i["link"] == "settings"]

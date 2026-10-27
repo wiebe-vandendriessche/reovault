@@ -72,6 +72,7 @@ class DayOut(BaseModel):
     total_bytes: int
     hours: list[HourOut]  # only hours with at least one clip
     available_types: list[str]
+    latest: str | None  # camera-local date of the newest clip, for an empty day
 
 
 class VerifyOut(BaseModel):
@@ -154,6 +155,8 @@ def get_day(dev: Device, st: State, date_: str | None = None, types: str = "") -
             )
         }
     shown = [hours[h] for h in sorted(hours) if hours[h].total]
+    last = st.repo.totals(dev.device_id).last_start_utc
+    latest = parse_iso_utc(last).astimezone(ZoneInfo(dev.tz)).date() if last else None
     return DayOut(
         date=day.isoformat(),
         today=local_today(dev.tz).isoformat(),
@@ -163,6 +166,7 @@ def get_day(dev: Device, st: State, date_: str | None = None, types: str = "") -
         available_types=st.repo.distinct_rec_types(
             device_id=dev.device_id, from_utc=from_utc, to_utc=to_utc
         ),
+        latest=latest.isoformat() if latest else None,
     )
 
 

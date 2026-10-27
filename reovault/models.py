@@ -10,15 +10,6 @@ from enum import StrEnum
 from typing import Any
 
 
-class RecordingState(StrEnum):
-    DISCOVERED = "discovered"
-    DOWNLOADING = "downloading"
-    VERIFYING = "verifying"
-    ARCHIVED = "archived"
-    FAILED = "failed"
-    QUARANTINED = "quarantined"
-
-
 class ErrorClass(StrEnum):
     """Mirrors `reolink-cli`'s exit-code classes, plus `LOCAL` for failures
     that are ReoVault's own (disk full, permissions, crypto, the gateway

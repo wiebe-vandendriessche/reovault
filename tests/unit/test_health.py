@@ -152,6 +152,82 @@ def test_card_status_counts_overwritten_clips_as_lost_not_alarm(repo, device_id)
     assert status.waiting_count == 0
 
 
+def test_mark_lost_moves_only_unarchived_clips_older_than_the_card(repo, device_id):
+    boundary = datetime(2026, 10, 10, tzinfo=UTC)
+    before, after = boundary - timedelta(hours=1), boundary + timedelta(hours=1)
+    queued, _ = repo.discover_recording(device_id=device_id, channel=0, recording=_rec("q", before))
+    quarantined = _quarantine(repo, device_id, "x", before)
+    in_flight, _ = repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("d", before)
+    )
+    repo.transition_downloading(in_flight)
+    archived, _ = repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("a", before)
+    )
+    repo.finalize_archived(
+        archived, vault_path="a.enc", plaintext_sha256="0", plaintext_size=1, ciphertext_size=1
+    )
+    still_on_card = _quarantine(repo, device_id, "s", after)
+
+    assert repo.mark_lost(device_id, boundary) == 2
+
+    states = {
+        i: repo.get(i).state for i in (queued, quarantined, in_flight, archived, still_on_card)
+    }
+    assert states == {
+        queued: "lost",
+        quarantined: "lost",
+        in_flight: "downloading",
+        archived: "archived",
+        still_on_card: "quarantined",
+    }
+    assert repo.retry_recording(queued) is False  # nothing to retry, the card overwrote it
+    assert repo.totals(device_id).quarantined_count == 1  # lost clips leave Problems
+
+
+def test_lost_clips_count_until_dismissed(repo, device_id):
+    oldest_on_card = datetime.now(UTC) - timedelta(days=10)
+    _sample(repo, device_id, oldest_on_card=oldest_on_card)
+    _quarantine(repo, device_id, "gone", oldest_on_card - timedelta(days=2))
+    repo.mark_lost(device_id, oldest_on_card)
+    assert card_status(repository=repo, device_id=device_id).lost_count == 1
+    assert repo.lost_summary(device_id)[0] == 1
+
+    assert repo.dismiss_lost(device_id) == 1
+
+    assert card_status(repository=repo, device_id=device_id).lost_count == 0
+    assert repo.lost_summary(device_id) == (0, None, None)
+
+
+def test_a_lost_clip_the_camera_lists_again_is_queued_again(repo, device_id):
+    """The oldest-clip scan stops at a gap in recording, so `mark_lost` can
+    be wrong. A clip the camera still lists must never stay lost."""
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    rec_id, _ = repo.discover_recording(device_id=device_id, channel=0, recording=_rec("r", start))
+    repo.mark_lost(device_id, start + timedelta(days=1))
+    repo.dismiss_lost(device_id)
+
+    again, created = repo.discover_recording(
+        device_id=device_id, channel=0, recording=_rec("r", start)
+    )
+
+    assert (again, created) == (rec_id, False)
+    assert repo.get(rec_id).state == "discovered"
+    assert [r.id for r in repo.pending(device_id=device_id)] == [rec_id]
+
+
+def test_record_storage_sample_marks_overwritten_clips_lost(repo, device_id):
+    now = datetime.now(UTC)
+    gone = _quarantine(repo, device_id, "gone", now - timedelta(days=5))
+    provider = FakeProvider(
+        recordings=[ScriptedRecording(_rec("r", now - timedelta(hours=2)), b"x")]
+    )
+
+    record_storage_sample(repository=repo, provider=provider, device_id=device_id)
+
+    assert repo.get(gone).state == "lost"
+
+
 def test_card_status_estimates_window_without_oldest_clip(repo, device_id):
     now = datetime.now(UTC)
     _sample(repo, device_id, oldest_on_card=None)

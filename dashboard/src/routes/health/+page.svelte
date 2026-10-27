@@ -51,7 +51,7 @@
 				<TriangleAlert />
 				<Alert.Title>{h.banner.text}</Alert.Title>
 				{#if h.banner.link === 'problems'}
-					<Alert.Description><a href="/problems" class="underline underline-offset-4">Review problems</a></Alert.Description>
+					<Alert.Description><a href="/problems?device={devices.currentId}" class="underline underline-offset-4">Review problems</a></Alert.Description>
 				{/if}
 			</Alert.Root>
 		{/if}
@@ -62,13 +62,10 @@
 				title={currentDevice() ? deviceLabel(currentDevice()!) : 'Camera'}
 				card={h.card}
 				sample={h.sample}
-				lastRunAt={h.last_run?.finished_at}
-				nextRunAt={h.next_archive_utc}
-				running={h.running != null}
-				gatewayDown={h.gateway_down}
+				deviceId={devices.currentId!}
 			/>
 			<StatusCard health={h} />
-			<a href="/footage?date={h.today.date}" class="group block">
+			<a href="/footage?device={devices.currentId}&date={h.today.date}" class="group block">
 				<Card.Root class="group-hover:border-brand-text h-full transition-colors">
 					<Card.Header>
 						<Card.Description>Today's footage</Card.Description>

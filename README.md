@@ -13,7 +13,7 @@
 
 Local-first, self-hosted archiving of Reolink camera recordings: pulls recordings off the camera's SD card before the loop-overwrite eats them, verifies them, encrypts them at rest, and stores them durably.
 
-Full docs (installation, configuration reference, CLI reference, architecture): **https://wiebe-vandendriessche.github.io/reovault/**
+Full docs (installation, dashboard guide, configuration reference, CLI reference, architecture): **https://wiebe-vandendriessche.github.io/reovault/**
 
 ## Screenshots
 
@@ -56,7 +56,7 @@ docker compose exec reovault reovault web set-password
 
 Create `config/reovault.toml` and the `data/` folders before the first `docker compose` command: otherwise Docker creates them as root, and the container (uid 1000) can't write to them. Upgrade with `docker compose pull && docker compose up -d`; coming from 0.3, see [Upgrading](https://wiebe-vandendriessche.github.io/reovault/installation/#upgrading).
 
-Everything in `reovault.toml` is editable on the dashboard's Settings page, which writes your changes back into the file (comments kept), and edits you make to the file show up in the dashboard within seconds.
+Everything in `reovault.toml` except the infrastructure settings (storage paths, `reolink-cli`, the web bind/cookie/proxy fields) is editable on the dashboard's Settings page, which writes your changes back into the file (comments kept), and edits you make to the file show up in the dashboard within seconds.
 
 `compose.yaml` supports two deployment modes: behind a reverse proxy (Nginx Proxy Manager, Traefik, ...) with no port published by default, or a direct port publish for LAN/VPN access. See the comments at the top of `compose.yaml` and [Security](https://wiebe-vandendriessche.github.io/reovault/security/#deployment-modes) for what each needs.
 
@@ -71,7 +71,7 @@ The container serves the dashboard on port 8080: a Svelte single-page app on a t
 * **Overview** (home): the archive's disk (ReoVault's share, free space and how long it lasts at the current rate) and one tile per camera's SD card: how full it is, a timeline of what's on it coloured by archived, waiting or failed, and a plain verdict such as "All archived" or "At risk: the oldest unarchived clip is overwritten in about 22 hours".
 * **Health** (per camera): that camera's SD card, its runs, today's footage, footage archived and detections per type over the last 30 days, and run now, backfill or check the vault on demand, with live progress while a run is going.
 * **Footage**: date-first browsing (a month calendar drills into a day grouped by hour), filtered by detection type, with per-day counts on hover. On a phone, clips open in a bottom-sheet player that steps through the hour. Clips play straight from the encrypted vault over HTTP `Range` requests, never decrypting more than what's being watched or seeked to, and a date range downloads as one zip.
-* **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry for one or all of them.
+* **Runs** and **Problems**: every archive run, and the recordings that failed, with a retry for one or all of them, plus a count of clips the SD card overwrote before they could be archived.
 * **Devices**: every camera with its status, adding one from LAN discovery, turning archiving on or off, and editing its name, timezone and (optionally) its own schedule.
 * **Settings**: the app-wide part of `reovault.toml`: the default schedule, retention, alerts, and the web and system settings.
 

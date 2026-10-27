@@ -16,10 +16,11 @@
 	import MonthCalendar from '#lib/components/footage/MonthCalendar.svelte';
 	import HourGroup from '#lib/components/footage/HourGroup.svelte';
 	import ExportDialog from '#lib/components/footage/ExportDialog.svelte';
-	import { addDays, bytes, plural } from '#lib/format.js';
+	import { addDays, bytes, plural, shortDay } from '#lib/format.js';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import VideoOff from '@lucide/svelte/icons/video-off';
+	import { typeLabel } from '#lib/labels.js';
 
 	const PROBLEMS = '__problems__';
 
@@ -49,6 +50,18 @@
 		goto(`?${params}`, { reset: false });
 	}
 
+	// Left/right arrows step a day, unless a field or the video player has
+	// focus (the player uses them to seek).
+	function onkeydown(e: KeyboardEvent) {
+		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !shown) return;
+		const t = e.target as HTMLElement;
+		if (t.closest('input, textarea, select, video, [role="dialog"]')) return;
+		if (e.key === 'ArrowLeft') nav({ date: addDays(shown, -1) });
+		else if (e.key === 'ArrowRight' && day.data && shown < day.data.today) nav({ date: addDays(shown, 1) });
+		else return;
+		e.preventDefault();
+	}
+
 	const dateLabel = $derived(
 		shown
 			? new Date(`${shown}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -63,6 +76,7 @@
 </script>
 
 <svelte:head><title>Footage | ReoVault</title></svelte:head>
+<svelte:window {onkeydown} />
 
 <PageHeader title="Footage" description="Browse, play and download archived clips by day.">
 	{#snippet actions()}
@@ -88,7 +102,7 @@
 
 		<section class="flex min-w-0 flex-col gap-4" aria-label="Clips for {dateLabel}">
 			<div class="flex flex-wrap items-center gap-2">
-				<Button variant="outline" size="icon" onclick={() => nav({ date: addDays(shown, -1) })} disabled={!shown} aria-label="Previous day">
+				<Button variant="outline" size="icon" onclick={() => nav({ date: addDays(shown, -1) })} disabled={!shown} aria-label="Previous day" aria-keyshortcuts="ArrowLeft" title="Previous day (Left arrow)">
 					<ChevronLeft />
 				</Button>
 				<Button
@@ -97,6 +111,8 @@
 					onclick={() => nav({ date: addDays(shown, 1) })}
 					disabled={!shown || !day.data || shown >= day.data.today}
 					aria-label="Next day"
+					aria-keyshortcuts="ArrowRight"
+					title="Next day (Right arrow)"
 				>
 					<ChevronRight />
 				</Button>
@@ -122,7 +138,7 @@
 					aria-label="Filter clips"
 				>
 					{#each day.data.available_types as t (t)}
-						<ToggleGroup.Item value={t}>{t}</ToggleGroup.Item>
+						<ToggleGroup.Item value={t}>{typeLabel(t)}</ToggleGroup.Item>
 					{/each}
 					<ToggleGroup.Item value={PROBLEMS} class="data-[state=on]:text-bad">Problems</ToggleGroup.Item>
 				</ToggleGroup.Root>
@@ -145,6 +161,11 @@
 					</Empty.Header>
 					{#if types}
 						<Empty.Content><Button variant="outline" onclick={() => nav({ types: '' })}>Clear filter</Button></Empty.Content>
+					{:else if day.data.latest && day.data.latest !== shown}
+						{@const latest = day.data.latest}
+						<Empty.Content>
+							<Button variant="outline" onclick={() => nav({ date: latest })}>Go to latest clips ({shortDay(latest)})</Button>
+						</Empty.Content>
 					{/if}
 				</Empty.Root>
 			{:else}
@@ -156,7 +177,6 @@
 						total={h.total}
 						size={h.bytes}
 						{types}
-						initiallyOpen={false}
 					/>
 				{/each}
 			{/if}

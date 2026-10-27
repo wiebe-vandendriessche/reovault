@@ -392,6 +392,24 @@ def test_recent_runs_keyset_pagination(repo):
     assert [r.id for r in page2] == run_ids[::-1][2:]
 
 
+def test_recent_runs_failures_only_skips_successful_and_running_runs(repo):
+    device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="UTC")
+    ids = {}
+    for outcome in ("success", "partial", "failed", "aborted", None):
+        rid = repo.start_run(
+            device_id=device_id,
+            trigger="manual",
+            window_from_utc=datetime(2026, 1, 1, tzinfo=UTC),
+            window_to_utc=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        if outcome:
+            repo.finish_run(rid, outcome=outcome)
+        ids[outcome] = rid
+
+    runs = repo.recent_runs(device_id=device_id, failures_only=True)
+    assert [r.id for r in runs] == [ids["aborted"], ids["failed"], ids["partial"]]
+
+
 def test_runs_per_day_attributes_bytes_to_local_start_date(repo):
     device_id = repo.upsert_device(alias="doorbell", channel=0, timezone="Europe/Brussels")
     run_id = repo.start_run(

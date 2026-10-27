@@ -32,6 +32,13 @@ is quarantined on the first failure rather than retried every run.
 the provider recognizes it by its message text. Both behaviors were verified
 against a D340W.
 
+Each archive run also records the card's oldest clip. Any recording that was
+never archived and starts before that clip is marked `lost`: the card has
+overwritten it, so it leaves the Problems count and gets no retry. The
+oldest-clip scan stops at a gap of empty days, so it can be wrong. A `lost`
+recording that the camera lists again goes back to `discovered` and is
+archived normally. The user dismisses lost clips from the Problems page.
+
 `reolink-cli` itself manages camera credentials in its own encrypted
 `aliases.toml` (AES-GCM, decrypted by a `credentials.key` beside it, file
 mode 0600). ReoVault never stores the camera password: it passes through

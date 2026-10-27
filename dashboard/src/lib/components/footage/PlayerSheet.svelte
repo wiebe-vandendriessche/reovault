@@ -11,6 +11,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
+	import { typeLabel } from '#lib/labels.js';
 
 	let { clips, index = $bindable() }: { clips: Recording[]; index: number | null } = $props();
 
@@ -34,7 +35,7 @@
 			<Sheet.Header class="pb-0">
 				<Sheet.Title class="tabular-nums">{clip.local_time}</Sheet.Title>
 				<Sheet.Description class="flex flex-wrap items-center gap-1">
-					{#each clip.types as t (t)}<Badge variant="secondary">{t}</Badge>{/each}
+					{#each clip.types as t (t)}<Badge variant="secondary">{typeLabel(t)}</Badge>{/each}
 					<span class="ml-1 flex gap-x-3 tabular-nums">
 						<span>{duration(clip.duration_s)}</span>
 						<span>{bytes(clip.plaintext_size)}</span>

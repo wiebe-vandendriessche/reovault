@@ -139,14 +139,6 @@ class ReolinkCliRegistry(CameraRegistry):
             timeout=self.timeout_secs,
         )
 
-    def set_password(self, *, alias: str, password: SecretStr) -> None:
-        _run_cli(
-            self.binary,
-            ["device", "update", alias, "--password-stdin"],
-            stdin_line=password.get_secret_value() + "\n",
-            timeout=self.timeout_secs,
-        )
-
     def device_info(self, *, alias: str) -> DeviceInfo:
         if self.gateway is None:
             raise LocalError("device_info needs a GatewaySupervisor; none was configured")

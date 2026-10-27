@@ -13,18 +13,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
-from typing import Any
 
 from reovault.models import ErrorClass, RemoteRecording
 from reovault.timeline import offset_segments, sqlite_offset_modifier
 
 _ISO = "%Y-%m-%dT%H:%M:%S.%f"
 
-# Explicit column list for every recordings query except the single-row
-# detail lookup that needs `raw_metadata`. Deliberately excludes it: it's a
-# verbatim JSON blob per row, and dragging it through every retry sweep and
-# every dashboard list is hundreds of MB of pointless I/O at 313k rows/year.
-# See `get_raw_metadata` below.
+# Explicit column list for every recordings query. Deliberately excludes
+# `raw_metadata`: it's a verbatim JSON blob per row, and dragging it through
+# every retry sweep and every dashboard list is hundreds of MB of pointless
+# I/O at 313k rows/year.
 _REC_COLS = (
     "id, device_id, channel, remote_name, start_utc, end_utc, duration_s, rec_type, stream, "
     "remote_size, state, vault_path, plaintext_sha256, plaintext_size, ciphertext_size, "
@@ -40,7 +38,16 @@ _DEVICE_COLS = (
 # value before it's inlined as a SQL literal (see `problems()`), never to
 # validate arbitrary external input.
 _VALID_STATES = frozenset(
-    {"discovered", "downloading", "verifying", "archived", "failed", "quarantined", "pruned"}
+    {
+        "discovered",
+        "downloading",
+        "verifying",
+        "archived",
+        "failed",
+        "quarantined",
+        "pruned",
+        "lost",
+    }
 )
 
 
@@ -509,17 +516,17 @@ class Repository:
                 """,
                 (device_id, channel, recording.remote_name, start_utc),
             ).fetchone()
+            # The camera still lists it, so `mark_lost` guessed wrong (the
+            # oldest-clip scan stops at a gap): back to the queue.
+            conn.execute(
+                "UPDATE recordings SET state = 'discovered', dismissed_at = NULL "
+                "WHERE id = ? AND state = 'lost'",
+                (row["id"],),
+            )
             return int(row["id"]), created
 
     def get(self, recording_id: int) -> RecordingRow | None:
         row = self._fetchone(f"SELECT {_REC_COLS} FROM recordings WHERE id = ?", (recording_id,))
-        return self._row_to_recording(row) if row else None
-
-    def find_by_hash(self, plaintext_sha256: str) -> RecordingRow | None:
-        row = self._fetchone(
-            f"SELECT {_REC_COLS} FROM recordings WHERE plaintext_sha256 = ? AND state = 'archived'",
-            (plaintext_sha256,),
-        )
         return self._row_to_recording(row) if row else None
 
     def find_archived_by_vault_path(self, vault_path: str) -> RecordingRow | None:
@@ -543,18 +550,6 @@ class Repository:
             WHERE device_id = ?
                 AND (state = 'discovered'
                      OR (state = 'failed' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)))
-            """,
-            (device_id, now_iso),
-        )
-        return [self._row_to_recording(r) for r in rows]
-
-    def due_for_retry(self, *, device_id: int, now: datetime | None = None) -> list[RecordingRow]:
-        now_iso = _iso(now) if now else _now()
-        rows = self._fetchall(
-            f"""
-            SELECT {_REC_COLS} FROM recordings
-            WHERE device_id = ? AND state = 'failed'
-                AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
             """,
             (device_id, now_iso),
         )
@@ -877,31 +872,22 @@ class Repository:
         )
         return parse_iso_utc(row["started_at"]) if row else None
 
-    def oldest_unarchived_start_utc(self, device_id: int) -> datetime | None:
-        """Feeds the coverage/lag alarm: how far behind ReoVault's own
-        backlog is."""
-        row = self._fetchone(
-            """
-            SELECT MIN(start_utc) AS oldest FROM recordings
-            WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
-            """,
-            (device_id,),
-        )
-        return parse_iso_utc(row["oldest"]) if row and row["oldest"] else None
-
     def card_backlog(self, device_id: int, boundary_utc: datetime | None) -> CardBacklogRow:
         """Unarchived recordings split at the card's oldest clip: at or after
         it they're still on the card (`waiting`), before it the card has
-        overwritten them (`lost`). No boundary: everything counts as
+        overwritten them (`lost`, whether `mark_lost` has run yet or not,
+        until dismissed). No boundary: everything not lost counts as
         waiting."""
         boundary = _iso(boundary_utc) if boundary_utc else ""
         row = self._fetchone(
             """
-            SELECT SUM(start_utc >= ?) AS waiting,
-                   MIN(CASE WHEN start_utc >= ? THEN start_utc END) AS oldest_waiting,
-                   SUM(start_utc < ?) AS lost
+            SELECT SUM(state != 'lost' AND start_utc >= ?) AS waiting,
+                   MIN(CASE WHEN state != 'lost' AND start_utc >= ? THEN start_utc END)
+                     AS oldest_waiting,
+                   SUM(state = 'lost' OR start_utc < ?) AS lost
             FROM recordings
             WHERE device_id = ? AND state NOT IN ('archived', 'pruned')
+              AND dismissed_at IS NULL
             """,
             (boundary, boundary, boundary, device_id),
         )
@@ -913,6 +899,48 @@ class Repository:
             ),
             lost_count=row["lost"] or 0,
         )
+
+    def mark_lost(self, device_id: int, boundary_utc: datetime) -> int:
+        """Queued, failed, or quarantined recordings older than the card's
+        oldest clip -> `lost`: the card overwrote them, so no retry can
+        succeed. Never touches a download in flight. Returns how many."""
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET state = 'lost', next_attempt_at = NULL
+                WHERE device_id = ? AND start_utc < ?
+                  AND state IN ('discovered', 'failed', 'quarantined')
+                """,
+                (device_id, _iso(boundary_utc)),
+            )
+            return cur.rowcount
+
+    def lost_summary(self, device_id: int) -> tuple[int, str | None, str | None]:
+        """(count, first start_utc, last start_utc) of undismissed lost
+        recordings."""
+        row = self._fetchone(
+            """
+            SELECT COUNT(*) AS n, MIN(start_utc) AS first, MAX(start_utc) AS last
+            FROM recordings
+            WHERE device_id = ? AND state = 'lost' AND dismissed_at IS NULL
+            """,
+            (device_id,),
+        )
+        assert row is not None  # aggregate query always returns exactly one row
+        return int(row["n"]), row["first"], row["last"]
+
+    def dismiss_lost(self, device_id: int) -> int:
+        """Acknowledges every lost recording of one device, so it stops
+        counting as an open issue. Returns how many."""
+        with self.transaction() as conn:
+            cur = conn.execute(
+                """
+                UPDATE recordings SET dismissed_at = ?
+                WHERE device_id = ? AND state = 'lost' AND dismissed_at IS NULL
+                """,
+                (_now(), device_id),
+            )
+            return cur.rowcount
 
     def recorded_bytes_since(self, device_id: int, since_utc: datetime) -> int:
         """What the camera wrote to its card since `since_utc`, by its own
@@ -931,7 +959,7 @@ class Repository:
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, buckets: int
     ) -> list[TimelineBucketRow]:
         """Clip counts per equal time slice of `[from_utc, to_utc)`, split
-        archived (incl. pruned) / waiting / quarantined. Every bucket is
+        archived (incl. pruned) / waiting / quarantined (incl. lost). Every bucket is
         returned, empty ones as zeroes. Served by `idx_rec_start`."""
         span = (to_utc - from_utc).total_seconds()
         if span <= 0 or buckets <= 0:
@@ -940,8 +968,8 @@ class Repository:
             """
             SELECT CAST((julianday(start_utc) - julianday(?)) * 86400.0 / ? AS INTEGER) AS b,
                    SUM(state IN ('archived', 'pruned')) AS archived,
-                   SUM(state NOT IN ('archived', 'pruned', 'quarantined')) AS waiting,
-                   SUM(state = 'quarantined') AS quarantined
+                   SUM(state NOT IN ('archived', 'pruned', 'quarantined', 'lost')) AS waiting,
+                   SUM(state IN ('quarantined', 'lost')) AS quarantined
             FROM recordings
             WHERE device_id = ? AND start_utc >= ? AND start_utc < ?
             GROUP BY b
@@ -987,15 +1015,6 @@ class Repository:
     def get_device(self, device_id: int) -> DeviceRow | None:
         row = self._fetchone(f"SELECT {_DEVICE_COLS} FROM devices WHERE id = ?", (device_id,))
         return self._row_to_device(row) if row is not None else None
-
-    def get_raw_metadata(self, recording_id: int) -> dict[str, Any] | None:
-        """The verbatim vod-search JSON, for the single-recording detail
-        page only. Deliberately not part of `_REC_COLS` (see its docstring)."""
-        row = self._fetchone("SELECT raw_metadata FROM recordings WHERE id = ?", (recording_id,))
-        if row is None:
-            return None
-        loaded: dict[str, Any] = json.loads(row["raw_metadata"])
-        return loaded
 
     def day_buckets(
         self, *, device_id: int, from_utc: datetime, to_utc: datetime, tz: str
@@ -1249,7 +1268,9 @@ class Repository:
             SELECT
               COALESCE(SUM(CASE WHEN state IN ('archived', 'pruned') THEN remote_size END), 0)
                 AS archived_bytes,
-              COALESCE(SUM(CASE WHEN state NOT IN ('archived', 'pruned') THEN remote_size END), 0)
+              COALESCE(
+                SUM(CASE WHEN state NOT IN ('archived', 'pruned', 'lost') THEN remote_size END), 0
+              )
                 AS pending_bytes
             FROM recordings
             WHERE device_id = ? AND start_utc >= ?
@@ -1262,10 +1283,17 @@ class Repository:
         )
 
     def recent_runs(
-        self, *, device_id: int, limit: int = 50, before_id: int | None = None
+        self,
+        *,
+        device_id: int,
+        limit: int = 50,
+        before_id: int | None = None,
+        failures_only: bool = False,
     ) -> list[RunRow]:
         clauses = ["device_id = ?"]
         params: list[object] = [device_id]
+        if failures_only:
+            clauses.append("outcome IN ('partial', 'failed', 'aborted')")
         if before_id is not None:
             clauses.append("id < ?")
             params.append(before_id)

@@ -36,7 +36,6 @@ from reovault.providers.reolink_cli import ReolinkCliProvider
 
 logger = get_logger(__name__)
 
-RULES_SETTING_KEY = "alert_rules"  # pre-0.4 app_settings key, migrated by config_store
 _RULES_ENV_PREFIX = "REOVAULT_ALERTS__RULES__"
 _TIMEOUT_SECS = 10
 

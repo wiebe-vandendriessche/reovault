@@ -2,6 +2,7 @@
 	import type { components } from '#lib/api/schema.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import Legend from '#lib/components/app/Legend.svelte';
+	import Meter from '#lib/components/app/Meter.svelte';
 	import { bytes, count, shortDay } from '#lib/format.js';
 
 	/** The archive's disk: how much ReoVault uses, what else is on the
@@ -14,23 +15,33 @@
 	const other = $derived(Math.max(pct(vault.used_bytes) - archive, 0));
 	const cap = $derived(vault.cap_bytes ? Math.min(pct(vault.cap_bytes), 100) : null);
 	const low = $derived(vault.days_headroom != null && vault.days_headroom < 30);
+	const room = $derived(
+		vault.days_headroom == null
+			? null
+			: vault.days_headroom > 3650
+				? '10+ years'
+				: `about ${count(vault.days_headroom)} days`
+	);
 </script>
 
 <Card.Root>
 	<Card.Header>
-		<Card.Description>Archive</Card.Description>
-		<Card.Title class="text-3xl tabular-nums">{bytes(vault.free_bytes)} free</Card.Title>
+		<Card.Description>Archive disk</Card.Description>
+		<Card.Title class="text-lg tabular-nums {low ? 'text-warn' : ''}">
+			{room ? `Room for ${room} at the current rate` : `${bytes(vault.free_bytes)} free`}
+		</Card.Title>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
 		{#if vault.total_bytes}
-			<svg class="bg-muted block h-4 w-full overflow-visible rounded-full" role="img"
-				aria-label="Disk: {bytes(vault.archive_bytes)} ReoVault, {bytes(vault.used_bytes! - vault.archive_bytes)} other, {bytes(vault.free_bytes)} free of {bytes(vault.total_bytes)}">
-				<rect x="0" y="0" width="{archive}%" height="100%" rx="4" class="fill-brand" />
-				<rect x="{archive}%" y="0" width="{other}%" height="100%" class="fill-idle" />
-				{#if cap != null}
-					<line x1="{cap}%" x2="{cap}%" y1="-4" y2="20" class="stroke-foreground" stroke-width="2" />
-				{/if}
-			</svg>
+			<Meter
+				class="h-4"
+				label="Disk: {bytes(vault.archive_bytes)} ReoVault, {bytes(Math.max(vault.used_bytes! - vault.archive_bytes, 0))} other, {bytes(vault.free_bytes)} free of {bytes(vault.total_bytes)}"
+				segments={[
+					{ value: archive, class: 'fill-brand' },
+					{ value: other, class: 'fill-idle' }
+				]}
+				marker={cap}
+			/>
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				<Legend
 					items={[
@@ -50,9 +61,9 @@
 				<dd class="font-medium">{vault.first_start_utc ? shortDay(vault.first_start_utc.slice(0, 10)) : '-'} to now</dd>
 			</div>
 			<div>
-				<dt class="text-subtle text-xs">Room left</dt>
-				<dd class="font-medium tabular-nums {low ? 'text-warn' : ''}">
-					{vault.days_headroom == null ? '-' : vault.days_headroom > 3650 ? '10+ years' : `~${count(vault.days_headroom)} days`}
+				<dt class="text-subtle text-xs">Free</dt>
+				<dd class="font-medium tabular-nums">
+					{bytes(vault.free_bytes)}
 					<span class="text-subtle text-xs font-normal">at {bytes(vault.avg_per_day)}/day</span>
 				</dd>
 			</div>

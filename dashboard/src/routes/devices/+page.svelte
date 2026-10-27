@@ -15,7 +15,8 @@
 	import Meter from '#lib/components/app/Meter.svelte';
 	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
 	import AddCameraDialog from '#lib/components/devices/AddCameraDialog.svelte';
-	import { bytes, count, relative } from '#lib/format.js';
+	import { bytes, count, plural, relative, span } from '#lib/format.js';
+	import Legend from '#lib/components/app/Legend.svelte';
 	import { toast } from 'svelte-sonner';
 	import Cctv from '@lucide/svelte/icons/cctv';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -73,7 +74,7 @@
 {:else}
 	<div class="grid gap-4 md:grid-cols-2">
 		{#each fleet.data.devices as d (d.id)}
-			<Card.Root class={d.enabled ? '' : 'opacity-70'}>
+			<Card.Root class={d.enabled ? '' : 'bg-muted/40'}>
 				<Card.Header>
 					<Card.Title class="truncate">{deviceLabel(d)}</Card.Title>
 					<Card.Description class="truncate">
@@ -94,12 +95,23 @@
 					<div class="flex flex-wrap gap-2">
 						{#if !d.enabled}
 							<StatusBadge level="idle">Disabled</StatusBadge>
-						{:else if d.gateway_down}
-							<StatusBadge level="warn">Gateway unreachable</StatusBadge>
 						{:else}
-							<StatusBadge level="ok">Archiving</StatusBadge>
+							{#if d.card_state === 'not_mounted'}
+								<StatusBadge level="bad">SD card not mounted</StatusBadge>
+							{:else if d.card_state === 'at_risk'}
+								<StatusBadge level="warn">At risk: overwritten in about {span(d.safe_for_seconds)}</StatusBadge>
+							{:else if d.card_state === 'waiting'}
+								<StatusBadge level="idle">{d.waiting_count} waiting</StatusBadge>
+							{:else if d.card_state === 'all_archived'}
+								<StatusBadge level="ok">All archived</StatusBadge>
+							{:else}
+								<StatusBadge level="idle">No data yet</StatusBadge>
+							{/if}
+							{#if d.gateway_down}<StatusBadge level="warn">Gateway unreachable</StatusBadge>{/if}
+							{#if d.problems_count}
+								<StatusBadge level="bad" href="/problems?device={d.id}">{plural(d.problems_count, 'problem')}</StatusBadge>
+							{/if}
 						{/if}
-						{#if d.sample?.mounted === false}<StatusBadge level="bad">SD card not mounted</StatusBadge>{/if}
 						{#if d.has_own_schedule}<StatusBadge level="idle">Own schedule</StatusBadge>{/if}
 					</div>
 					<dl class="grid grid-cols-2 gap-3 text-sm">
@@ -133,6 +145,13 @@
 								segments={[
 									{ value: (d.sd.archived_gb / d.sd.total_gb) * 100, class: 'fill-brand' },
 									{ value: (d.sd.other_gb / d.sd.total_gb) * 100, class: 'fill-idle' }
+								]}
+							/>
+							<Legend
+								items={[
+									{ label: `Archived ${gb(d.sd.archived_gb)}`, class: 'bg-brand' },
+									{ label: `Other ${gb(d.sd.other_gb)}`, class: 'bg-idle' },
+									{ label: `Free ${gb(d.sd.free_gb)}`, class: 'bg-muted-foreground/30' }
 								]}
 							/>
 						</div>

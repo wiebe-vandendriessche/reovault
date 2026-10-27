@@ -1,4 +1,4 @@
-"""`VaultStore` boundary and `EncryptedFsVault`: staging, verify, atomic
+"""`EncryptedFsVault`: staging, verify, atomic
 finalize.
 
 Layout on disk, relative to `vault_dir`:
@@ -21,7 +21,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,60 +55,6 @@ class PutResult:
     ciphertext_size: int
 
 
-class VaultStore(ABC):
-    """One instance per vault directory."""
-
-    @abstractmethod
-    def put(
-        self,
-        staging_path: Path,
-        *,
-        device_alias: str,
-        start_utc: datetime,
-        remote_name: str,
-    ) -> PutResult:
-        """Encrypt `staging_path` into the vault, atomically. Never called
-        before the caller has verified `staging_path`'s size against the
-        provider's `remote_size`."""
-
-    @abstractmethod
-    def get(self, vault_path: str, dest_path: Path) -> None:
-        """Decrypt the full file at `vault_path` to `dest_path` (used by
-        `reovault export` and ad-hoc recovery)."""
-
-    @abstractmethod
-    def verify(self, vault_path: str) -> bool:
-        """Re-decrypt and re-hash, comparing against the sidecar's recorded
-        `plaintext_sha256`. False on any failure (hash mismatch, missing
-        sidecar, or a failed GCM tag, i.e. bit rot or tampering), never an
-        exception: this is a health check, not a parser."""
-
-    @abstractmethod
-    def delete(self, vault_path: str) -> None:
-        """Remove a vault file plus its sidecar; a missing file is not an
-        error. Two callers only: reconciliation, on files no archived row
-        points to, and retention (`reovault.retention.enforce`), on the
-        oldest archived clips when the operator's age or size limit is
-        exceeded."""
-
-    @abstractmethod
-    def open_range(self, vault_path: str, offset: int, length: int) -> bytes:
-        """Decrypt only the plaintext bytes `[offset, offset + length)`. Used
-        by the dashboard's `Range` playback."""
-
-    @abstractmethod
-    def list_vault_paths(self) -> list[str]:
-        """Every vault_path currently stored. Reconciliation diffs this
-        against the DB's `archived` rows to find orphans left by a crash
-        between the rename and the `finalize_archived` commit."""
-
-    @abstractmethod
-    def describe(self, vault_path: str) -> PutResult:
-        """The sidecar's recorded hash/sizes, without decrypting. Lets
-        reconciliation adopt an orphan (an already-verified, already-correct
-        file) without re-deriving what `put()` already computed once."""
-
-
 class _HashingReader:
     """Wraps a binary file so `encrypt_stream`'s sequential `.read()` calls
     also accumulate a SHA-256 and byte count, in the same single pass. Avoids
@@ -139,7 +84,9 @@ class _HashingSink:
         return len(data)
 
 
-class EncryptedFsVault(VaultStore):
+class EncryptedFsVault:
+    """One instance per vault directory."""
+
     def __init__(self, vault_dir: Path, master_key: bytes, *, frame_size: int = DEFAULT_FRAME_SIZE):
         self.vault_dir = Path(vault_dir)
         self.master_key = master_key
@@ -153,6 +100,9 @@ class EncryptedFsVault(VaultStore):
         start_utc: datetime,
         remote_name: str,
     ) -> PutResult:
+        """Encrypt `staging_path` into the vault, atomically. Never called
+        before the caller has verified `staging_path`'s size against the
+        provider's `remote_size`."""
         final_path = self.vault_dir / self._relative_path(device_alias, start_utc, remote_name)
         final_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = final_path.with_name(final_path.name + ".tmp")
@@ -178,12 +128,18 @@ class EncryptedFsVault(VaultStore):
         return result
 
     def get(self, vault_path: str, dest_path: Path) -> None:
+        """Decrypt the full file at `vault_path` to `dest_path` (used by
+        `reovault export` and ad-hoc recovery)."""
         final_path = self.vault_dir / vault_path
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         with final_path.open("rb") as src, dest_path.open("wb") as dst:
             decrypt_stream(src, dst, self.master_key)
 
     def verify(self, vault_path: str) -> bool:
+        """Re-decrypt and re-hash, comparing against the sidecar's recorded
+        `plaintext_sha256`. False on any failure (hash mismatch, missing
+        sidecar, or a failed GCM tag, i.e. bit rot or tampering), never an
+        exception: this is a health check, not a parser."""
         from cryptography.exceptions import InvalidTag
 
         final_path = self.vault_dir / vault_path
@@ -197,16 +153,26 @@ class EncryptedFsVault(VaultStore):
             return False
 
     def delete(self, vault_path: str) -> None:
+        """Remove a vault file plus its sidecar; a missing file is not an
+        error. Two callers only: reconciliation, on files no archived row
+        points to, and retention (`reovault.retention.enforce`), on the
+        oldest archived clips when the operator's age or size limit is
+        exceeded."""
         final_path = self.vault_dir / vault_path
         final_path.unlink(missing_ok=True)
         self._sidecar_path(final_path).unlink(missing_ok=True)
 
     def open_range(self, vault_path: str, offset: int, length: int) -> bytes:
+        """Decrypt only the plaintext bytes `[offset, offset + length)`. Used
+        by the dashboard's `Range` playback."""
         final_path = self.vault_dir / vault_path
         with final_path.open("rb") as src:
             return read_range(src, self.master_key, offset, length)
 
     def list_vault_paths(self) -> list[str]:
+        """Every vault_path currently stored. Reconciliation diffs this
+        against the DB's `archived` rows to find orphans left by a crash
+        between the rename and the `finalize_archived` commit."""
         if not self.vault_dir.exists():
             return []
         return [
@@ -214,6 +180,9 @@ class EncryptedFsVault(VaultStore):
         ]
 
     def describe(self, vault_path: str) -> PutResult:
+        """The sidecar's recorded hash/sizes, without decrypting. Lets
+        reconciliation adopt an orphan (an already-verified, already-correct
+        file) without re-deriving what `put()` already computed once."""
         final_path = self.vault_dir / vault_path
         sidecar = self._read_sidecar(final_path)
         return PutResult(

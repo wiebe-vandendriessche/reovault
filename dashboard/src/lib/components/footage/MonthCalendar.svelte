@@ -56,6 +56,13 @@
 	});
 
 	const today = $derived(cal.data?.today ?? '');
+	const spoken = (date: string) =>
+		new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long',
+			timeZone: 'UTC'
+		});
 	const heat = ['bg-transparent', 'bg-brand/25', 'bg-brand/45', 'bg-brand/70', 'bg-brand'];
 </script>
 
@@ -78,9 +85,9 @@
 	{#if !cal.data && cal.loading}
 		<Skeleton class="h-56 w-full" />
 	{:else}
-		<div class="grid grid-cols-7 gap-1 text-center" role="grid" aria-label="{label}, clips per day">
+		<div class="grid grid-cols-7 gap-1 text-center" role="group" aria-label="{label}, clips per day">
 			{#each ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as wd (wd)}
-				<span class="text-subtle pb-1 text-xs" role="columnheader">{wd}</span>
+				<span class="text-subtle pb-1 text-xs" aria-hidden="true">{wd}</span>
 			{/each}
 			{#each cells as c, i (c?.date ?? `blank-${i}`)}
 				{#if c}
@@ -94,7 +101,7 @@
 									disabled={future}
 									onclick={() => onselect(c.date)}
 									aria-pressed={c.date === selected}
-									aria-label="{c.date}: {c.count} clips{c.problems ? `, ${c.problems} problems` : ''}"
+									aria-label="{spoken(c.date)}: {plural(c.count, 'clip')}{c.problems ? `, ${plural(c.problems, 'problem')}` : ''}"
 									class={cn(
 										'hover:bg-muted relative flex aspect-square flex-col items-center justify-center gap-1 rounded-md text-sm tabular-nums transition-colors disabled:opacity-35',
 										c.date === selected && 'bg-muted ring-brand-text ring-2 ring-inset',

@@ -61,6 +61,8 @@ dashboard. See [Architecture](architecture.md) for the full picture.
 ## Where to go next
 
 * [Installation](installation.md): Docker Compose setup, upgrading, and alerts
+* [Compatible devices](compatibility.md): camera models verified so far
+* [Dashboard](dashboard.md): what each page shows and does
 * [Configuration](configuration.md): every `reovault.toml` / env var option
 * [CLI reference](cli-reference.md): every `reovault` subcommand
 * [Architecture](architecture.md): how the pieces fit together

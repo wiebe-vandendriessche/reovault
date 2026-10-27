@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from reovault.db.repository import parse_iso_utc
 from reovault.scheduler import next_run_times
 from reovault.web.api.common import (
     Page,
@@ -48,11 +49,15 @@ class RunDetailOut(BaseModel):
 
 
 @router.get("/runs")
-def list_runs(dev: Device, st: State, before_id: int | None = None) -> RunsOut:
+def list_runs(
+    dev: Device, st: State, before_id: int | None = None, failures_only: bool = False
+) -> RunsOut:
     size = st.settings.web.page_size
     # One extra row says whether a next page exists, so a full last page
     # doesn't hand out a cursor to an empty one.
-    rows = st.repo.recent_runs(device_id=dev.device_id, limit=size + 1, before_id=before_id)
+    rows = st.repo.recent_runs(
+        device_id=dev.device_id, limit=size + 1, before_id=before_id, failures_only=failures_only
+    )
     more, rows = len(rows) > size, rows[:size]
     times = next_run_times(st.scheduler).get(dev.device_id, {}) if st.scheduler else {}
     return RunsOut(
@@ -86,6 +91,33 @@ def retry_all_problems(dev: Device, st: State) -> RetriedOut:
     """Re-queues every failed or quarantined recording of this camera for
     the next run, the bulk form of `POST /recordings/{id}/retry`."""
     count = st.repo.retry_all_problems(dev.device_id)
+    st.bus.publish("problems", device_id=dev.device_id)
+    return RetriedOut(count=count)
+
+
+class LostOut(BaseModel):
+    """Undismissed clips the card overwrote before they were archived."""
+
+    count: int
+    first_utc: datetime | None
+    last_utc: datetime | None
+
+
+@router.get("/problems/lost")
+def get_lost(dev: Device, st: State) -> LostOut:
+    count, first, last = st.repo.lost_summary(dev.device_id)
+    return LostOut(
+        count=count,
+        first_utc=parse_iso_utc(first) if first else None,
+        last_utc=parse_iso_utc(last) if last else None,
+    )
+
+
+@router.post("/problems/lost/dismiss")
+def dismiss_lost(dev: Device, st: State) -> RetriedOut:
+    """Acknowledges this camera's lost clips: nothing can bring them back,
+    so they stop counting as an open issue."""
+    count = st.repo.dismiss_lost(dev.device_id)
     st.bus.publish("problems", device_id=dev.device_id)
     return RetriedOut(count=count)
 

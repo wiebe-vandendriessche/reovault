@@ -18,6 +18,7 @@
 	import Square from '@lucide/svelte/icons/square';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import { triggerLabel } from '#lib/labels.js';
 
 	let { device }: { device: number } = $props();
 
@@ -75,7 +76,7 @@
 		<Card.Description>Activity</Card.Description>
 		<Card.Title>
 			{#if activity.data?.running}
-				<span class="flex items-center gap-2"><Spinner /> Running {activity.data.running.trigger}</span>
+				<span class="flex items-center gap-2"><Spinner /> {triggerLabel(activity.data.running.trigger)} run in progress</span>
 			{:else if activity.data?.queued}
 				{activity.data.queued} queued
 			{:else}

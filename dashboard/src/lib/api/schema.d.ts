@@ -507,6 +507,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/problems/lost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lost */
+        get: operations["get_lost_api_v1_problems_lost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/lost/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Lost
+         * @description Acknowledges this camera's lost clips: nothing can bring them back,
+         *     so they stop counting as an open issue.
+         */
+        post: operations["dismiss_lost_api_v1_problems_lost_dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/problems/retry": {
         parameters: {
             query?: never;
@@ -1026,6 +1064,8 @@ export interface components {
             date: string;
             /** Hours */
             hours: components["schemas"]["HourOut"][];
+            /** Latest */
+            latest: string | null;
             /** Today */
             today: string;
             /** Total */
@@ -1041,6 +1081,11 @@ export interface components {
             archived_bytes: number;
             /** Archived Count */
             archived_count: number;
+            /**
+             * Card State
+             * @enum {string}
+             */
+            card_state: "not_mounted" | "at_risk" | "waiting" | "all_archived" | "unknown";
             /** Enabled */
             enabled: boolean;
             /** Gateway Down */
@@ -1056,10 +1101,16 @@ export interface components {
             model: string | null;
             /** Name */
             name: string | null;
+            /** Problems Count */
+            problems_count: number;
+            /** Safe For Seconds */
+            safe_for_seconds: number | null;
             sample: components["schemas"]["StorageSampleOut"] | null;
             sd: components["schemas"]["SdBarOut"] | null;
             /** Timezone */
             timezone: string;
+            /** Waiting Count */
+            waiting_count: number;
         };
         /**
          * DeviceSettingsIn
@@ -1232,12 +1283,45 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * IssueOut
+         * @description One open condition on one camera, for the Overview's "needs
+         *     attention" list. `link` is the page that resolves it.
+         */
+        IssueOut: {
+            /** Device Id */
+            device_id: number | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "warn" | "bad";
+            /**
+             * Link
+             * @enum {string}
+             */
+            link: "problems" | "health" | "settings";
+            /** Text */
+            text: string;
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * LostOut
+         * @description Undismissed clips the card overwrote before they were archived.
+         */
+        LostOut: {
+            /** Count */
+            count: number;
+            /** First Utc */
+            first_utc: string | null;
+            /** Last Utc */
+            last_utc: string | null;
         };
         /** OpenAlertOut */
         OpenAlertOut: {
@@ -1259,9 +1343,10 @@ export interface components {
         };
         /** OverviewOut */
         OverviewOut: {
-            banner: components["schemas"]["BannerOut"] | null;
             /** Cards */
             cards: components["schemas"]["FleetCardOut"][];
+            /** Issues */
+            issues: components["schemas"]["IssueOut"][];
             vault: components["schemas"]["VaultOut"];
         };
         /** Page[RecordingOut] */
@@ -2535,6 +2620,68 @@ export interface operations {
             };
         };
     };
+    get_lost_api_v1_problems_lost_get: {
+        parameters: {
+            query?: {
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_lost_api_v1_problems_lost_dismiss_post: {
+        parameters: {
+            query?: {
+                device?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetriedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retry_all_problems_api_v1_problems_retry_post: {
         parameters: {
             query?: {
@@ -2754,6 +2901,7 @@ export interface operations {
         parameters: {
             query?: {
                 before_id?: number | null;
+                failures_only?: boolean;
                 device?: number | null;
             };
             header?: never;

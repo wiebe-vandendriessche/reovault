@@ -4,7 +4,7 @@ Deliberately separate from `archiver.py`: the archiver's job is "make the
 state machine correct", this module's job is "notice when things are
 trending toward data loss" and "notice bit rot before a downstream backup
 snapshot overwrites the last good copy". Neither needs the other's
-internals, they only share the `Repository`/`VaultStore` boundaries.
+internals, they only share the `Repository`/`EncryptedFsVault` boundaries.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Literal
 from reovault.db.repository import Repository, parse_iso_utc
 from reovault.logging import get_logger
 from reovault.providers.base import CameraProvider
-from reovault.storage.vault import VaultStore
+from reovault.storage.vault import EncryptedFsVault
 
 logger = get_logger(__name__)
 
@@ -77,7 +77,8 @@ def record_storage_sample(
     *, repository: Repository, provider: CameraProvider, device_id: int
 ) -> None:
     """Runs on every archive run (scheduled, backfill, or manual), not on
-    its own schedule."""
+    its own schedule. Also the one place the card's oldest clip is learned,
+    so it marks what the card has already overwritten as lost."""
     storage = provider.storage_status()
     oldest_on_card = _find_oldest_recording_utc(provider)
     repository.record_storage_sample(
@@ -88,6 +89,10 @@ def record_storage_sample(
         mounted=storage.mounted,
         oldest_recording_utc=oldest_on_card,
     )
+    if oldest_on_card is not None:
+        lost = repository.mark_lost(device_id, oldest_on_card)
+        if lost:
+            logger.warning("health.recordings_lost", device_id=device_id, count=lost)
 
 
 def _find_oldest_recording_utc(provider: CameraProvider) -> datetime | None:
@@ -215,7 +220,7 @@ class IntegrityScanResult:
 def run_integrity_scan(
     *,
     repository: Repository,
-    vault: VaultStore,
+    vault: EncryptedFsVault,
     device_id: int,
     sample_pct: float = 5.0,
     bucket_index: int | None = None,

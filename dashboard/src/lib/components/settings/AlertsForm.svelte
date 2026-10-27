@@ -2,6 +2,7 @@
 	import { api, type AlertRules, type Alerts, type TestResult } from '#lib/api/index.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
+	import * as Alert from '#lib/components/ui/alert/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as Field from '#lib/components/ui/field/index.js';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
@@ -14,6 +15,8 @@
 	import { relative } from '#lib/format.js';
 	import { toast } from 'svelte-sonner';
 	import Send from '@lucide/svelte/icons/send';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import { trackUnsaved } from '#lib/state/unsaved.svelte.js';
 
 	const loaded = query(() => {
 		void live.alert;
@@ -21,7 +24,7 @@
 		return api<Alerts>('/alerts');
 	});
 	let rules = $state<AlertRules | null>(null);
-	let lastSaved = '';
+	let lastSaved = $state('');
 	$effect(() => {
 		// Reset the form only when the saved rules changed (a save, or an edit
 		// of reovault.toml), not on every alert event, so typing isn't lost.
@@ -31,6 +34,8 @@
 			rules = { ...loaded.data.rules };
 		}
 	});
+	const dirty = $derived(!!rules && JSON.stringify(rules) !== lastSaved);
+	trackUnsaved(() => dirty);
 	let busy = $state<'save' | 'test' | null>(null);
 	let error = $state<string | null>(null);
 	const pinned = $derived(loaded.data?.env_pinned ?? false);
@@ -44,6 +49,7 @@
 		try {
 			loaded.data = await api<Alerts>('/alerts/rules', { method: 'PUT', body: rules });
 			rules = { ...loaded.data.rules };
+			lastSaved = JSON.stringify(loaded.data.rules);
 			toast.success('Alert rules saved.');
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
@@ -80,6 +86,16 @@
 	<Skeleton class="h-96 w-full rounded-xl" />
 {:else}
 	<div class="flex flex-col gap-4">
+		{#if loaded.data.rules.enabled && !anyChannel}
+			<Alert.Root class="border-warn/40">
+				<TriangleAlert class="text-warn" />
+				<Alert.Title>Alerts are on, but nobody will be notified</Alert.Title>
+				<Alert.Description>
+					No channel is set up. Set <code>ntfy_url</code>, <code>webhook_url_file</code>, or
+					<code>smtp_host</code> and <code>smtp_to</code> under <code>[alerts]</code> in reovault.toml, then restart.
+				</Alert.Description>
+			</Alert.Root>
+		{/if}
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Channels</Card.Title>
@@ -175,7 +191,8 @@
 					</fieldset>
 				</Card.Content>
 				<Card.Footer class="flex items-center gap-3 border-t">
-					<Button type="submit" disabled={!!busy || pinned}>{#if busy === 'save'}<Spinner />{/if} Save rules</Button>
+					<Button type="submit" disabled={!!busy || pinned || !dirty}>{#if busy === 'save'}<Spinner />{/if} Save rules</Button>
+					{#if dirty && !error}<p class="text-muted-foreground text-sm">Unsaved changes</p>{/if}
 					{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 				</Card.Footer>
 			</Card.Root>

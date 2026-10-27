@@ -23,7 +23,8 @@
 		nextRunAt,
 		running = false,
 		gatewayDown = false,
-		onclick,
+		deviceId,
+		href,
 		class: className
 	}: {
 		title: string;
@@ -33,7 +34,9 @@
 		nextRunAt?: string | null;
 		running?: boolean;
 		gatewayDown?: boolean;
-		onclick?: () => void;
+		deviceId: number;
+		/** Makes the whole tile a link (the title's link, stretched). */
+		href?: string;
 		class?: string;
 	} = $props();
 
@@ -49,8 +52,9 @@
 					text: `${plural(n, 'clip')} not archived; the oldest is overwritten in about ${span(card.safe_for_seconds)}.`
 				};
 			case 'waiting':
+				// Neutral, not green: safe for now, but not yet archived.
 				return {
-					level: 'ok',
+					level: 'idle',
 					badge: `${n} waiting`,
 					text:
 						card.safe_for_seconds != null
@@ -66,7 +70,7 @@
 
 	const used = $derived(card.used_fraction);
 	const fill = $derived([{ key: 'used', value: Math.round((used ?? 0) * 100) }]);
-	const fillColor = $derived(used == null ? 'var(--idle)' : used > 0.97 ? 'var(--warn)' : 'var(--brand)');
+	const fillColor = $derived(used == null ? 'var(--idle)' : 'var(--brand)');
 	const runs = $derived(
 		running
 			? 'Running now'
@@ -81,19 +85,24 @@
 </script>
 
 <Card.Root
-	class={cn(onclick && 'hover:border-brand-text cursor-pointer transition-colors', className)}
-	{onclick}
-	role={onclick ? 'link' : undefined}
-	tabindex={onclick ? 0 : undefined}
-	onkeydown={(e: KeyboardEvent) => onclick && e.key === 'Enter' && onclick()}
+	class={cn(
+		href && 'hover:border-brand-text has-[a:focus-visible]:ring-ring/50 relative transition-colors has-[a:focus-visible]:ring-3',
+		className
+	)}
 >
 	<Card.Header>
 		<Card.Description>SD card</Card.Description>
-		<Card.Title class="text-lg">{title}</Card.Title>
+		<Card.Title class="min-w-0 text-lg">
+			{#if href}
+				<a {href} class="outline-none after:absolute after:inset-0 after:rounded-xl">{title}</a>
+			{:else}
+				{title}
+			{/if}
+		</Card.Title>
 		<Card.Action class="flex flex-col items-end gap-1">
 			<StatusBadge level={verdict.level}>{verdict.badge}</StatusBadge>
 			{#if card.lost_count}
-				<Badge href="/problems" variant="destructive" onclick={(e: MouseEvent) => e.stopPropagation()}>
+				<Badge href="/problems?device={deviceId}" variant="destructive" class="relative z-10">
 					{plural(card.lost_count, 'clip')} lost
 				</Badge>
 			{/if}
@@ -136,7 +145,7 @@
 					]}
 				/>
 			{/if}
-			<span class="text-muted-foreground ml-auto text-xs">{runs}</span>
+			{#if runs}<span class="text-muted-foreground ml-auto text-xs">{runs}</span>{/if}
 			{#if gatewayDown}<StatusBadge level="warn">Camera gateway unreachable</StatusBadge>{/if}
 		</div>
 	</Card.Content>
