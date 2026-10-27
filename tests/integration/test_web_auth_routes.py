@@ -213,6 +213,9 @@ def test_tampered_cookie_is_unauthenticated(app_and_client):
     tampered = (
         good_cookie[:mid] + ("A" if good_cookie[mid] != "A" else "B") + good_cookie[mid + 1 :]
     )
+    # Replace, not add: the jar holds the server's cookie under its own
+    # domain, and a second same-named one would be sent alongside it.
+    client.cookies.delete("rv_session")
     client.cookies.set("rv_session", tampered)
 
     assert client.get("/api/v1/runs").status_code == 401
