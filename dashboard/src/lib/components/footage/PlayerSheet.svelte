@@ -1,17 +1,17 @@
 <script lang="ts">
 	/** Phone player: the clip in a bottom sheet, with previous/next to watch
 	 * an hour through without closing it. Desktop keeps the inline player. */
-	import { apiUrl, type Recording } from '$lib/api';
-	import * as Sheet from '$lib/components/ui/sheet';
-	import * as AspectRatio from '$lib/components/ui/aspect-ratio';
-	import { ButtonGroup } from '$lib/components/ui/button-group';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { bytes, duration } from '$lib/format';
+	import { apiUrl, type Recording } from '#lib/api/index.js';
+	import * as Sheet from '#lib/components/ui/sheet/index.js';
+	import * as AspectRatio from '#lib/components/ui/aspect-ratio/index.js';
+	import { ButtonGroup } from '#lib/components/ui/button-group/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { bytes, duration } from '#lib/format.js';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
-	import { typeLabel } from '$lib/labels';
+	import { typeLabel } from '#lib/labels.js';
 
 	let { clips, index = $bindable() }: { clips: Recording[]; index: number | null } = $props();
 

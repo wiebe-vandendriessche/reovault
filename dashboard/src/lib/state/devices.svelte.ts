@@ -1,4 +1,4 @@
-import { api, type DeviceSummary } from '$lib/api';
+import { api, type DeviceSummary } from '#lib/api/index.js';
 
 const KEY = 'rv-device';
 

@@ -1,22 +1,22 @@
 <script lang="ts">
-	import { api, type AlertRules, type Alerts, type TestResult } from '$lib/api';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Alert from '$lib/components/ui/alert';
-	import * as Card from '$lib/components/ui/card';
-	import * as Field from '$lib/components/ui/field';
-	import * as InputGroup from '$lib/components/ui/input-group';
-	import { Button } from '$lib/components/ui/button';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import { relative } from '$lib/format';
+	import { api, type AlertRules, type Alerts, type TestResult } from '#lib/api/index.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Alert from '#lib/components/ui/alert/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
+	import { relative } from '#lib/format.js';
 	import { toast } from 'svelte-sonner';
 	import Send from '@lucide/svelte/icons/send';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import { trackUnsaved } from '$lib/state/unsaved.svelte';
+	import { trackUnsaved } from '#lib/state/unsaved.svelte.js';
 
 	const loaded = query(() => {
 		void live.alert;

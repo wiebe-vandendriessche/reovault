@@ -1,4 +1,4 @@
-import { API } from '$lib/api';
+import { API } from '#lib/api/index.js';
 
 /** The one SSE stream. Each counter bumps when the server hints that data
  * of that kind changed; pages read the counter inside a `query()` so they

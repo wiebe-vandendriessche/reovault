@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type RunDetail } from '$lib/api';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
-	import * as Card from '$lib/components/ui/card';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
-	import { bytes, localTime, plural } from '$lib/format';
-	import { triggerLabel } from '$lib/labels';
+	import { api, type RunDetail } from '#lib/api/index.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Breadcrumb from '#lib/components/ui/breadcrumb/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
+	import { bytes, localTime, plural } from '#lib/format.js';
+	import { triggerLabel } from '#lib/labels.js';
 
 	const detail = query(() => {
 		void live.activity;

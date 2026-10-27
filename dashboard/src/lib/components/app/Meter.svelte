@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 
 	/** A horizontal stacked bar. The track is "free" space; segments are
 	 * clipped to its rounded ends so they read as one bar. `marker` (percent)

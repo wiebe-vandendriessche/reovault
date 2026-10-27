@@ -4,17 +4,17 @@
 	 * its own. Saved into the camera's [[devices]] entry in reovault.toml.
 	 * Alias and channel identify the camera, so they're shown, not edited.
 	 * One Save covers both parts; only the parts that changed are written. */
-	import { api, type Device, type Devices } from '$lib/api';
-	import * as Sheet from '$lib/components/ui/sheet';
-	import * as Field from '$lib/components/ui/field';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Separator } from '$lib/components/ui/separator';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import ScheduleForm from '$lib/components/settings/ScheduleForm.svelte';
-	import TimezoneInput from '$lib/components/app/TimezoneInput.svelte';
-	import { deviceLabel } from '$lib/state/devices.svelte';
-	import { trackUnsaved } from '$lib/state/unsaved.svelte';
+	import { api, type Device, type Devices } from '#lib/api/index.js';
+	import * as Sheet from '#lib/components/ui/sheet/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Separator } from '#lib/components/ui/separator/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import ScheduleForm from '#lib/components/settings/ScheduleForm.svelte';
+	import TimezoneInput from '#lib/components/app/TimezoneInput.svelte';
+	import { deviceLabel } from '#lib/state/devices.svelte.js';
+	import { trackUnsaved } from '#lib/state/unsaved.svelte.js';
 	import { toast } from 'svelte-sonner';
 
 	let {

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { Growth } from '$lib/api';
-	import * as Card from '$lib/components/ui/card';
-	import * as Chart from '$lib/components/ui/chart';
+	import type { Growth } from '#lib/api/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Chart from '#lib/components/ui/chart/index.js';
 	import { BarChart } from 'layerchart';
 	import { scaleBand } from 'd3-scale';
-	import { bytes, count, shortDay } from '$lib/format';
+	import { bytes, count, shortDay } from '#lib/format.js';
 
 	let { growth }: { growth: Growth } = $props();
 

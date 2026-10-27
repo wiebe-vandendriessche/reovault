@@ -1,25 +1,25 @@
 <script lang="ts">
-	import { api, type Lost, type Recording, type RecordingsPage } from '$lib/api';
-	import { devices } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Empty from '$lib/components/ui/empty';
-	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import RecordingRow from '$lib/components/footage/RecordingRow.svelte';
+	import { api, type Lost, type Recording, type RecordingsPage } from '#lib/api/index.js';
+	import { devices } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import RecordingRow from '#lib/components/footage/RecordingRow.svelte';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { buttonVariants } from '$lib/components/ui/button';
-	import { localTime, plural } from '$lib/format';
-	import * as Card from '$lib/components/ui/card';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import { buttonVariants } from '#lib/components/ui/button/index.js';
+	import { localTime, plural } from '#lib/format.js';
+	import * as Card from '#lib/components/ui/card/index.js';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { toast } from 'svelte-sonner';
-	import { toastQueued } from '$lib/queued';
+	import { toastQueued } from '#lib/queued.js';
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 
 	const first = query(() => {

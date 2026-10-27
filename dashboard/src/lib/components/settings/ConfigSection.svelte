@@ -3,17 +3,17 @@
 	 * input per field by type, a lock where the value is set by an env var or
 	 * is infrastructure (change it in the file, then restart). Saving writes
 	 * only the changed fields back into the file. */
-	import { api, ApiError, type Config, type ConfigField } from '$lib/api';
-	import * as Card from '$lib/components/ui/card';
-	import * as Field from '$lib/components/ui/field';
-	import * as InputGroup from '$lib/components/ui/input-group';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Spinner } from '$lib/components/ui/spinner';
+	import { api, ApiError, type Config, type ConfigField } from '#lib/api/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
 	import { toast } from 'svelte-sonner';
 	import Lock from '@lucide/svelte/icons/lock';
-	import { trackUnsaved } from '$lib/state/unsaved.svelte';
+	import { trackUnsaved } from '#lib/state/unsaved.svelte.js';
 
 	let {
 		config,

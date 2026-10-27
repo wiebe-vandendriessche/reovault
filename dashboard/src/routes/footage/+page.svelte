@@ -1,26 +1,26 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, type Day } from '$lib/api';
-	import { devices } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as Empty from '$lib/components/ui/empty';
-	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import MonthCalendar from '$lib/components/footage/MonthCalendar.svelte';
-	import HourGroup from '$lib/components/footage/HourGroup.svelte';
-	import ExportDialog from '$lib/components/footage/ExportDialog.svelte';
-	import { addDays, bytes, plural, shortDay } from '$lib/format';
+	import { api, type Day } from '#lib/api/index.js';
+	import { devices } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import * as ToggleGroup from '#lib/components/ui/toggle-group/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import MonthCalendar from '#lib/components/footage/MonthCalendar.svelte';
+	import HourGroup from '#lib/components/footage/HourGroup.svelte';
+	import ExportDialog from '#lib/components/footage/ExportDialog.svelte';
+	import { addDays, bytes, plural, shortDay } from '#lib/format.js';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import VideoOff from '@lucide/svelte/icons/video-off';
-	import { typeLabel } from '$lib/labels';
+	import { typeLabel } from '#lib/labels.js';
 
 	const PROBLEMS = '__problems__';
 
@@ -41,13 +41,13 @@
 	const shown = $derived(date || day.data?.today || '');
 
 	function nav(next: { date?: string; types?: string }) {
-		const params = new URLSearchParams(page.url.searchParams);
+		const params = new URLSearchParams(page.url.search);
 		if (next.date !== undefined) params.set('date', next.date);
 		if (next.types !== undefined) {
 			if (next.types) params.set('types', next.types);
 			else params.delete('types');
 		}
-		goto(`?${params}`, { keepFocus: true, noScroll: true });
+		goto(`?${params}`, { reset: false });
 	}
 
 	// Left/right arrows step a day, unless a field or the video player has

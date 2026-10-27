@@ -3,19 +3,19 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
-	import { api, setUnauthorizedHandler, type Session } from '$lib/api';
-	import { applySession, loadSession, session } from '$lib/state/session.svelte';
-	import { devices, deviceLabel, loadDevices, selectDevice } from '$lib/state/devices.svelte';
-	import { connectLive, disconnectLive, live } from '$lib/state/live.svelte';
-	import { initTheme, theme, toggleTheme } from '$lib/state/theme.svelte';
-	import { confirmDiscard, hasUnsaved } from '$lib/state/unsaved.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Sheet from '$lib/components/ui/sheet';
-	import { Toaster } from '$lib/components/ui/sonner';
-	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import { cn } from '$lib/utils';
+	import { api, setUnauthorizedHandler, type Session } from '#lib/api/index.js';
+	import { applySession, loadSession, session } from '#lib/state/session.svelte.js';
+	import { devices, deviceLabel, loadDevices, selectDevice } from '#lib/state/devices.svelte.js';
+	import { connectLive, disconnectLive, live } from '#lib/state/live.svelte.js';
+	import { initTheme, theme, toggleTheme } from '#lib/state/theme.svelte.js';
+	import { confirmDiscard, hasUnsaved } from '#lib/state/unsaved.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import * as Sheet from '#lib/components/ui/sheet/index.js';
+	import { Toaster } from '#lib/components/ui/sonner/index.js';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import { cn } from '#lib/utils.js';
 	import Activity from '@lucide/svelte/icons/activity';
 	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import Video from '@lucide/svelte/icons/video';
@@ -62,7 +62,7 @@
 		disconnectLive();
 		session.authenticated = false;
 		if (page.url.pathname !== '/login')
-			goto(`/login?next=${encodeURIComponent(here)}`, { replaceState: true });
+			goto(`/login?next=${encodeURIComponent(here)}`, { replace: true });
 	}
 
 	onMount(() => {
@@ -104,16 +104,16 @@
 	$effect(() => {
 		const id = devices.currentId;
 		if (!onScoped || id == null || untrack(urlDevice) != null) return;
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.set('device', String(id));
-		goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+		goto(url, { replace: true, reset: false });
 	});
 
 	function pickDevice(id: number) {
 		if (!onScoped) return selectDevice(id);
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.set('device', String(id));
-		goto(url, { noScroll: true, keepFocus: true });
+		goto(url, { reset: false });
 	}
 
 	const scopedHref = (href: string) =>

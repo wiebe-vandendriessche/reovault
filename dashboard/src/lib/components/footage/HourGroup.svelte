@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { api, type Recording, type RecordingsPage } from '$lib/api';
-	import * as Collapsible from '$lib/components/ui/collapsible';
-	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
+	import { api, type Recording, type RecordingsPage } from '#lib/api/index.js';
+	import * as Collapsible from '#lib/components/ui/collapsible/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
 	import RecordingRow from './RecordingRow.svelte';
 	import PlayerSheet from './PlayerSheet.svelte';
-	import { bytes, plural } from '$lib/format';
+	import { bytes, plural } from '#lib/format.js';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
 	let {

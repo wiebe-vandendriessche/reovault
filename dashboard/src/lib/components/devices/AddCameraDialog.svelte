@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { api, type AddDevice, type Devices, type Discovered } from '$lib/api';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import * as Field from '$lib/components/ui/field';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import TimezoneInput from '$lib/components/app/TimezoneInput.svelte';
+	import { api, type AddDevice, type Devices, type Discovered } from '#lib/api/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import TimezoneInput from '#lib/components/app/TimezoneInput.svelte';
 	import { toast } from 'svelte-sonner';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Radar from '@lucide/svelte/icons/radar';

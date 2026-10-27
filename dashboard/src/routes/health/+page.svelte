@@ -1,20 +1,20 @@
 <script lang="ts">
-	import { api, type Growth, type Health } from '$lib/api';
-	import { currentDevice, deviceLabel, devices } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Alert from '$lib/components/ui/alert';
-	import * as Card from '$lib/components/ui/card';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import StatusCard from '$lib/components/health/StatusCard.svelte';
-	import SdCardTile from '$lib/components/overview/SdCardTile.svelte';
-	import GrowthCard from '$lib/components/health/GrowthCard.svelte';
-	import TypesChart from '$lib/components/health/TypesChart.svelte';
-	import ActivityCard from '$lib/components/health/ActivityCard.svelte';
-	import { bytes, plural } from '$lib/format';
+	import { api, type Growth, type Health } from '#lib/api/index.js';
+	import { currentDevice, deviceLabel, devices } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Alert from '#lib/components/ui/alert/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import StatusCard from '#lib/components/health/StatusCard.svelte';
+	import SdCardTile from '#lib/components/overview/SdCardTile.svelte';
+	import GrowthCard from '#lib/components/health/GrowthCard.svelte';
+	import TypesChart from '#lib/components/health/TypesChart.svelte';
+	import ActivityCard from '#lib/components/health/ActivityCard.svelte';
+	import { bytes, plural } from '#lib/format.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 

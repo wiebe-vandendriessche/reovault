@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as Alert from '$lib/components/ui/alert';
-	import { Button } from '$lib/components/ui/button';
+	import * as Alert from '#lib/components/ui/alert/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 

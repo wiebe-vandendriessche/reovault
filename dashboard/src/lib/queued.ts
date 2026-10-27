@@ -1,5 +1,5 @@
 import { toast } from 'svelte-sonner';
-import { api } from '$lib/api';
+import { api } from '#lib/api/index.js';
 
 /** "Queued for the next run" with a Run now button, so a retry doesn't
  * have to wait for the schedule or a trip to Health. */

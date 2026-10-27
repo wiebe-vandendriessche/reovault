@@ -1,34 +1,34 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, type Run, type RunsPage } from '$lib/api';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Label } from '$lib/components/ui/label';
-	import { devices } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as Table from '$lib/components/ui/table';
-	import * as Empty from '$lib/components/ui/empty';
-	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
-	import { bytes, localTime, relative } from '$lib/format';
+	import { api, type Run, type RunsPage } from '#lib/api/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { devices } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Table from '#lib/components/ui/table/index.js';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
+	import { bytes, localTime, relative } from '#lib/format.js';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import { toast } from 'svelte-sonner';
-	import { triggerLabel } from '$lib/labels';
+	import { triggerLabel } from '#lib/labels.js';
 
 	// In the URL, so a filtered list survives a reload and can be linked.
 	const failuresOnly = $derived(page.url.searchParams.get('failures') === '1');
 	function setFailuresOnly(on: boolean) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (on) url.searchParams.set('failures', '1');
 		else url.searchParams.delete('failures');
-		goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+		goto(url, { replace: true, reset: false });
 	}
 
 	// First page is live; older pages are appended by "Load more".

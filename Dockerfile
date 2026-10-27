@@ -15,7 +15,7 @@ ARG REOLINK_CLI_VERSION=0.19.0
 
 # Static output is architecture-independent: build it once, natively, on the
 # build host instead of under QEMU for every target platform.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS dashboard
+FROM --platform=$BUILDPLATFORM node:26-alpine AS dashboard
 WORKDIR /dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
 # --ignore-scripts: no dependency gets to run code at install time.
@@ -23,7 +23,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY dashboard/ ./
 RUN npm run build
 
-FROM python:3.14-slim AS reolink-cli-download
+FROM python:3.15-slim AS reolink-cli-download
 ARG REOLINK_CLI_VERSION
 ARG TARGETARCH
 WORKDIR /dl
@@ -47,7 +47,7 @@ RUN set -eu; \
     chmod +x /out/reolink-cli /out/reolink-gateway; \
     /out/reolink-cli --version | grep -qF "$REOLINK_CLI_VERSION"
 
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 ARG REOLINK_CLI_VERSION
 ARG REOVAULT_VERSION=dev
 ENV REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \

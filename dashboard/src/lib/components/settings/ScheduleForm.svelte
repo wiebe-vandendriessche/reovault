@@ -1,20 +1,20 @@
 <script lang="ts">
-	import { api, type Schedule, type ScheduleBody } from '$lib/api';
-	import { query } from '$lib/state/query.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as Field from '$lib/components/ui/field';
-	import * as InputGroup from '$lib/components/ui/input-group';
-	import { NativeSelect } from '$lib/components/ui/native-select';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
+	import { api, type Schedule, type ScheduleBody } from '#lib/api/index.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import { NativeSelect } from '#lib/components/ui/native-select/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
 	import { toast } from 'svelte-sonner';
 
-	import { live } from '$lib/state/live.svelte';
-	import { trackUnsaved } from '$lib/state/unsaved.svelte';
+	import { live } from '#lib/state/live.svelte.js';
+	import { trackUnsaved } from '#lib/state/unsaved.svelte.js';
 
 	/** `device` null edits the global default `[schedule]`; a camera id edits
 	 * that camera's own `[devices.schedule]` (or switches it back to the

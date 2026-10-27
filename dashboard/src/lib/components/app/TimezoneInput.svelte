@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input } from '$lib/components/ui/input';
+	import { Input } from '#lib/components/ui/input/index.js';
 
 	/** A text field for an IANA timezone: suggests the browser's list and
 	 * refuses a name the browser doesn't know (the server checks it too).
