@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { api, type Retention, type RetentionSave } from '$lib/api';
-	import { query } from '$lib/state/query.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as Field from '$lib/components/ui/field';
-	import * as InputGroup from '$lib/components/ui/input-group';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { Button } from '$lib/components/ui/button';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import { bytes, plural } from '$lib/format';
+	import { api, type Retention, type RetentionSave } from '#lib/api/index.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import { bytes, plural } from '#lib/format.js';
 	import { toast } from 'svelte-sonner';
 
 	const loaded = query(() => {

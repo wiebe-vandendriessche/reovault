@@ -1,19 +1,19 @@
 <script lang="ts">
-	import { api, type Run, type RunsPage } from '$lib/api';
-	import { devices } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as Table from '$lib/components/ui/table';
-	import * as Empty from '$lib/components/ui/empty';
-	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
-	import { bytes, localTime, relative } from '$lib/format';
+	import { api, type Run, type RunsPage } from '#lib/api/index.js';
+	import { devices } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Table from '#lib/components/ui/table/index.js';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
+	import { bytes, localTime, relative } from '#lib/format.js';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 
 	// First page is live; older pages are appended by "Load more".

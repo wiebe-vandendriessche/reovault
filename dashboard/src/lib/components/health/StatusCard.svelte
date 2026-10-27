@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Health } from '$lib/api';
-	import * as Card from '$lib/components/ui/card';
-	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import { bytes, plural, relative } from '$lib/format';
+	import type { Health } from '#lib/api/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
+	import { bytes, plural, relative } from '#lib/format.js';
 
 	let { health }: { health: Health } = $props();
 

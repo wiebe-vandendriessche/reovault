@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { components } from '$lib/api/schema';
-	import * as Chart from '$lib/components/ui/chart';
+	import type { components } from '#lib/api/schema.js';
+	import * as Chart from '#lib/components/ui/chart/index.js';
 	import { BarChart } from 'layerchart';
 	import { scaleBand } from 'd3-scale';
 
