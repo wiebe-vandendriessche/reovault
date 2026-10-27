@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, type Config } from '$lib/api';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Alert from '$lib/components/ui/alert';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import ScheduleForm from '$lib/components/settings/ScheduleForm.svelte';
-	import RetentionForm from '$lib/components/settings/RetentionForm.svelte';
-	import AlertsForm from '$lib/components/settings/AlertsForm.svelte';
-	import ConfigSection from '$lib/components/settings/ConfigSection.svelte';
+	import { api, type Config } from '#lib/api/index.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Alert from '#lib/components/ui/alert/index.js';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import ScheduleForm from '#lib/components/settings/ScheduleForm.svelte';
+	import RetentionForm from '#lib/components/settings/RetentionForm.svelte';
+	import AlertsForm from '#lib/components/settings/AlertsForm.svelte';
+	import ConfigSection from '#lib/components/settings/ConfigSection.svelte';
 	import { toast } from 'svelte-sonner';
 	import FileWarning from '@lucide/svelte/icons/file-warning';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
@@ -91,7 +91,7 @@
 		{/if}
 	</div>
 
-	<Tabs.Root value={tab} onValueChange={(v) => goto(`?tab=${v}`, { replaceState: true, noScroll: true })}>
+	<Tabs.Root value={tab} onValueChange={(v) => goto(`?tab=${v}`, { replace: true, reset: false })}>
 		<Tabs.List class="mb-4 flex-wrap">
 			<Tabs.Trigger value="schedule">Schedule</Tabs.Trigger>
 			<Tabs.Trigger value="retention">Retention</Tabs.Trigger>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 
 	/** Legend for non-chart bars (`Meter`): the same rounded-square swatch as
 	 * the shadcn chart tooltip and layerchart legends. `swatch` overrides the

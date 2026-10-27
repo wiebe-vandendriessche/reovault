@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { MediaQuery } from 'svelte/reactivity';
-	import { api, apiUrl, type Recording, type Verify } from '$lib/api';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import * as AspectRatio from '$lib/components/ui/aspect-ratio';
-	import * as Tooltip from '$lib/components/ui/tooltip';
-	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import { bytes, duration, plural, relative } from '$lib/format';
+	import { api, apiUrl, type Recording, type Verify } from '#lib/api/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import * as AspectRatio from '#lib/components/ui/aspect-ratio/index.js';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.js';
+	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
+	import { bytes, duration, plural, relative } from '#lib/format.js';
 	import { toast } from 'svelte-sonner';
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 	import Play from '@lucide/svelte/icons/play';
 	import Download from '@lucide/svelte/icons/download';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';

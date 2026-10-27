@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { theme } from "$lib/state/theme.svelte";
+	import { theme } from "#lib/state/theme.svelte.js";
 	import { Toaster as Sonner, type ToasterProps as SonnerProps } from "svelte-sonner";
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';

@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { api, type Calendar } from '$lib/api';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { cn } from '$lib/utils';
-	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { plural } from '$lib/format';
+	import { api, type Calendar } from '#lib/api/index.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { cn } from '#lib/utils.js';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.js';
+	import { plural } from '#lib/format.js';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
