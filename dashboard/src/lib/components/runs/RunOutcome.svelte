@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { Run } from '$lib/api';
-	import StatusBadge, { type Level } from '$lib/components/app/StatusBadge.svelte';
+	import type { Run } from '#lib/api/index.js';
+	import StatusBadge, { type Level } from '#lib/components/app/StatusBadge.svelte';
 
 	let { run }: { run: Run } = $props();
 

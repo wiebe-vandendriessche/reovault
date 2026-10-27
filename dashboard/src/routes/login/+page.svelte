@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, ApiError, type Session } from '$lib/api';
-	import { applySession, session } from '$lib/state/session.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as Field from '$lib/components/ui/field';
-	import { Input } from '$lib/components/ui/input';
-	import { Spinner } from '$lib/components/ui/spinner';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
+	import { api, ApiError, type Session } from '#lib/api/index.js';
+	import { applySession, session } from '#lib/state/session.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Spinner } from '#lib/components/ui/spinner/index.js';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -22,7 +22,7 @@
 	}
 
 	$effect(() => {
-		if (session.authenticated) goto(nextPath(), { replaceState: true });
+		if (session.authenticated) goto(nextPath(), { replace: true });
 	});
 
 	async function submit(e: SubmitEvent) {

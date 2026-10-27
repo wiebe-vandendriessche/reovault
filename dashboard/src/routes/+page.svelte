@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { api, type Overview } from '$lib/api';
-	import { devices, selectDevice } from '$lib/state/devices.svelte';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import * as Alert from '$lib/components/ui/alert';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import NoDevice from '$lib/components/app/NoDevice.svelte';
-	import ArchiveCard from '$lib/components/overview/ArchiveCard.svelte';
-	import SdCardTile from '$lib/components/overview/SdCardTile.svelte';
-	import { deviceLabel } from '$lib/state/devices.svelte';
+	import { api, type Overview } from '#lib/api/index.js';
+	import { devices, selectDevice } from '#lib/state/devices.svelte.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import * as Alert from '#lib/components/ui/alert/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import NoDevice from '#lib/components/app/NoDevice.svelte';
+	import ArchiveCard from '#lib/components/overview/ArchiveCard.svelte';
+	import SdCardTile from '#lib/components/overview/SdCardTile.svelte';
+	import { deviceLabel } from '#lib/state/devices.svelte.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	const overview = query(() => {

@@ -1,4 +1,4 @@
-import { api, setCsrf, type Session } from '$lib/api';
+import { api, setCsrf, type Session } from '#lib/api/index.js';
 
 export const session = $state({
 	ready: false,

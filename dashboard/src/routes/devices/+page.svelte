@@ -1,26 +1,26 @@
 <script lang="ts">
-	import { api, type Config, type Device, type Devices } from '$lib/api';
-	import { live } from '$lib/state/live.svelte';
-	import { query } from '$lib/state/query.svelte';
-	import { deviceLabel } from '$lib/state/devices.svelte';
-	import * as Card from '$lib/components/ui/card';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import * as Empty from '$lib/components/ui/empty';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Label } from '$lib/components/ui/label';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import PageHeader from '$lib/components/app/PageHeader.svelte';
-	import ErrorAlert from '$lib/components/app/ErrorAlert.svelte';
-	import StatusBadge from '$lib/components/app/StatusBadge.svelte';
-	import Meter from '$lib/components/app/Meter.svelte';
-	import RunOutcome from '$lib/components/runs/RunOutcome.svelte';
-	import AddCameraDialog from '$lib/components/devices/AddCameraDialog.svelte';
-	import { bytes, count, relative } from '$lib/format';
+	import { api, type Config, type Device, type Devices } from '#lib/api/index.js';
+	import { live } from '#lib/state/live.svelte.js';
+	import { query } from '#lib/state/query.svelte.js';
+	import { deviceLabel } from '#lib/state/devices.svelte.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import PageHeader from '#lib/components/app/PageHeader.svelte';
+	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
+	import Meter from '#lib/components/app/Meter.svelte';
+	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
+	import AddCameraDialog from '#lib/components/devices/AddCameraDialog.svelte';
+	import { bytes, count, relative } from '#lib/format.js';
 	import { toast } from 'svelte-sonner';
 	import Cctv from '@lucide/svelte/icons/cctv';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import { Button } from '$lib/components/ui/button';
-	import EditCameraSheet from '$lib/components/devices/EditCameraSheet.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import EditCameraSheet from '#lib/components/devices/EditCameraSheet.svelte';
 
 	const fleet = query(() => {
 		void live.devices;

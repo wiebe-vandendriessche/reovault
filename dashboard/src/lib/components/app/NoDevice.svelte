@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as Empty from '$lib/components/ui/empty';
-	import { Button } from '$lib/components/ui/button';
+	import * as Empty from '#lib/components/ui/empty/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import Cctv from '@lucide/svelte/icons/cctv';
 </script>
 
