@@ -1,65 +1,14 @@
 <script lang="ts">
-	import { api, type Recording, type RecordingsPage } from '#lib/api/index.js';
+	import type { Clip } from '#lib/api/index.js';
 	import * as Collapsible from '#lib/components/ui/collapsible/index.js';
-	import { Button } from '#lib/components/ui/button/index.js';
-	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
-	import { Spinner } from '#lib/components/ui/spinner/index.js';
-	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
-	import RecordingRow from './RecordingRow.svelte';
-	import PlayerSheet from './PlayerSheet.svelte';
+	import ClipRow from './ClipRow.svelte';
 	import { bytes, plural } from '#lib/format.js';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
-	let {
-		device,
-		date,
-		hour,
-		total,
-		size,
-		types
-	}: {
-		device: number;
-		date: string;
-		hour: number;
-		total: number;
-		size: number;
-		types: string;
-	} = $props();
+	let { hour, clips }: { hour: number; clips: Clip[] } = $props();
 
 	let open = $state(false);
-	let rows = $state<Recording[] | null>(null);
-	let next = $state<string | null>(null);
-	let error = $state<string | null>(null);
-	let loadingMore = $state(false);
-	let playing = $state<number | null>(null);
-
-	async function load(after: string | null) {
-		const page = await api<RecordingsPage>('/day/hour', {
-			query: { device, date_: date, hour, types, after: after ?? undefined }
-		});
-		rows = after ? [...(rows ?? []), ...page.items] : page.items;
-		next = page.next ?? null;
-	}
-
-	// Lazy: an hour's clips load the first time it opens, and reload when
-	// the day, filter, or its own clip count (a live update) changes.
-	$effect(() => {
-		void total;
-		if (!open) return;
-		error = null;
-		load(null).catch((e) => (error = e instanceof Error ? e.message : String(e)));
-	});
-
-	async function more() {
-		loadingMore = true;
-		try {
-			await load(next);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
-			loadingMore = false;
-		}
-	}
+	const size = $derived(clips.reduce((n, c) => n + (c.size ?? 0), 0));
 </script>
 
 <Collapsible.Root bind:open class="rounded-xl border">
@@ -68,22 +17,10 @@
 	>
 		<ChevronRight class="text-muted-foreground size-4 transition-transform {open ? 'rotate-90' : ''}" />
 		<span class="font-semibold tabular-nums">{String(hour).padStart(2, '0')}:00</span>
-		<span class="text-muted-foreground text-sm">{plural(total, 'clip')}</span>
+		<span class="text-muted-foreground text-sm">{plural(clips.length, 'clip')}</span>
 		<span class="text-subtle ml-auto text-sm tabular-nums">{bytes(size)}</span>
 	</Collapsible.Trigger>
 	<Collapsible.Content class="flex flex-col gap-2 px-3 pb-3">
-		{#if error}
-			<ErrorAlert message={error} />
-		{:else if rows === null}
-			{#each Array(Math.min(total, 3)) as _, i (i)}<Skeleton class="h-11 w-full" />{/each}
-		{:else}
-			{#each rows as rec, i (rec.id)}<RecordingRow {rec} onopen={() => (playing = i)} />{/each}
-			<PlayerSheet clips={rows} bind:index={playing} />
-			{#if next}
-				<Button variant="ghost" size="sm" onclick={more} disabled={loadingMore} class="self-center">
-					{#if loadingMore}<Spinner />{/if} Load more
-				</Button>
-			{/if}
-		{/if}
+		{#each clips as clip (clip.id)}<ClipRow {clip} />{/each}
 	</Collapsible.Content>
 </Collapsible.Root>

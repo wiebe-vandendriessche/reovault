@@ -5,7 +5,7 @@
 
 	let { run }: { run: Run } = $props();
 
-	const levels: Record<string, Level> = { success: 'ok', partial: 'warn', failed: 'bad', aborted: 'bad' };
+	const levels: Record<string, Level> = { ok: 'ok', error: 'bad', stopped: 'idle' };
 	// A run still going is neutral: it hasn't succeeded yet.
 	const level = $derived<Level>(run.finished_at ? (levels[run.outcome ?? ''] ?? 'idle') : 'idle');
 	const text = $derived(run.finished_at ? outcomeLabel(run.outcome) : 'Running');

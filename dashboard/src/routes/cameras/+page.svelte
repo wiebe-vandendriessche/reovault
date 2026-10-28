@@ -1,164 +1,128 @@
 <script lang="ts">
-	import { api, type Config, type Device, type Devices } from '#lib/api/index.js';
+	import { api, type Camera, type Config } from '#lib/api/index.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
-	import { deviceLabel } from '#lib/state/devices.svelte.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import * as Empty from '#lib/components/ui/empty/index.js';
 	import { Switch } from '#lib/components/ui/switch/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
 	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
-	import Meter from '#lib/components/app/Meter.svelte';
 	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
-	import AddCameraDialog from '#lib/components/devices/AddCameraDialog.svelte';
-	import { bytes, count, plural, relative, span } from '#lib/format.js';
-	import Legend from '#lib/components/app/Legend.svelte';
+	import AddCameraDialog from '#lib/components/cameras/AddCameraDialog.svelte';
+	import EditCameraSheet from '#lib/components/cameras/EditCameraSheet.svelte';
+	import { bytes, count, relative } from '#lib/format.js';
+	import { VERDICTS } from '#lib/labels.js';
 	import { toast } from 'svelte-sonner';
 	import Cctv from '@lucide/svelte/icons/cctv';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import { Button } from '#lib/components/ui/button/index.js';
-	import EditCameraSheet from '#lib/components/devices/EditCameraSheet.svelte';
 
-	const fleet = query(() => {
-		void live.devices;
-		return api<Devices>('/devices');
+	const cameras = query(() => {
+		void live.settings;
+		void live.activity;
+		return api<Camera[]>('/cameras');
 	});
-
-	let confirmDisable = $state<Device | null>(null);
-	let editingId = $state<number | null>(null);
-	const editing = $derived(fleet.data?.devices.find((d) => d.id === editingId) ?? null);
 	// Only whether reovault.toml can be written: camera edits go into it.
 	const config = query(() => {
 		void live.settings;
 		return api<Config>('/config');
 	});
 
-	async function setEnabled(d: Device, enabled: boolean) {
+	let confirmOff = $state<Camera | null>(null);
+	let editingAlias = $state<string | null>(null);
+	const editing = $derived(cameras.data?.find((c) => c.alias === editingAlias) ?? null);
+	const label = (c: Camera) => c.name || c.alias;
+
+	async function setEnabled(c: Camera, enabled: boolean) {
 		try {
-			fleet.data = await api<Devices>(`/devices/${d.id}/enabled`, { method: 'PUT', body: { enabled } });
-			toast.success(`${deviceLabel(d)} ${enabled ? 'enabled' : 'disabled'}.`);
+			cameras.data = await api<Camera[]>(`/cameras/${c.alias}`, {
+				method: 'PUT',
+				body: { name: c.name ?? null, timezone: c.timezone, enabled }
+			});
+			toast.success(`${label(c)} turned ${enabled ? 'on' : 'off'}.`);
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		}
 	}
-
-	const gb = (n: number) => `${n.toFixed(1)} GB`;
 </script>
 
-<svelte:head><title>Devices | ReoVault</title></svelte:head>
+<svelte:head><title>Cameras | ReoVault</title></svelte:head>
 
-<PageHeader title="Devices" description="Every camera ReoVault knows about, across the whole fleet.">
+<PageHeader title="Cameras" description="Every camera ReoVault backs up. Each one gets its own restic repository.">
 	{#snippet actions()}
-		{#if fleet.data?.registry_available}
-			<AddCameraDialog onadded={(d) => (fleet.data = d)} />
+		{#if config.data?.writable}
+			<AddCameraDialog onadded={(c) => (cameras.data = c)} />
 		{/if}
 	{/snippet}
 </PageHeader>
 
-{#if fleet.error}
-	<ErrorAlert message={fleet.error} />
-{:else if !fleet.data}
-	<div class="grid gap-4 md:grid-cols-2">{#each [0, 1] as i (i)}<Skeleton class="h-56 rounded-xl" />{/each}</div>
-{:else if fleet.data.devices.length === 0}
+{#if cameras.error}
+	<ErrorAlert message={cameras.error} />
+{:else if !cameras.data}
+	<div class="grid gap-4 md:grid-cols-2">{#each [0, 1] as i (i)}<Skeleton class="h-48 rounded-xl" />{/each}</div>
+{:else if cameras.data.length === 0}
 	<Empty.Root class="border">
 		<Empty.Header>
 			<Empty.Media variant="icon"><Cctv /></Empty.Media>
 			<Empty.Title>No cameras yet</Empty.Title>
-			<Empty.Description>Add your first camera to start archiving its recordings.</Empty.Description>
+			<Empty.Description>Add your first camera, or a demo camera to try ReoVault without hardware.</Empty.Description>
 		</Empty.Header>
 	</Empty.Root>
 {:else}
 	<div class="grid gap-4 md:grid-cols-2">
-		{#each fleet.data.devices as d (d.id)}
-			<Card.Root class={d.enabled ? '' : 'bg-muted/40'}>
+		{#each cameras.data as c (c.alias)}
+			{@const verdict = VERDICTS[c.verdict]}
+			<Card.Root class={c.enabled ? '' : 'bg-muted/40'}>
 				<Card.Header>
-					<Card.Title class="truncate">{deviceLabel(d)}</Card.Title>
+					<Card.Title class="truncate">{label(c)}</Card.Title>
 					<Card.Description class="truncate">
-						{[d.model, d.host, d.timezone].filter(Boolean).join(', ')}
+						{[c.demo ? 'Demo camera' : c.alias, c.timezone].join(', ')}
 					</Card.Description>
 					<Card.Action class="flex items-center gap-2">
-						<Label for="dev-{d.id}" class="text-muted-foreground text-xs">{d.enabled ? 'On' : 'Off'}</Label>
+						<Label for="cam-{c.alias}" class="text-muted-foreground text-xs">{c.enabled ? 'On' : 'Off'}</Label>
 						<Switch
-							id="dev-{d.id}"
-							bind:checked={
-								() => d.enabled, (on) => (on ? setEnabled(d, true) : (confirmDisable = d))
-							}
-							aria-label="Archive {deviceLabel(d)}"
+							id="cam-{c.alias}"
+							disabled={!config.data?.writable}
+							bind:checked={() => c.enabled, (on) => (on ? setEnabled(c, true) : (confirmOff = c))}
+							aria-label="Back up {label(c)}"
 						/>
 					</Card.Action>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-4">
 					<div class="flex flex-wrap gap-2">
-						{#if !d.enabled}
-							<StatusBadge level="idle">Disabled</StatusBadge>
+						{#if c.enabled}
+							<StatusBadge level={verdict.level}>{verdict.label}</StatusBadge>
 						{:else}
-							{#if d.card_state === 'not_mounted'}
-								<StatusBadge level="bad">SD card not mounted</StatusBadge>
-							{:else if d.card_state === 'at_risk'}
-								<StatusBadge level="warn">At risk: overwritten in about {span(d.safe_for_seconds)}</StatusBadge>
-							{:else if d.card_state === 'waiting'}
-								<StatusBadge level="idle">{d.waiting_count} waiting</StatusBadge>
-							{:else if d.card_state === 'all_archived'}
-								<StatusBadge level="ok">All archived</StatusBadge>
-							{:else}
-								<StatusBadge level="idle">No data yet</StatusBadge>
-							{/if}
-							{#if d.gateway_down}<StatusBadge level="warn">Gateway unreachable</StatusBadge>{/if}
-							{#if d.problems_count}
-								<StatusBadge level="bad" href="/problems?device={d.id}">{plural(d.problems_count, 'problem')}</StatusBadge>
-							{/if}
+							<StatusBadge level="idle">Off</StatusBadge>
 						{/if}
-						{#if d.has_own_schedule}<StatusBadge level="idle">Own schedule</StatusBadge>{/if}
 					</div>
 					<dl class="grid grid-cols-2 gap-3 text-sm">
 						<div>
-							<dt class="text-subtle text-xs">Archived</dt>
+							<dt class="text-subtle text-xs">Backed up</dt>
 							<dd class="flex flex-wrap gap-x-3 font-medium tabular-nums">
-								<span>{count(d.archived_count)} clips</span>
-								<span>{bytes(d.archived_bytes)}</span>
+								<span>{count(c.backed_up_clips)} clips</span>
+								<span>{bytes(c.backed_up_bytes)}</span>
 							</dd>
 						</div>
 						<div>
-							<dt class="text-subtle text-xs">Last run</dt>
+							<dt class="text-subtle text-xs">Last backup</dt>
 							<dd class="flex items-center gap-2">
-								{#if d.last_run}
-									<RunOutcome run={d.last_run} />
-									<span class="text-muted-foreground text-xs">{relative(d.last_run.finished_at)}</span>
+								{#if c.last_run}
+									<RunOutcome run={c.last_run} />
+									<span class="text-muted-foreground text-xs">{relative(c.last_run.finished_at)}</span>
 								{:else}
 									<span class="text-muted-foreground">None yet</span>
 								{/if}
 							</dd>
 						</div>
 					</dl>
-					{#if d.sd}
-						<div class="flex flex-col gap-1.5">
-							<div class="text-subtle flex justify-between text-xs">
-								<span>SD card</span>
-								<span class="tabular-nums">{gb(d.sd.used_gb)} / {gb(d.sd.total_gb)}</span>
-							</div>
-							<Meter
-								label="SD card: {gb(d.sd.archived_gb)} archived, {gb(d.sd.other_gb)} other, {gb(d.sd.free_gb)} free"
-								segments={[
-									{ value: (d.sd.archived_gb / d.sd.total_gb) * 100, class: 'fill-brand' },
-									{ value: (d.sd.other_gb / d.sd.total_gb) * 100, class: 'fill-idle' }
-								]}
-							/>
-							<Legend
-								items={[
-									{ label: `Archived ${gb(d.sd.archived_gb)}`, class: 'bg-brand' },
-									{ label: `Other ${gb(d.sd.other_gb)}`, class: 'bg-idle' },
-									{ label: `Free ${gb(d.sd.free_gb)}`, class: 'bg-muted-foreground/30' }
-								]}
-							/>
-						</div>
-					{/if}
 				</Card.Content>
 				<Card.Footer class="justify-end">
-					<Button variant="ghost" size="sm" onclick={() => (editingId = d.id)}>
+					<Button variant="ghost" size="sm" onclick={() => (editingAlias = c.alias)}>
 						<Pencil /> Edit
 					</Button>
 				</Card.Footer>
@@ -167,32 +131,32 @@
 	</div>
 {/if}
 
-<AlertDialog.Root open={confirmDisable !== null} onOpenChange={(o) => !o && (confirmDisable = null)}>
+<AlertDialog.Root open={confirmOff !== null} onOpenChange={(o) => !o && (confirmOff = null)}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
-			<AlertDialog.Title>Stop archiving {confirmDisable ? deviceLabel(confirmDisable) : ''}?</AlertDialog.Title>
+			<AlertDialog.Title>Stop backing up {confirmOff ? label(confirmOff) : ''}?</AlertDialog.Title>
 			<AlertDialog.Description>
-				Its scheduled runs stop. Everything already archived stays in the vault and stays playable,
-				and you can turn it back on any time.
+				Its backups stop. Everything already backed up stays in its repository and can still be
+				downloaded, and you can turn it back on any time.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Keep archiving</AlertDialog.Cancel>
+			<AlertDialog.Cancel>Keep backing up</AlertDialog.Cancel>
 			<AlertDialog.Action
 				onclick={() => {
-					if (confirmDisable) setEnabled(confirmDisable, false);
-					confirmDisable = null;
+					if (confirmOff) setEnabled(confirmOff, false);
+					confirmOff = null;
 				}}
 			>
-				Disable
+				Turn off
 			</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
 <EditCameraSheet
-	device={editing}
+	camera={editing}
 	writable={config.data?.writable ?? false}
-	onclose={() => (editingId = null)}
-	onsaved={(d) => (fleet.data = d)}
+	onclose={() => (editingAlias = null)}
+	onsaved={(c) => (cameras.data = c)}
 />

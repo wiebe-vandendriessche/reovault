@@ -3,60 +3,34 @@
 !!! note "Unofficial, independent project"
     ReoVault itself is not affiliated with, endorsed by, or sponsored by Reolink. "Reolink" and any related names, logos, or trademarks belong to their respective owners and are used here only to describe device compatibility. ReoVault talks to cameras through Reolink's own official [`reolink-cli`](https://github.com/reolink/reolink-cli) tool (published under the `reolink` GitHub organization), never a reimplementation of Reolink's protocol.
 
-Local-first, self-hosted archiving of Reolink camera recordings: pulls
-recordings off the camera's SD card before the loop-overwrite eats them,
-verifies them, encrypts them at rest, and stores them durably.
-
-Recordings stay on the camera's own storage day to day; ReoVault periodically
-pulls them onto your own storage, so you keep a durable, encrypted copy that
-doesn't depend on the SD card's limited retention.
+Self-hosted backups of Reolink SD cards. ReoVault copies every clip off each
+camera's SD card before the card's loop recording overwrites it, and keeps it
+in an encrypted [restic](https://restic.net/) backup on a disk or cloud
+account of your choice: a local drive, Nextcloud, OneDrive, S3 and anything
+else [rclone](https://rclone.org/) reaches.
 
 ## Why
 
-Reolink cameras record to a microSD card that loop-overwrites once it fills
-up. Without something pulling recordings off before that happens, older
-footage is gone permanently, with no local or durable archive of what the
-camera saw.
+Reolink cameras record to a microSD card that overwrites its oldest footage
+once it's full. Whatever happened a week ago is gone, and so is everything if
+the camera is stolen. ReoVault keeps a copy that outlives the card.
 
-## Core requirements
+## What it does
 
-* **Reliability**: network failures, interrupted downloads, camera
-  restarts, and process restarts are treated as normal conditions, never as
-  reasons to lose data already archived.
-* **Deduplication**: a recording already archived is never re-downloaded.
-* **Integrity verification**: archived files are periodically re-verified
-  (checksum + decrypt) so bit rot is caught while a copy still exists
-  elsewhere.
-* **Encrypted storage**: recordings are encrypted at rest with a
-  passphrase-wrapped master key.
-* **No silent failure**: alerts (ntfy, webhook, email) when a run fails,
-  recordings need attention, clips on a camera's SD card are at risk of
-  being overwritten before they're archived, or the camera gateway is down.
+* **Backs up continuously:** every hour by default, newest clips first, then
+  the oldest ones the card will overwrite next.
+* **Only restic stores your footage:** encrypted, deduplicated, verified,
+  with retention. You can restore it with plain restic, with or without
+  ReoVault: see [Restore without ReoVault](restore-without-reovault.md).
+* **Tells you when something's wrong:** ntfy, webhook or email alerts when
+  backups keep failing or clips are about to be overwritten before they're
+  backed up.
+* **A small dashboard:** is every card backed up, what's waiting, and a
+  calendar to download any backed-up clip or day.
+* **Light on your server:** only one 2 GB batch of clips is ever on local
+  disk.
 
-## Architecture at a glance
-
-Camera-specific behavior is isolated behind a provider/adapter boundary,
-today's implementation talks to cameras through
-[`reolink-cli`](https://github.com/reolink/reolink-cli), so adding another
-camera integration later doesn't touch the archiver, scheduler, storage, or
-dashboard. See [Architecture](architecture.md) for the full picture.
-
-## Screenshots
-
-<table>
-<tr>
-<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: the archive's disk (ReoVault's share, free space, room left, retention) and one tile per camera's SD card with its fill, a timeline of archived, waiting and failed clips, and a verdict" /></td>
-<td width="50%"><img src="img/screenshot-health.png" alt="Health, per camera: its SD card, its runs, today's footage, and manual runs" /></td>
-</tr>
-<tr>
-<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: month calendar with activity per day, clips grouped by hour, filterable by detection type, with export" /></td>
-<td width="50%"><img src="img/screenshot-devices.png" alt="Devices: every camera with its status, archive totals, last run and SD card usage" /></td>
-</tr>
-<tr>
-<td width="50%"><img src="img/screenshot-schedule.png" alt="Settings, Schedule: the default archive, deep catch-up, vault check and integrity-scan cadence for every camera" /></td>
-<td width="50%"><img src="img/screenshot-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and which conditions alert" /></td>
-</tr>
-</table>
+Playback stays in the Reolink app, for whatever is still on the card.
 
 ## Where to go next
 
@@ -65,6 +39,7 @@ dashboard. See [Architecture](architecture.md) for the full picture.
 * [Dashboard](dashboard.md): what each page shows and does
 * [Configuration](configuration.md): every `reovault.toml` / env var option
 * [CLI reference](cli-reference.md): every `reovault` subcommand
-* [Architecture](architecture.md): how the pieces fit together
+* [Restore without ReoVault](restore-without-reovault.md): plain restic recipes
+* [Architecture](architecture.md): how a backup run works
 * [Security](security.md): the encryption model and how to report a
   vulnerability

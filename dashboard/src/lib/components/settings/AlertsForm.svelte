@@ -72,11 +72,13 @@
 		}
 	}
 
-	const toggles: { key: keyof AlertRules; label: string; desc: string }[] = [
-		{ key: 'run_failed', label: 'An archive run fails', desc: 'Or is stopped before it finishes.' },
-		{ key: 'problems', label: 'Recordings need attention', desc: 'Failed or quarantined clips.' },
-		{ key: 'coverage', label: 'Clips at risk on an SD card', desc: 'The card is about to overwrite clips that aren\'t archived yet.' },
-		{ key: 'gateway_down', label: 'The camera gateway is down', desc: 'After the grace period below.' }
+	// What the server alerts on (reovault/runtime.py), for the reader.
+	const conditions = [
+		'Two backups of a camera in a row fail.',
+		'Clips waiting on an SD card are close to being overwritten.',
+		'Clips keep failing to download.',
+		'The weekly restic check finds errors.',
+		'The destination answers with no backups where there should be some.'
 	];
 </script>
 
@@ -123,7 +125,7 @@
 			<Card.Root>
 				<Card.Header><Card.Title>Open now</Card.Title></Card.Header>
 				<Card.Content class="flex flex-col gap-3">
-					{#each loaded.data.open as a (a.condition + a.device_id)}
+					{#each loaded.data.open as a (a.condition + (a.camera ?? ""))}
 						<div class="flex flex-col gap-0.5">
 							<span class="text-sm font-medium">{a.title}</span>
 							<span class="text-muted-foreground text-sm">{a.message}</span>
@@ -156,23 +158,13 @@
 							</Field.Content>
 						</Field.Field>
 						<fieldset disabled={!rules.enabled} class="flex flex-col gap-5 pl-12 disabled:opacity-60">
-							{#each toggles as t (t.key)}
-								<Field.Field orientation="horizontal">
-									<Switch id="al-{t.key}" bind:checked={rules[t.key] as boolean} />
-									<Field.Content>
-										<Field.Label for="al-{t.key}">{t.label}</Field.Label>
-										<Field.Description>{t.desc}</Field.Description>
-									</Field.Content>
-								</Field.Field>
-							{/each}
+							<div>
+								<p class="text-sm font-medium">An alert goes out when</p>
+								<ul class="text-muted-foreground mt-1 list-disc pl-5 text-sm">
+									{#each conditions as c (c)}<li>{c}</li>{/each}
+								</ul>
+							</div>
 							<div class="grid gap-4 sm:grid-cols-2">
-								<Field.Field>
-									<Field.Label for="al-grace">Gateway grace period</Field.Label>
-									<InputGroup.Root>
-										<InputGroup.Input id="al-grace" type="number" min="1" max="1440" bind:value={rules.gateway_down_minutes} />
-										<InputGroup.Addon align="inline-end">minutes</InputGroup.Addon>
-									</InputGroup.Root>
-								</Field.Field>
 								<Field.Field>
 									<Field.Label for="al-renotify">Remind every</Field.Label>
 									<InputGroup.Root>

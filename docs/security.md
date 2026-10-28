@@ -10,17 +10,21 @@ instead.
 
 ## Encryption model
 
-Recordings are encrypted at rest with AES-GCM under a single master key.
-The master key is itself wrapped by a passphrase you supply
-(`$REOVAULT_MASTER_PASSPHRASE` or a Docker secret file) and is never stored
-or logged in plaintext. See [Architecture](architecture.md#encryption-and-key-management)
-for the full model, including why the key file must live outside the vault
-directory.
+Backups are restic repositories, one per camera, encrypted by restic
+(AES-256 in counter mode with Poly1305 authentication; see restic's
+[design document](https://restic.readthedocs.io/en/stable/100_references.html#design)).
+The destination, whether a local disk or a cloud account, only ever sees
+encrypted data. The password comes from the `restic_password` Docker secret
+and is never stored in `reovault.toml`, the database or a log.
 
-**There is no recovery path if you lose both the key file and the
-passphrase.** Back up the key file (`reovault key backup`) somewhere other
-than your vault/backup destination, and keep the passphrase somewhere
-separate from both.
+**There is no recovery path without the restic password.** Keep a copy in
+your password manager, separate from the backups. With it, anyone can restore
+the footage using plain restic: see
+[Restore without ReoVault](restore-without-reovault.md).
+
+The batch waiting for upload on the server's local disk is plaintext video,
+like the SD card it came from, and is deleted as soon as restic confirms the
+upload.
 
 ## Credentials
 
@@ -40,16 +44,22 @@ read from files at send time and never stored in the database. A failed
 send logs only the error, never the URL, since a Slack or Discord webhook
 URL is itself the credential.
 
+`rclone.conf` holds your cloud logins (OAuth tokens, WebDAV passwords). It
+lives in `config/rclone/`, readable only inside the container. Error text
+from restic or rclone is scrubbed of `user:password@` in URLs before it
+reaches the dashboard or an alert.
+
 ## Dashboard and API
 
 * **Settings write the config file.** A logged-in user can change anything
   in `reovault.toml` that isn't infrastructure or env-set, and the change is
-  written to the file. Storage paths, the reolink-cli binary and the
+  written to the file. Storage paths, the tool binaries and the
   web bind, cookie, origin and proxy settings are never writable from the
-  browser, so a stolen session can't redirect the vault or loosen the login
+  browser, so a stolen session can't swap the tools or loosen the login
   protections. Secrets are never written either: alert channels hold *paths*
-  to secret files, and the master passphrase and camera passwords are not
-  config fields. Pin anything you want out of the dashboard's reach with an
+  to secret files, and the restic password and camera passwords are not
+  config fields. A logged-in user *can* change the backup destination, so
+  treat the dashboard login like the keys to your footage. Pin anything you want out of the dashboard's reach with an
   env var.
 * **Sessions:** a signed, `HttpOnly` cookie. Logout revokes sessions
   server-side by bumping a session epoch, so a copied cookie stops working
@@ -65,11 +75,9 @@ URL is itself the credential.
   supplies the same rules instead, so nothing is lost.
 * **Request size:** bodies over 64 KB get 413, and chunked request bodies
   (which carry no length to check) get 411.
-* **`/healthz`** is public and status-only for the Docker healthcheck;
-  `?verbose=1` adds gateway and coverage detail only for a logged-in
-  session.
-* **Exports** decrypt clips on the fly into a streamed zip, one export at a
-  time, capped at 31 days and 5000 clips per request.
+* **`/healthz`** is public and status-only, for the Docker healthcheck.
+* **Downloads** stream out of `restic dump`, one day-zip at a time, with no
+  temporary files.
 
 ## Deployment modes
 

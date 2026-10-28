@@ -9,8 +9,7 @@
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
-	import ScheduleForm from '#lib/components/settings/ScheduleForm.svelte';
-	import RetentionForm from '#lib/components/settings/RetentionForm.svelte';
+	import BackupForm from '#lib/components/settings/BackupForm.svelte';
 	import AlertsForm from '#lib/components/settings/AlertsForm.svelte';
 	import ConfigSection from '#lib/components/settings/ConfigSection.svelte';
 	import { toast } from 'svelte-sonner';
@@ -18,8 +17,8 @@
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Lock from '@lucide/svelte/icons/lock';
 
-	const tabs = ['schedule', 'retention', 'alerts', 'web', 'system'] as const;
-	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'schedule');
+	const tabs = ['backup', 'alerts', 'web', 'system'] as const;
+	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'backup');
 
 	// The whole of reovault.toml; refetched when the file changes, whoever
 	// changed it. Edits made to the file itself are announced.
@@ -53,7 +52,7 @@
 
 <PageHeader
 	title="Settings"
-	description="App-wide settings from reovault.toml: changes are written to the file, and edits to the file show up here. Per-camera settings live on Devices."
+	description="Settings from reovault.toml: changes are written to the file, and edits to the file show up here. Cameras have their own page."
 />
 
 {#if config.error}
@@ -93,23 +92,13 @@
 
 	<Tabs.Root value={tab} onValueChange={(v) => goto(`?tab=${v}`, { replace: true, reset: false })}>
 		<Tabs.List class="mb-4 flex-wrap">
-			<Tabs.Trigger value="schedule">Schedule</Tabs.Trigger>
-			<Tabs.Trigger value="retention">Retention</Tabs.Trigger>
+			<Tabs.Trigger value="backup">Backups</Tabs.Trigger>
 			<Tabs.Trigger value="alerts">Alerts</Tabs.Trigger>
 			<Tabs.Trigger value="web">Web</Tabs.Trigger>
 			<Tabs.Trigger value="system">System</Tabs.Trigger>
 		</Tabs.List>
 
-		<Tabs.Content value="schedule" class="flex flex-col gap-3">
-			<ScheduleForm device={null} label="all cameras" />
-			<p class="text-muted-foreground text-sm">
-				A camera can have a schedule of its own:
-				<a href="/devices" class="text-brand-text underline-offset-4 hover:underline">Devices</a>,
-				then Edit on that camera.
-			</p>
-		</Tabs.Content>
-
-		<Tabs.Content value="retention"><RetentionForm /></Tabs.Content>
+		<Tabs.Content value="backup"><BackupForm config={c} {onsaved} /></Tabs.Content>
 
 		<Tabs.Content value="alerts" class="flex flex-col gap-4">
 			<AlertsForm />
@@ -130,7 +119,7 @@
 				path={['web']}
 				section="web"
 				title="Web"
-				description="Session length, login limits and paging apply right away. Locked fields can lock you out, so they change in reovault.toml only."
+				description="Session length and login limits apply right away. Locked fields can lock you out, so they change in reovault.toml only."
 				{onsaved}
 			/>
 		</Tabs.Content>
@@ -140,14 +129,14 @@
 				config={c}
 				path={['storage']}
 				title="Storage"
-				description="Where ReoVault keeps its database, key and vault. Change these in reovault.toml, then restart."
+				description="Where ReoVault keeps its database and the batch waiting for upload. Change these in reovault.toml, then restart."
 				{onsaved}
 			/>
 			<ConfigSection
 				config={c}
-				path={['reolink_cli']}
-				title="reolink-cli"
-				description="The camera tool and its gateway. Change these in reovault.toml, then restart."
+				path={['tools']}
+				title="Tools"
+				description="The pinned reolink-cli, restic and rclone this release was verified with. Change these in reovault.toml, then restart."
 				{onsaved}
 			/>
 			<p class="text-subtle text-xs">Config file: <span class="font-mono">{c.path ?? 'none'}</span></p>

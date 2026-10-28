@@ -1,126 +1,63 @@
 {
   "components": {
     "schemas": {
-      "ActivityEventOut": {
+      "ActivityOut": {
         "properties": {
-          "at": {
-            "format": "date-time",
-            "title": "At",
+          "failing": {
+            "items": {
+              "$ref": "#/components/schemas/ClipOut"
+            },
+            "title": "Failing",
+            "type": "array"
+          },
+          "lost": {
+            "items": {
+              "$ref": "#/components/schemas/ClipOut"
+            },
+            "title": "Lost",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "failing",
+          "lost"
+        ],
+        "title": "ActivityOut",
+        "type": "object"
+      },
+      "AddCameraIn": {
+        "properties": {
+          "alias": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+            "title": "Alias",
             "type": "string"
           },
-          "detail": {
+          "demo": {
+            "default": false,
+            "title": "Demo",
+            "type": "boolean"
+          },
+          "host": {
             "anyOf": [
               {
+                "maxLength": 255,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Detail"
-          },
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "at",
-          "job_id",
-          "kind",
-          "detail"
-        ],
-        "title": "ActivityEventOut",
-        "type": "object"
-      },
-      "ActivityOut": {
-        "properties": {
-          "default_from": {
-            "title": "Default From",
-            "type": "string"
-          },
-          "default_to": {
-            "title": "Default To",
-            "type": "string"
-          },
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/ActivityEventOut"
-            },
-            "title": "Events",
-            "type": "array"
-          },
-          "max_backfill_days": {
-            "title": "Max Backfill Days",
-            "type": "integer"
-          },
-          "queued": {
-            "title": "Queued",
-            "type": "integer"
-          },
-          "running": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "scheduler_available": {
-            "title": "Scheduler Available",
-            "type": "boolean"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "running",
-          "queued",
-          "events",
-          "scheduler_available",
-          "timezone",
-          "default_from",
-          "default_to",
-          "max_backfill_days"
-        ],
-        "title": "ActivityOut",
-        "type": "object"
-      },
-      "AddDeviceIn": {
-        "description": "Password is `SecretStr` so an accidental `repr()` anywhere, including\na structlog kwarg, renders `**********` instead of the plaintext.",
-        "properties": {
-          "alias": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Alias",
-            "type": "string"
-          },
-          "channel": {
-            "anyOf": [
-              {
-                "maximum": 255.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channel"
-          },
-          "host": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Host",
-            "type": "string"
+            "title": "Host"
           },
           "name": {
             "anyOf": [
@@ -135,69 +72,53 @@
             "title": "Name"
           },
           "password": {
-            "format": "password",
-            "maxLength": 1024,
-            "minLength": 1,
-            "title": "Password",
-            "type": "string",
-            "writeOnly": true
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 256,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           },
           "timezone": {
-            "maxLength": 64,
-            "minLength": 1,
             "title": "Timezone",
             "type": "string"
           },
           "user": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "User",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
           }
         },
         "required": [
           "alias",
-          "host",
-          "user",
-          "password",
           "timezone"
         ],
-        "title": "AddDeviceIn",
+        "title": "AddCameraIn",
         "type": "object"
       },
       "AlertRules": {
-        "description": "What to alert on. Seeded from `[alerts.rules]` and editable from the\ndashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same\nscheme as retention).",
         "properties": {
-          "coverage": {
-            "default": true,
-            "title": "Coverage",
-            "type": "boolean"
-          },
           "enabled": {
             "default": true,
             "title": "Enabled",
             "type": "boolean"
           },
-          "gateway_down": {
-            "default": true,
-            "title": "Gateway Down",
-            "type": "boolean"
-          },
-          "gateway_down_minutes": {
-            "default": 15,
-            "maximum": 1440.0,
-            "minimum": 1.0,
-            "title": "Gateway Down Minutes",
-            "type": "integer"
-          },
           "notify_on_resolve": {
             "default": true,
             "title": "Notify On Resolve",
-            "type": "boolean"
-          },
-          "problems": {
-            "default": true,
-            "title": "Problems",
             "type": "boolean"
           },
           "renotify_hours": {
@@ -206,11 +127,6 @@
             "minimum": 1.0,
             "title": "Renotify Hours",
             "type": "integer"
-          },
-          "run_failed": {
-            "default": true,
-            "title": "Run Failed",
-            "type": "boolean"
           }
         },
         "title": "AlertRules",
@@ -249,82 +165,31 @@
         "title": "AlertsOut",
         "type": "object"
       },
-      "BackfillIn": {
-        "properties": {
-          "from_local": {
-            "title": "From Local",
-            "type": "string"
-          },
-          "to_local": {
-            "title": "To Local",
-            "type": "string"
-          }
-        },
-        "required": [
-          "from_local",
-          "to_local"
-        ],
-        "title": "BackfillIn",
-        "type": "object"
-      },
-      "BannerOut": {
-        "properties": {
-          "level": {
-            "enum": [
-              "warn",
-              "bad"
-            ],
-            "title": "Level",
-            "type": "string"
-          },
-          "link": {
-            "anyOf": [
-              {
-                "const": "problems",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Link"
-          },
-          "text": {
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "level",
-          "text"
-        ],
-        "title": "BannerOut",
-        "type": "object"
-      },
       "CalendarDayOut": {
         "properties": {
-          "count": {
-            "title": "Count",
+          "backed_up": {
+            "title": "Backed Up",
             "type": "integer"
           },
-          "date": {
-            "title": "Date",
+          "day": {
+            "format": "date",
+            "title": "Day",
             "type": "string"
           },
-          "density": {
-            "title": "Density",
+          "lost": {
+            "title": "Lost",
             "type": "integer"
           },
-          "problems": {
-            "title": "Problems",
+          "pending": {
+            "title": "Pending",
             "type": "integer"
           }
         },
         "required": [
-          "date",
-          "count",
-          "problems",
-          "density"
+          "day",
+          "backed_up",
+          "pending",
+          "lost"
         ],
         "title": "CalendarDayOut",
         "type": "object"
@@ -343,6 +208,7 @@
             "type": "string"
           },
           "today": {
+            "format": "date",
             "title": "Today",
             "type": "string"
           }
@@ -355,68 +221,68 @@
         "title": "CalendarOut",
         "type": "object"
       },
-      "CameraScheduleBody": {
+      "CameraOut": {
         "properties": {
-          "archive_enabled": {
-            "title": "Archive Enabled",
-            "type": "boolean"
-          },
-          "archive_overlap_hours": {
-            "maximum": 720.0,
-            "minimum": 1.0,
-            "title": "Archive Overlap Hours",
-            "type": "integer"
-          },
-          "archive_time": {
-            "title": "Archive Time",
+          "alias": {
+            "title": "Alias",
             "type": "string"
           },
-          "backfill_days": {
-            "maximum": 3650.0,
-            "minimum": 1.0,
-            "title": "Backfill Days",
+          "backed_up_bytes": {
+            "title": "Backed Up Bytes",
             "type": "integer"
           },
-          "backfill_dow": {
-            "maximum": 6.0,
-            "minimum": 0.0,
-            "title": "Backfill Dow",
+          "backed_up_clips": {
+            "title": "Backed Up Clips",
             "type": "integer"
           },
-          "backfill_enabled": {
-            "title": "Backfill Enabled",
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "demo": {
+            "title": "Demo",
             "type": "boolean"
           },
-          "backfill_time": {
-            "title": "Backfill Time",
-            "type": "string"
-          },
-          "inherit": {
-            "default": false,
-            "title": "Inherit",
+          "enabled": {
+            "title": "Enabled",
             "type": "boolean"
           },
-          "integrity_scan_enabled": {
-            "title": "Integrity Scan Enabled",
-            "type": "boolean"
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
           },
-          "integrity_scan_sample_pct": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 100.0,
-            "title": "Integrity Scan Sample Pct",
-            "type": "number"
-          },
-          "reconcile_enabled": {
-            "title": "Reconcile Enabled",
-            "type": "boolean"
-          },
-          "reconcile_interval_hours": {
-            "maximum": 168.0,
-            "minimum": 1.0,
-            "title": "Reconcile Interval Hours",
+          "failing_clips": {
+            "title": "Failing Clips",
             "type": "integer"
           },
-          "timezone": {
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lost_7d": {
+            "title": "Lost 7D",
+            "type": "integer"
+          },
+          "name": {
             "anyOf": [
               {
                 "type": "string"
@@ -425,45 +291,105 @@
                 "type": "null"
               }
             ],
-            "title": "Timezone"
+            "title": "Name"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "oldest_on_card_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest On Card Utc"
+          },
+          "oldest_pending_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Pending Utc"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "pending_bytes": {
+            "title": "Pending Bytes",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "up_to_date",
+              "catching_up",
+              "at_risk",
+              "failing",
+              "not_mounted",
+              "unknown"
+            ],
+            "title": "Verdict",
+            "type": "string"
           }
         },
         "required": [
-          "archive_enabled",
-          "archive_time",
-          "archive_overlap_hours",
-          "backfill_enabled",
-          "backfill_dow",
-          "backfill_time",
-          "backfill_days",
-          "reconcile_enabled",
-          "reconcile_interval_hours",
-          "integrity_scan_enabled",
-          "integrity_scan_sample_pct"
+          "alias",
+          "name",
+          "timezone",
+          "enabled",
+          "demo",
+          "verdict",
+          "text",
+          "pending",
+          "pending_bytes",
+          "eta_seconds",
+          "oldest_pending_utc",
+          "oldest_on_card_utc",
+          "card",
+          "lost_7d",
+          "failing_clips",
+          "backed_up_clips",
+          "backed_up_bytes",
+          "running",
+          "next_run_at",
+          "last_run"
         ],
-        "title": "CameraScheduleBody",
+        "title": "CameraOut",
         "type": "object"
       },
       "CardOut": {
-        "description": "One camera's SD card, as `health.card_status` sees it, plus clip\ncounts across the card's window for the timeline strip.",
         "properties": {
-          "lost_count": {
-            "title": "Lost Count",
-            "type": "integer"
-          },
-          "oldest_waiting_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Oldest Waiting Utc"
-          },
-          "safe_for_seconds": {
+          "free_gb": {
             "anyOf": [
               {
                 "type": "number"
@@ -472,27 +398,20 @@
                 "type": "null"
               }
             ],
-            "title": "Safe For Seconds"
+            "title": "Free Gb"
           },
-          "state": {
-            "enum": [
-              "not_mounted",
-              "at_risk",
-              "waiting",
-              "all_archived",
-              "unknown"
+          "mounted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "State",
-            "type": "string"
+            "title": "Mounted"
           },
-          "timeline": {
-            "items": {
-              "$ref": "#/components/schemas/TimelineBucketOut"
-            },
-            "title": "Timeline",
-            "type": "array"
-          },
-          "used_fraction": {
+          "total_gb": {
             "anyOf": [
               {
                 "type": "number"
@@ -501,39 +420,13 @@
                 "type": "null"
               }
             ],
-            "title": "Used Fraction"
-          },
-          "waiting_count": {
-            "title": "Waiting Count",
-            "type": "integer"
-          },
-          "window_estimated": {
-            "title": "Window Estimated",
-            "type": "boolean"
-          },
-          "window_start_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Window Start Utc"
+            "title": "Total Gb"
           }
         },
         "required": [
-          "state",
-          "waiting_count",
-          "lost_count",
-          "oldest_waiting_utc",
-          "window_start_utc",
-          "window_estimated",
-          "safe_for_seconds",
-          "used_fraction",
-          "timeline"
+          "total_gb",
+          "free_gb",
+          "mounted"
         ],
         "title": "CardOut",
         "type": "object"
@@ -554,6 +447,94 @@
           "configured"
         ],
         "title": "ChannelOut",
+        "type": "object"
+      },
+      "ClipOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "camera": {
+            "title": "Camera",
+            "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rec_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rec Type"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "camera",
+          "name",
+          "start",
+          "end",
+          "size",
+          "rec_type",
+          "state",
+          "attempts",
+          "last_error"
+        ],
+        "title": "ClipOut",
         "type": "object"
       },
       "ConfigOut": {
@@ -633,53 +614,11 @@
         "title": "ConfigUpdateIn",
         "type": "object"
       },
-      "ConfirmOut": {
-        "properties": {
-          "bytes": {
-            "title": "Bytes",
-            "type": "integer"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "token": {
-            "title": "Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "count",
-          "bytes",
-          "token"
-        ],
-        "title": "ConfirmOut",
-        "type": "object"
-      },
-      "CountOut": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "count"
-        ],
-        "title": "CountOut",
-        "type": "object"
-      },
       "DayOut": {
         "properties": {
-          "available_types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Available Types",
-            "type": "array"
-          },
-          "date": {
-            "title": "Date",
+          "day": {
+            "format": "date",
+            "title": "Day",
             "type": "string"
           },
           "hours": {
@@ -689,240 +628,91 @@
             "title": "Hours",
             "type": "array"
           },
-          "latest": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest"
-          },
           "today": {
+            "format": "date",
             "title": "Today",
             "type": "string"
           },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          },
-          "total_bytes": {
-            "title": "Total Bytes",
-            "type": "integer"
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
           }
         },
         "required": [
-          "date",
+          "day",
           "today",
-          "total",
-          "total_bytes",
-          "hours",
-          "available_types",
-          "latest"
+          "types",
+          "hours"
         ],
         "title": "DayOut",
         "type": "object"
       },
-      "DeviceOut": {
+      "DestinationCameraOut": {
         "properties": {
-          "alias": {
-            "title": "Alias",
+          "camera": {
+            "title": "Camera",
             "type": "string"
           },
-          "archived_bytes": {
-            "title": "Archived Bytes",
-            "type": "integer"
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           },
-          "archived_count": {
-            "title": "Archived Count",
-            "type": "integer"
-          },
-          "card_state": {
+          "state": {
             "enum": [
-              "not_mounted",
-              "at_risk",
-              "waiting",
-              "all_archived",
-              "unknown"
+              "ok",
+              "missing",
+              "wrong_password",
+              "error"
             ],
-            "title": "Card State",
+            "title": "State",
             "type": "string"
-          },
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "gateway_down": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gateway Down"
-          },
-          "has_own_schedule": {
-            "title": "Has Own Schedule",
-            "type": "boolean"
-          },
-          "host": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Host"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "last_run": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "problems_count": {
-            "title": "Problems Count",
-            "type": "integer"
-          },
-          "safe_for_seconds": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Safe For Seconds"
-          },
-          "sample": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StorageSampleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "sd": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SdBarOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          },
-          "waiting_count": {
-            "title": "Waiting Count",
-            "type": "integer"
           }
         },
         "required": [
-          "id",
-          "alias",
-          "host",
-          "model",
-          "name",
-          "timezone",
-          "enabled",
-          "archived_count",
-          "archived_bytes",
-          "sample",
-          "sd",
-          "last_run",
-          "gateway_down",
-          "has_own_schedule",
-          "card_state",
-          "waiting_count",
-          "safe_for_seconds",
-          "problems_count"
+          "camera",
+          "state"
         ],
-        "title": "DeviceOut",
+        "title": "DestinationCameraOut",
         "type": "object"
       },
-      "DeviceSettingsIn": {
-        "description": "The editable part of a camera's `[[devices]]` entry. Alias and channel\nare its identity (reolink-cli's and the database's), so not editable.",
+      "DestinationIn": {
         "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "timezone": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Timezone",
+          "repository": {
+            "title": "Repository",
             "type": "string"
           }
         },
         "required": [
-          "timezone"
+          "repository"
         ],
-        "title": "DeviceSettingsIn",
+        "title": "DestinationIn",
         "type": "object"
       },
-      "DeviceSummaryOut": {
-        "description": "The navbar device switcher's row: cheap, no camera calls.",
+      "DestinationOut": {
         "properties": {
-          "alias": {
-            "title": "Alias",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
+          "bytes": {
+            "title": "Bytes",
             "type": "integer"
           },
-          "name": {
+          "clips": {
+            "title": "Clips",
+            "type": "integer"
+          },
+          "keep_days": {
+            "title": "Keep Days",
+            "type": "integer"
+          },
+          "repository": {
             "anyOf": [
               {
                 "type": "string"
@@ -931,46 +721,16 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
-          },
-          "problems": {
-            "title": "Problems",
-            "type": "integer"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
+            "title": "Repository"
           }
         },
         "required": [
-          "id",
-          "alias",
-          "name",
-          "timezone",
-          "problems"
+          "repository",
+          "keep_days",
+          "clips",
+          "bytes"
         ],
-        "title": "DeviceSummaryOut",
-        "type": "object"
-      },
-      "DevicesOut": {
-        "properties": {
-          "devices": {
-            "items": {
-              "$ref": "#/components/schemas/DeviceOut"
-            },
-            "title": "Devices",
-            "type": "array"
-          },
-          "registry_available": {
-            "title": "Registry Available",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "devices",
-          "registry_available"
-        ],
-        "title": "DevicesOut",
+        "title": "DestinationOut",
         "type": "object"
       },
       "DiscoveredOut": {
@@ -983,17 +743,6 @@
             "title": "Host",
             "type": "string"
           },
-          "mac": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mac"
-          },
           "model": {
             "anyOf": [
               {
@@ -1015,17 +764,6 @@
               }
             ],
             "title": "Name"
-          },
-          "protocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocol"
           },
           "uid": {
             "anyOf": [
@@ -1042,8 +780,6 @@
         "required": [
           "host",
           "uid",
-          "mac",
-          "protocol",
           "model",
           "name",
           "already_registered"
@@ -1051,35 +787,34 @@
         "title": "DiscoveredOut",
         "type": "object"
       },
-      "EnabledIn": {
+      "EditCameraIn": {
         "properties": {
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
           }
         },
         "required": [
+          "timezone",
           "enabled"
         ],
-        "title": "EnabledIn",
-        "type": "object"
-      },
-      "ExportPreviewOut": {
-        "properties": {
-          "bytes": {
-            "title": "Bytes",
-            "type": "integer"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "count",
-          "bytes"
-        ],
-        "title": "ExportPreviewOut",
+        "title": "EditCameraIn",
         "type": "object"
       },
       "FieldOut": {
@@ -1148,155 +883,6 @@
         "title": "FieldOut",
         "type": "object"
       },
-      "FleetCardOut": {
-        "properties": {
-          "alias": {
-            "title": "Alias",
-            "type": "string"
-          },
-          "card": {
-            "$ref": "#/components/schemas/CardOut"
-          },
-          "device_id": {
-            "title": "Device Id",
-            "type": "integer"
-          },
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "gateway_down": {
-            "title": "Gateway Down",
-            "type": "boolean"
-          },
-          "last_run": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "next_archive_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Archive Utc"
-          },
-          "problems_count": {
-            "title": "Problems Count",
-            "type": "integer"
-          },
-          "running": {
-            "title": "Running",
-            "type": "boolean"
-          },
-          "sample": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StorageSampleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "device_id",
-          "alias",
-          "name",
-          "enabled",
-          "card",
-          "sample",
-          "running",
-          "last_run",
-          "next_archive_utc",
-          "gateway_down",
-          "problems_count"
-        ],
-        "title": "FleetCardOut",
-        "type": "object"
-      },
-      "GrowthDayOut": {
-        "properties": {
-          "bytes": {
-            "title": "Bytes",
-            "type": "integer"
-          },
-          "clips": {
-            "title": "Clips",
-            "type": "integer"
-          },
-          "day": {
-            "title": "Day",
-            "type": "string"
-          }
-        },
-        "required": [
-          "day",
-          "bytes",
-          "clips"
-        ],
-        "title": "GrowthDayOut",
-        "type": "object"
-      },
-      "GrowthOut": {
-        "description": "One camera's archived footage over the last N local days, by the day\nit was *recorded* (not the day a run fetched it, so a backfill doesn't\npile a week into one bar). The vault's disk lives on `/overview`.",
-        "properties": {
-          "avg_per_day": {
-            "title": "Avg Per Day",
-            "type": "number"
-          },
-          "days": {
-            "items": {
-              "$ref": "#/components/schemas/GrowthDayOut"
-            },
-            "title": "Days",
-            "type": "array"
-          },
-          "total_bytes": {
-            "title": "Total Bytes",
-            "type": "integer"
-          },
-          "total_clips": {
-            "title": "Total Clips",
-            "type": "integer"
-          },
-          "yearly_projection": {
-            "title": "Yearly Projection",
-            "type": "number"
-          }
-        },
-        "required": [
-          "days",
-          "total_bytes",
-          "total_clips",
-          "avg_per_day",
-          "yearly_projection"
-        ],
-        "title": "GrowthOut",
-        "type": "object"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1310,164 +896,53 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "HealthOut": {
+      "HourOut": {
         "properties": {
-          "banner": {
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/ClipOut"
+            },
+            "title": "Clips",
+            "type": "array"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hour",
+          "clips"
+        ],
+        "title": "HourOut",
+        "type": "object"
+      },
+      "IssueOut": {
+        "properties": {
+          "camera": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/BannerOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "card": {
-            "$ref": "#/components/schemas/CardOut"
-          },
-          "gateway_down": {
-            "title": "Gateway Down",
-            "type": "boolean"
-          },
-          "last_run": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "next_archive_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Next Archive Utc"
+            "title": "Camera"
           },
-          "problems_count": {
-            "title": "Problems Count",
-            "type": "integer"
-          },
-          "running": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RunOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "sample": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StorageSampleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "enum": [
-              "ok",
-              "warn",
-              "bad",
-              "idle"
-            ],
-            "title": "Status",
+          "message": {
+            "title": "Message",
             "type": "string"
           },
-          "today": {
-            "$ref": "#/components/schemas/TodayOut"
-          }
-        },
-        "required": [
-          "status",
-          "running",
-          "last_run",
-          "next_archive_utc",
-          "card",
-          "sample",
-          "gateway_down",
-          "problems_count",
-          "banner",
-          "today"
-        ],
-        "title": "HealthOut",
-        "type": "object"
-      },
-      "HourOut": {
-        "properties": {
-          "bytes": {
-            "title": "Bytes",
-            "type": "integer"
-          },
-          "hour": {
-            "title": "Hour",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "hour",
-          "total",
-          "bytes"
-        ],
-        "title": "HourOut",
-        "type": "object"
-      },
-      "IssueOut": {
-        "description": "One open condition on one camera, for the Overview's \"needs\nattention\" list. `link` is the page that resolves it.",
-        "properties": {
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id"
-          },
-          "level": {
-            "enum": [
-              "warn",
-              "bad"
-            ],
-            "title": "Level",
-            "type": "string"
-          },
-          "link": {
-            "enum": [
-              "problems",
-              "health",
-              "settings"
-            ],
-            "title": "Link",
-            "type": "string"
-          },
-          "text": {
-            "title": "Text",
+          "title": {
+            "title": "Title",
             "type": "string"
           }
         },
         "required": [
-          "device_id",
-          "level",
-          "text",
-          "link"
+          "camera",
+          "title",
+          "message"
         ],
         "title": "IssueOut",
         "type": "object"
@@ -1492,62 +967,22 @@
         "title": "LoginIn",
         "type": "object"
       },
-      "LostOut": {
-        "description": "Undismissed clips the card overwrote before they were archived.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "first_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Utc"
-          },
-          "last_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Utc"
-          }
-        },
-        "required": [
-          "count",
-          "first_utc",
-          "last_utc"
-        ],
-        "title": "LostOut",
-        "type": "object"
-      },
       "OpenAlertOut": {
         "properties": {
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
           "condition": {
             "title": "Condition",
             "type": "string"
-          },
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id"
           },
           "first_seen_at": {
             "format": "date-time",
@@ -1577,7 +1012,7 @@
         },
         "required": [
           "condition",
-          "device_id",
+          "camera",
           "title",
           "message",
           "first_seen_at",
@@ -1588,12 +1023,15 @@
       },
       "OverviewOut": {
         "properties": {
-          "cards": {
+          "cameras": {
             "items": {
-              "$ref": "#/components/schemas/FleetCardOut"
+              "$ref": "#/components/schemas/CameraOut"
             },
-            "title": "Cards",
+            "title": "Cameras",
             "type": "array"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/DestinationOut"
           },
           "issues": {
             "items": {
@@ -1601,402 +1039,46 @@
             },
             "title": "Issues",
             "type": "array"
-          },
-          "vault": {
-            "$ref": "#/components/schemas/VaultOut"
           }
         },
         "required": [
           "issues",
-          "vault",
-          "cards"
+          "cameras",
+          "destination"
         ],
         "title": "OverviewOut",
         "type": "object"
       },
-      "Page_RecordingOut_": {
+      "RetentionPreviewOut": {
         "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/RecordingOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next"
-          }
-        },
-        "required": [
-          "items",
-          "next"
-        ],
-        "title": "Page[RecordingOut]",
-        "type": "object"
-      },
-      "RecordingOut": {
-        "properties": {
-          "archived_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archived At"
-          },
-          "attempts": {
-            "title": "Attempts",
+          "bytes": {
+            "title": "Bytes",
             "type": "integer"
           },
-          "ciphertext_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ciphertext Size"
-          },
-          "device_id": {
-            "title": "Device Id",
-            "type": "integer"
-          },
-          "duration_s": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration S"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "last_error_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error Class"
-          },
-          "last_error_class_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error Class Text"
-          },
-          "last_error_detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error Detail"
-          },
-          "local_datetime": {
-            "title": "Local Datetime",
-            "type": "string"
-          },
-          "local_time": {
-            "title": "Local Time",
-            "type": "string"
-          },
-          "next_attempt_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Attempt At"
-          },
-          "plaintext_sha256": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plaintext Sha256"
-          },
-          "plaintext_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plaintext Size"
-          },
-          "remote_name": {
-            "title": "Remote Name",
-            "type": "string"
-          },
-          "remote_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Remote Size"
-          },
-          "start_utc": {
-            "format": "date-time",
-            "title": "Start Utc",
-            "type": "string"
-          },
-          "state": {
-            "title": "State",
-            "type": "string"
-          },
-          "types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Types",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "device_id",
-          "remote_name",
-          "start_utc",
-          "local_time",
-          "local_datetime",
-          "duration_s",
-          "types",
-          "state",
-          "plaintext_size",
-          "ciphertext_size",
-          "remote_size",
-          "plaintext_sha256",
-          "archived_at",
-          "attempts",
-          "next_attempt_at",
-          "last_error",
-          "last_error_class",
-          "last_error_class_text",
-          "last_error_detail"
-        ],
-        "title": "RecordingOut",
-        "type": "object"
-      },
-      "RetentionBody": {
-        "properties": {
-          "confirm": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirm"
-          },
-          "max_age_days": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Age Days"
-          },
-          "max_vault_gb": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Vault Gb"
-          }
-        },
-        "title": "RetentionBody",
-        "type": "object"
-      },
-      "RetentionOut": {
-        "properties": {
-          "env_pinned": {
-            "title": "Env Pinned",
-            "type": "boolean"
-          },
-          "max_age_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Age Days"
-          },
-          "max_vault_gb": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Vault Gb"
-          },
-          "vault_used_bytes": {
-            "title": "Vault Used Bytes",
+          "clips": {
+            "title": "Clips",
             "type": "integer"
           }
         },
         "required": [
-          "max_age_days",
-          "max_vault_gb",
-          "env_pinned",
-          "vault_used_bytes"
+          "clips",
+          "bytes"
         ],
-        "title": "RetentionOut",
-        "type": "object"
-      },
-      "RetentionSaveOut": {
-        "properties": {
-          "confirm": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfirmOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "retention": {
-            "$ref": "#/components/schemas/RetentionOut"
-          },
-          "saved": {
-            "title": "Saved",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "saved",
-          "confirm",
-          "retention"
-        ],
-        "title": "RetentionSaveOut",
-        "type": "object"
-      },
-      "RetriedOut": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "count"
-        ],
-        "title": "RetriedOut",
-        "type": "object"
-      },
-      "RunDetailOut": {
-        "properties": {
-          "run": {
-            "$ref": "#/components/schemas/RunOut"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run",
-          "timezone"
-        ],
-        "title": "RunDetailOut",
+        "title": "RetentionPreviewOut",
         "type": "object"
       },
       "RunOut": {
         "properties": {
-          "bytes_archived": {
-            "title": "Bytes Archived",
+          "bytes": {
+            "title": "Bytes",
             "type": "integer"
           },
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id"
+          "camera": {
+            "title": "Camera",
+            "type": "string"
           },
-          "discovered": {
-            "title": "Discovered",
-            "type": "integer"
-          },
-          "downloaded": {
-            "title": "Downloaded",
+          "clips": {
+            "title": "Clips",
             "type": "integer"
           },
           "error": {
@@ -2009,10 +1091,6 @@
               }
             ],
             "title": "Error"
-          },
-          "failed": {
-            "title": "Failed",
-            "type": "integer"
           },
           "finished_at": {
             "anyOf": [
@@ -2030,6 +1108,10 @@
             "title": "Id",
             "type": "integer"
           },
+          "lost": {
+            "title": "Lost",
+            "type": "integer"
+          },
           "outcome": {
             "anyOf": [
               {
@@ -2041,10 +1123,6 @@
             ],
             "title": "Outcome"
           },
-          "skipped_dup": {
-            "title": "Skipped Dup",
-            "type": "integer"
-          },
           "started_at": {
             "format": "date-time",
             "title": "Started At",
@@ -2053,333 +1131,21 @@
           "trigger": {
             "title": "Trigger",
             "type": "string"
-          },
-          "window_from_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Window From Utc"
-          },
-          "window_to_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Window To Utc"
           }
         },
         "required": [
           "id",
-          "device_id",
+          "camera",
           "trigger",
-          "window_from_utc",
-          "window_to_utc",
           "started_at",
           "finished_at",
           "outcome",
-          "discovered",
-          "downloaded",
-          "skipped_dup",
-          "failed",
-          "bytes_archived",
+          "clips",
+          "bytes",
+          "lost",
           "error"
         ],
         "title": "RunOut",
-        "type": "object"
-      },
-      "RunsOut": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/RunOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next"
-          },
-          "scheduled": {
-            "items": {
-              "$ref": "#/components/schemas/ScheduledRunOut"
-            },
-            "title": "Scheduled",
-            "type": "array"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "items",
-          "next",
-          "scheduled",
-          "timezone"
-        ],
-        "title": "RunsOut",
-        "type": "object"
-      },
-      "ScheduleBody": {
-        "properties": {
-          "archive_enabled": {
-            "title": "Archive Enabled",
-            "type": "boolean"
-          },
-          "archive_overlap_hours": {
-            "maximum": 720.0,
-            "minimum": 1.0,
-            "title": "Archive Overlap Hours",
-            "type": "integer"
-          },
-          "archive_time": {
-            "title": "Archive Time",
-            "type": "string"
-          },
-          "backfill_days": {
-            "maximum": 3650.0,
-            "minimum": 1.0,
-            "title": "Backfill Days",
-            "type": "integer"
-          },
-          "backfill_dow": {
-            "maximum": 6.0,
-            "minimum": 0.0,
-            "title": "Backfill Dow",
-            "type": "integer"
-          },
-          "backfill_enabled": {
-            "title": "Backfill Enabled",
-            "type": "boolean"
-          },
-          "backfill_time": {
-            "title": "Backfill Time",
-            "type": "string"
-          },
-          "integrity_scan_enabled": {
-            "title": "Integrity Scan Enabled",
-            "type": "boolean"
-          },
-          "integrity_scan_sample_pct": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 100.0,
-            "title": "Integrity Scan Sample Pct",
-            "type": "number"
-          },
-          "reconcile_enabled": {
-            "title": "Reconcile Enabled",
-            "type": "boolean"
-          },
-          "reconcile_interval_hours": {
-            "maximum": 168.0,
-            "minimum": 1.0,
-            "title": "Reconcile Interval Hours",
-            "type": "integer"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone"
-          }
-        },
-        "required": [
-          "archive_enabled",
-          "archive_time",
-          "archive_overlap_hours",
-          "backfill_enabled",
-          "backfill_dow",
-          "backfill_time",
-          "backfill_days",
-          "reconcile_enabled",
-          "reconcile_interval_hours",
-          "integrity_scan_enabled",
-          "integrity_scan_sample_pct"
-        ],
-        "title": "ScheduleBody",
-        "type": "object"
-      },
-      "ScheduleOut": {
-        "properties": {
-          "archive_enabled": {
-            "title": "Archive Enabled",
-            "type": "boolean"
-          },
-          "archive_overlap_hours": {
-            "maximum": 720.0,
-            "minimum": 1.0,
-            "title": "Archive Overlap Hours",
-            "type": "integer"
-          },
-          "archive_time": {
-            "title": "Archive Time",
-            "type": "string"
-          },
-          "backfill_days": {
-            "maximum": 3650.0,
-            "minimum": 1.0,
-            "title": "Backfill Days",
-            "type": "integer"
-          },
-          "backfill_dow": {
-            "maximum": 6.0,
-            "minimum": 0.0,
-            "title": "Backfill Dow",
-            "type": "integer"
-          },
-          "backfill_enabled": {
-            "title": "Backfill Enabled",
-            "type": "boolean"
-          },
-          "backfill_time": {
-            "title": "Backfill Time",
-            "type": "string"
-          },
-          "env_pinned": {
-            "title": "Env Pinned",
-            "type": "boolean"
-          },
-          "inherits": {
-            "default": true,
-            "title": "Inherits",
-            "type": "boolean"
-          },
-          "integrity_scan_enabled": {
-            "title": "Integrity Scan Enabled",
-            "type": "boolean"
-          },
-          "integrity_scan_sample_pct": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 100.0,
-            "title": "Integrity Scan Sample Pct",
-            "type": "number"
-          },
-          "reconcile_enabled": {
-            "title": "Reconcile Enabled",
-            "type": "boolean"
-          },
-          "reconcile_interval_hours": {
-            "maximum": 168.0,
-            "minimum": 1.0,
-            "title": "Reconcile Interval Hours",
-            "type": "integer"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone"
-          }
-        },
-        "required": [
-          "archive_enabled",
-          "archive_time",
-          "archive_overlap_hours",
-          "backfill_enabled",
-          "backfill_dow",
-          "backfill_time",
-          "backfill_days",
-          "reconcile_enabled",
-          "reconcile_interval_hours",
-          "integrity_scan_enabled",
-          "integrity_scan_sample_pct",
-          "env_pinned"
-        ],
-        "title": "ScheduleOut",
-        "type": "object"
-      },
-      "ScheduledRunOut": {
-        "properties": {
-          "job": {
-            "title": "Job",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "next_run_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Run Utc"
-          }
-        },
-        "required": [
-          "job",
-          "label",
-          "next_run_utc"
-        ],
-        "title": "ScheduledRunOut",
-        "type": "object"
-      },
-      "SdBarOut": {
-        "description": "GiB, all on the camera's own binary scale (see `sd_bar`).",
-        "properties": {
-          "archived_gb": {
-            "title": "Archived Gb",
-            "type": "number"
-          },
-          "free_gb": {
-            "title": "Free Gb",
-            "type": "number"
-          },
-          "other_gb": {
-            "title": "Other Gb",
-            "type": "number"
-          },
-          "total_gb": {
-            "title": "Total Gb",
-            "type": "number"
-          },
-          "used_gb": {
-            "title": "Used Gb",
-            "type": "number"
-          }
-        },
-        "required": [
-          "total_gb",
-          "used_gb",
-          "free_gb",
-          "archived_gb",
-          "other_gb"
-        ],
-        "title": "SdBarOut",
         "type": "object"
       },
       "SectionOut": {
@@ -2434,68 +1200,6 @@
         "title": "SessionOut",
         "type": "object"
       },
-      "StorageSampleOut": {
-        "properties": {
-          "formatted": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Formatted"
-          },
-          "mounted": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mounted"
-          },
-          "remain_gb": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Remain Gb"
-          },
-          "sampled_at": {
-            "format": "date-time",
-            "title": "Sampled At",
-            "type": "string"
-          },
-          "total_gb": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Gb"
-          }
-        },
-        "required": [
-          "total_gb",
-          "remain_gb",
-          "formatted",
-          "mounted",
-          "sampled_at"
-        ],
-        "title": "StorageSampleOut",
-        "type": "object"
-      },
       "TestResultOut": {
         "properties": {
           "channel": {
@@ -2524,103 +1228,6 @@
           "error"
         ],
         "title": "TestResultOut",
-        "type": "object"
-      },
-      "TimelineBucketOut": {
-        "properties": {
-          "archived": {
-            "title": "Archived",
-            "type": "integer"
-          },
-          "quarantined": {
-            "title": "Quarantined",
-            "type": "integer"
-          },
-          "start_utc": {
-            "format": "date-time",
-            "title": "Start Utc",
-            "type": "string"
-          },
-          "waiting": {
-            "title": "Waiting",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "start_utc",
-          "archived",
-          "waiting",
-          "quarantined"
-        ],
-        "title": "TimelineBucketOut",
-        "type": "object"
-      },
-      "TodayOut": {
-        "properties": {
-          "archived_bytes": {
-            "title": "Archived Bytes",
-            "type": "integer"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          }
-        },
-        "required": [
-          "date",
-          "count",
-          "archived_bytes"
-        ],
-        "title": "TodayOut",
-        "type": "object"
-      },
-      "TypeDayOut": {
-        "properties": {
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Counts",
-            "type": "object"
-          },
-          "day": {
-            "title": "Day",
-            "type": "string"
-          }
-        },
-        "required": [
-          "day",
-          "counts"
-        ],
-        "title": "TypeDayOut",
-        "type": "object"
-      },
-      "TypeStatsOut": {
-        "properties": {
-          "days": {
-            "items": {
-              "$ref": "#/components/schemas/TypeDayOut"
-            },
-            "title": "Days",
-            "type": "array"
-          },
-          "types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Types",
-            "type": "array"
-          }
-        },
-        "required": [
-          "types",
-          "days"
-        ],
-        "title": "TypeStatsOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2662,150 +1269,6 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "VaultOut": {
-        "description": "The archive's volume (the disk/mount `vault_dir` lives on).",
-        "properties": {
-          "archive_bytes": {
-            "title": "Archive Bytes",
-            "type": "integer"
-          },
-          "avg_per_day": {
-            "title": "Avg Per Day",
-            "type": "number"
-          },
-          "cap_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cap Bytes"
-          },
-          "clip_bytes": {
-            "title": "Clip Bytes",
-            "type": "integer"
-          },
-          "clip_count": {
-            "title": "Clip Count",
-            "type": "integer"
-          },
-          "days_headroom": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Days Headroom"
-          },
-          "first_start_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Start Utc"
-          },
-          "free_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Free Bytes"
-          },
-          "last_start_utc": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Start Utc"
-          },
-          "max_age_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Age Days"
-          },
-          "total_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Bytes"
-          },
-          "used_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Used Bytes"
-          }
-        },
-        "required": [
-          "total_bytes",
-          "used_bytes",
-          "free_bytes",
-          "archive_bytes",
-          "cap_bytes",
-          "max_age_days",
-          "clip_count",
-          "clip_bytes",
-          "first_start_utc",
-          "last_start_utc",
-          "avg_per_day",
-          "days_headroom"
-        ],
-        "title": "VaultOut",
-        "type": "object"
-      },
-      "VerifyOut": {
-        "properties": {
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "recording": {
-            "$ref": "#/components/schemas/RecordingOut"
-          }
-        },
-        "required": [
-          "ok",
-          "recording"
-        ],
-        "title": "VerifyOut",
-        "type": "object"
       }
     }
   },
@@ -2815,231 +1278,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/v1/actions/backfill": {
-      "post": {
-        "operationId": "action_backfill_api_v1_actions_backfill_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BackfillIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActivityOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Action Backfill",
-        "tags": [
-          "actions"
-        ]
-      }
-    },
-    "/api/v1/actions/reconcile": {
-      "post": {
-        "operationId": "action_reconcile_api_v1_actions_reconcile_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActivityOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Action Reconcile",
-        "tags": [
-          "actions"
-        ]
-      }
-    },
-    "/api/v1/actions/run": {
-      "post": {
-        "operationId": "action_run_api_v1_actions_run_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActivityOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Action Run",
-        "tags": [
-          "actions"
-        ]
-      }
-    },
-    "/api/v1/actions/stop": {
-      "post": {
-        "description": "Cooperative: the Archiver checks the flag between recordings, so a\nfetch or encrypt in flight finishes or fails on its own rather than\nbeing torn down mid-write. The run then closes out as `aborted`.",
-        "operationId": "action_stop_api_v1_actions_stop_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActivityOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Action Stop",
-        "tags": [
-          "actions"
-        ]
-      }
-    },
     "/api/v1/activity": {
       "get": {
-        "operationId": "get_activity_api_v1_activity_get",
+        "description": "Recent runs, clips that keep failing, and clips lost in the last week.",
+        "operationId": "activity_api_v1_activity_get",
         "parameters": [
           {
             "in": "query",
-            "name": "device",
+            "name": "camera",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "Device"
+              "title": "Camera"
             }
           }
         ],
@@ -3065,9 +1322,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Activity",
+        "summary": "Activity",
         "tags": [
-          "health"
+          "clips"
         ]
       }
     },
@@ -3164,10 +1421,257 @@
         ]
       }
     },
-    "/api/v1/calendar": {
+    "/api/v1/cameras": {
       "get": {
-        "operationId": "get_calendar_api_v1_calendar_get",
+        "operationId": "list_cameras_api_v1_cameras_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraOut"
+                  },
+                  "title": "Response List Cameras Api V1 Cameras Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Cameras",
+        "tags": [
+          "cameras"
+        ]
+      },
+      "post": {
+        "operationId": "add_camera_api_v1_cameras_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCameraIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraOut"
+                  },
+                  "title": "Response Add Camera Api V1 Cameras Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Add Camera",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/discover": {
+      "post": {
+        "operationId": "discover_api_v1_cameras_discover_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscoveredOut"
+                  },
+                  "title": "Response Discover Api V1 Cameras Discover Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Discover",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{alias}": {
+      "put": {
+        "operationId": "edit_camera_api_v1_cameras__alias__put",
         "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditCameraIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraOut"
+                  },
+                  "title": "Response Edit Camera Api V1 Cameras  Alias  Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Edit Camera",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{alias}/run": {
+      "post": {
+        "operationId": "run_now_api_v1_cameras__alias__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Now",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{alias}/stop": {
+      "post": {
+        "description": "Stops after the batch in flight; nothing finished is undone.",
+        "operationId": "stop_api_v1_cameras__alias__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/clips/calendar": {
+      "get": {
+        "operationId": "calendar_api_v1_clips_calendar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "camera",
+            "required": true,
+            "schema": {
+              "title": "Camera",
+              "type": "string"
+            }
+          },
           {
             "in": "query",
             "name": "month",
@@ -3175,22 +1679,6 @@
             "schema": {
               "title": "Month",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
             }
           }
         ],
@@ -3216,9 +1704,162 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Calendar",
+        "summary": "Calendar",
         "tags": [
-          "footage"
+          "clips"
+        ]
+      }
+    },
+    "/api/v1/clips/day": {
+      "get": {
+        "operationId": "day_api_v1_clips_day_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "camera",
+            "required": true,
+            "schema": {
+              "title": "Camera",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date "
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Day",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/v1/clips/day.zip": {
+      "get": {
+        "operationId": "day_zip_api_v1_clips_day_zip_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "camera",
+            "required": true,
+            "schema": {
+              "title": "Camera",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_",
+            "required": true,
+            "schema": {
+              "title": "Date ",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Day Zip",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/v1/clips/{clip_id}/download": {
+      "get": {
+        "operationId": "download_api_v1_clips__clip_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download",
+        "tags": [
+          "clips"
         ]
       }
     },
@@ -3238,6 +1879,95 @@
           }
         },
         "summary": "Get Config",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/config/backup/retention-preview": {
+      "get": {
+        "description": "Roughly what `keep_days` would remove at the next daily `forget`:\nclips backed up more than that long before the newest backup.",
+        "operationId": "retention_preview_api_v1_config_backup_retention_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keep_days",
+            "required": true,
+            "schema": {
+              "title": "Keep Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retention Preview",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/config/backup/test": {
+      "post": {
+        "description": "Can every enabled camera's repository be opened at `repository`?\nRead-only: \"missing\" repositories are created by the first backup.",
+        "operationId": "test_destination_api_v1_config_backup_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DestinationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationCameraOut"
+                  },
+                  "title": "Response Test Destination Api V1 Config Backup Test Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Destination",
         "tags": [
           "config"
         ]
@@ -3292,390 +2022,6 @@
         ]
       }
     },
-    "/api/v1/day": {
-      "get": {
-        "description": "`date_` defaults to the camera's own local today, so the dashboard\ncan open Footage without first knowing the camera's timezone.",
-        "operationId": "get_day_api_v1_day_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "date_",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Date "
-            }
-          },
-          {
-            "in": "query",
-            "name": "types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Types",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DayOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Day",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/day/hour": {
-      "get": {
-        "operationId": "get_day_hour_api_v1_day_hour_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "date_",
-            "required": true,
-            "schema": {
-              "title": "Date ",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "hour",
-            "required": true,
-            "schema": {
-              "maximum": 23,
-              "minimum": 0,
-              "title": "Hour",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Types",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "after",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "After",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Page_RecordingOut_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Day Hour",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/devices": {
-      "get": {
-        "operationId": "list_devices_api_v1_devices_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DevicesOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Devices",
-        "tags": [
-          "devices"
-        ]
-      },
-      "post": {
-        "operationId": "add_device_api_v1_devices_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddDeviceIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DevicesOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "description": "Unprocessable Content"
-          },
-          "502": {
-            "description": "Bad Gateway"
-          },
-          "503": {
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Add Device",
-        "tags": [
-          "devices"
-        ]
-      }
-    },
-    "/api/v1/devices/discover": {
-      "post": {
-        "operationId": "discover_api_v1_devices_discover_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DiscoveredOut"
-                  },
-                  "title": "Response Discover Api V1 Devices Discover Post",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "502": {
-            "description": "Bad Gateway"
-          },
-          "503": {
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Discover",
-        "tags": [
-          "devices"
-        ]
-      }
-    },
-    "/api/v1/devices/enabled": {
-      "get": {
-        "operationId": "list_enabled_api_v1_devices_enabled_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DeviceSummaryOut"
-                  },
-                  "title": "Response List Enabled Api V1 Devices Enabled Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Enabled",
-        "tags": [
-          "devices"
-        ]
-      }
-    },
-    "/api/v1/devices/{device_id}/enabled": {
-      "put": {
-        "description": "Writes `enabled` on the camera's `[[devices]]` entry; the config\nlistener then adds it to or removes it from the fleet and scheduler.",
-        "operationId": "set_enabled_api_v1_devices__device_id__enabled_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "device_id",
-            "required": true,
-            "schema": {
-              "title": "Device Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EnabledIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DevicesOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Enabled",
-        "tags": [
-          "devices"
-        ]
-      }
-    },
-    "/api/v1/devices/{device_id}/settings": {
-      "put": {
-        "operationId": "put_device_settings_api_v1_devices__device_id__settings_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "device_id",
-            "required": true,
-            "schema": {
-              "title": "Device Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeviceSettingsIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DevicesOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "Put Device Settings",
-        "tags": [
-          "devices"
-        ]
-      }
-    },
     "/api/v1/events": {
       "get": {
         "operationId": "events_api_v1_events_get",
@@ -3687,257 +2033,6 @@
         "summary": "Events",
         "tags": [
           "events"
-        ]
-      }
-    },
-    "/api/v1/export": {
-      "get": {
-        "operationId": "export_api_v1_export_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "from_",
-            "required": true,
-            "schema": {
-              "title": "From ",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to",
-            "required": true,
-            "schema": {
-              "title": "To",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Types",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "Export",
-        "tags": [
-          "export"
-        ]
-      }
-    },
-    "/api/v1/export/preview": {
-      "get": {
-        "operationId": "preview_api_v1_export_preview_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "from_",
-            "required": true,
-            "schema": {
-              "title": "From ",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to",
-            "required": true,
-            "schema": {
-              "title": "To",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Types",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExportPreviewOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Preview",
-        "tags": [
-          "export"
-        ]
-      }
-    },
-    "/api/v1/growth": {
-      "get": {
-        "operationId": "get_growth_api_v1_growth_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "days",
-            "required": false,
-            "schema": {
-              "default": 30,
-              "title": "Days",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GrowthOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Growth",
-        "tags": [
-          "health"
-        ]
-      }
-    },
-    "/api/v1/health": {
-      "get": {
-        "operationId": "get_health_api_v1_health_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Health",
-        "tags": [
-          "health"
         ]
       }
     },
@@ -4012,8 +2107,8 @@
     },
     "/api/v1/overview": {
       "get": {
-        "description": "The fleet home page: the archive's volume plus every enabled camera's\nSD card. Reads stored samples only, so a page load never calls a camera.",
-        "operationId": "get_overview_api_v1_overview_get",
+        "description": "Read from the index and memory only: loading it never calls a camera\nor the destination.",
+        "operationId": "overview_api_v1_overview_get",
         "responses": {
           "200": {
             "content": {
@@ -4026,792 +2121,9 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Get Overview",
+        "summary": "Overview",
         "tags": [
-          "health"
-        ]
-      }
-    },
-    "/api/v1/problems": {
-      "get": {
-        "operationId": "list_problems_api_v1_problems_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "after",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "After",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Page_RecordingOut_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Problems",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/problems/count": {
-      "get": {
-        "operationId": "get_problems_count_api_v1_problems_count_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CountOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Problems Count",
-        "tags": [
-          "health"
-        ]
-      }
-    },
-    "/api/v1/problems/lost": {
-      "get": {
-        "operationId": "get_lost_api_v1_problems_lost_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LostOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Lost",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/problems/lost/dismiss": {
-      "post": {
-        "description": "Acknowledges this camera's lost clips: nothing can bring them back,\nso they stop counting as an open issue.",
-        "operationId": "dismiss_lost_api_v1_problems_lost_dismiss_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetriedOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Dismiss Lost",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/problems/retry": {
-      "post": {
-        "description": "Re-queues every failed or quarantined recording of this camera for\nthe next run, the bulk form of `POST /recordings/{id}/retry`.",
-        "operationId": "retry_all_problems_api_v1_problems_retry_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetriedOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Retry All Problems",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/recordings/{recording_id}": {
-      "get": {
-        "operationId": "get_recording_api_v1_recordings__recording_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "recording_id",
-            "required": true,
-            "schema": {
-              "title": "Recording Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecordingOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Recording",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/recordings/{recording_id}/retry": {
-      "post": {
-        "description": "Makes a failed recording eligible for the next run's pickup; it is\nnot re-downloaded on the spot (see Repository.retry_recording).",
-        "operationId": "retry_recording_api_v1_recordings__recording_id__retry_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "recording_id",
-            "required": true,
-            "schema": {
-              "title": "Recording Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecordingOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Retry Recording",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/recordings/{recording_id}/stream": {
-      "get": {
-        "operationId": "stream_recording_api_v1_recordings__recording_id__stream_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "recording_id",
-            "required": true,
-            "schema": {
-              "title": "Recording Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "download",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "title": "Download",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Stream Recording",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/recordings/{recording_id}/verify": {
-      "post": {
-        "operationId": "verify_recording_api_v1_recordings__recording_id__verify_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "recording_id",
-            "required": true,
-            "schema": {
-              "title": "Recording Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VerifyOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Verify Recording",
-        "tags": [
-          "footage"
-        ]
-      }
-    },
-    "/api/v1/retention": {
-      "get": {
-        "operationId": "get_retention_api_v1_retention_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetentionOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Retention",
-        "tags": [
-          "settings"
-        ]
-      },
-      "put": {
-        "operationId": "put_retention_api_v1_retention_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RetentionBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetentionSaveOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Put Retention",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/v1/runs": {
-      "get": {
-        "operationId": "list_runs_api_v1_runs_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "before_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Before Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "failures_only",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Failures Only",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunsOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Runs",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/runs/{run_id}": {
-      "get": {
-        "operationId": "get_run_api_v1_runs__run_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "run_id",
-            "required": true,
-            "schema": {
-              "title": "Run Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunDetailOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Run",
-        "tags": [
-          "runs"
-        ]
-      }
-    },
-    "/api/v1/schedule": {
-      "get": {
-        "operationId": "get_schedule_api_v1_schedule_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduleOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Schedule",
-        "tags": [
-          "settings"
-        ]
-      },
-      "put": {
-        "description": "This camera's own `[devices.schedule]` in reovault.toml, or with\n`inherit`, none (back to the default). The change is applied to the\nscheduler by the config listener, like a hand edit of the file.",
-        "operationId": "put_schedule_api_v1_schedule_put",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CameraScheduleBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduleOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Put Schedule",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/v1/schedule/default": {
-      "get": {
-        "description": "The global `[schedule]` every camera follows unless it has its own.",
-        "operationId": "get_default_schedule_api_v1_schedule_default_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduleOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Default Schedule",
-        "tags": [
-          "settings"
-        ]
-      },
-      "put": {
-        "operationId": "put_default_schedule_api_v1_schedule_default_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ScheduleBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduleOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Put Default Schedule",
-        "tags": [
-          "settings"
+          "cameras"
         ]
       }
     },
@@ -4836,82 +2148,10 @@
         ]
       }
     },
-    "/api/v1/stats/types": {
-      "get": {
-        "description": "Clips per day per detection type, for the Health page's chart.",
-        "operationId": "get_type_stats_api_v1_stats_types_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "days",
-            "required": false,
-            "schema": {
-              "default": 30,
-              "title": "Days",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "device",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Device"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TypeStatsOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Type Stats",
-        "tags": [
-          "health"
-        ]
-      }
-    },
     "/healthz": {
       "get": {
-        "description": "Public, for the Docker healthcheck, which only needs the status\ncode. `?verbose=1` adds gateway state, per-device coverage alarms\nand database error text, so it needs a logged-in session: behind a\nreverse-proxy hostname that detail would otherwise be public.",
+        "description": "Public, for the Docker healthcheck: the status code is the answer.",
         "operationId": "healthz_healthz_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "verbose",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Verbose",
-              "type": "boolean"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -4920,16 +2160,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Healthz"

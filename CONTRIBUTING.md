@@ -6,16 +6,28 @@ smoothly.
 
 ## Development setup
 
+The tests run the real `restic` and `rclone` binaries (never fakes), at the
+versions pinned in the Dockerfile. Put them in `.tools/` (gitignored):
+
+```bash
+mkdir -p .tools && cd .tools
+curl -fsSLO https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_amd64.bz2
+curl -fsSL https://github.com/restic/restic/releases/download/v0.19.1/SHA256SUMS | grep linux_amd64.bz2 | sha256sum -c -
+bunzip2 -c restic_0.19.1_linux_amd64.bz2 > restic && chmod +x restic
+curl -fsSLO https://github.com/rclone/rclone/releases/download/v1.75.2/rclone-v1.75.2-linux-amd64.zip
+curl -fsSL https://github.com/rclone/rclone/releases/download/v1.75.2/SHA256SUMS | grep -a linux-amd64.zip | sha256sum -c -
+unzip -p rclone-v1.75.2-linux-amd64.zip rclone-v1.75.2-linux-amd64/rclone > rclone && chmod +x rclone
+cd ..
+```
+
 ```bash
 uv sync --dev
-uv run pytest                            # unit + integration tests (camera-free, fake provider)
+PATH=$PWD/.tools:$PATH uv run pytest     # unit + integration, camera-free (fake and demo cameras)
 uv run ruff check . && uv run ruff format --check . && uv run mypy reovault
 ```
 
-Camera-touching work (`reovault probe`/`run` against real hardware, capturing
-fixtures, contract tests) needs `reolink-cli` installed and a real camera on
-the LAN; those tests are marked `contract`/`slow` and excluded by default
-(`uv run pytest -m "contract or slow"` to include them).
+Camera-touching work (`reovault run` against real hardware, capturing
+fixtures) needs `reolink-cli` installed and a real camera on the LAN.
 
 ### The dashboard
 
@@ -35,9 +47,9 @@ npm run build      # static output in dashboard/build
 To have `reovault daemon` itself serve a local build (what the image does):
 `rm -rf reovault/web/dist && cp -r dashboard/build reovault/web/dist`.
 
-Only one real camera? Add a `provider = "fake"` entry to `[[devices]]` to get
-a second, pretend camera with a sliding week of tiny clips (see
-[Configuration](https://wiebe-vandendriessche.github.io/reovault/configuration/#devices)).
+No camera at hand? A `demo = true` entry in `[[cameras]]` is a pretend camera
+with a sliding week of tiny clips (see
+[Configuration](https://wiebe-vandendriessche.github.io/reovault/configuration/#cameras)).
 
 After changing an API route or model, regenerate the client types and
 commit both files (CI fails if either is stale):
@@ -64,22 +76,38 @@ Design rules worth knowing before touching UI code:
 ### Running from source without Docker
 
 Deployment is Docker Compose only, but for development the daemon runs fine
-from a checkout. It needs [`reolink-cli`](https://github.com/reolink/reolink-cli)
-installed, a camera registered under an alias
-(`reolink-cli device add <alias> --host <ip> --user admin`), and its gateway
-reachable. ReoVault never touches the camera password itself.
+from a checkout, with demo cameras and a local restic repository:
 
 ```bash
-cp reovault.example.toml reovault.toml   # [[devices]], storage paths, [web] email
-export REOVAULT_MASTER_PASSPHRASE="a passphrase, not the camera's"
-uv run reovault key init                 # creates data/config/master.key (0600)
-uv run reovault doctor                   # preflight: config, storage, DB, key
-uv run reovault probe                    # camera/gateway reachable?
+cat > reovault.toml <<'TOML'
+[[cameras]]
+alias = "demo"
+timezone = "Europe/Brussels"
+demo = true
+
+[backup]
+repository = "./data/backups"
+password_file = "./data/restic_password"
+interval_minutes = 15
+
+[web]
+email = "dev@example.com"
+cookie_secure = false
+
+[tools]
+restic = "./.tools/restic"
+rclone = "./.tools/rclone"
+TOML
+mkdir -p data && openssl rand -base64 32 > data/restic_password && chmod 600 data/restic_password
 uv run reovault web set-password
-uv run reovault daemon                   # scheduler + API + dashboard on :8080
+uv run reovault doctor
+uv run reovault daemon                   # backups + API + dashboard on :8080
 ```
 
-See the [CLI reference](docs/cli-reference.md) for every command.
+For a real camera, install [`reolink-cli`](https://github.com/reolink/reolink-cli),
+register it (`reolink-cli device add <alias> --host <ip> --user admin`) and
+add a `[[cameras]]` entry with that alias. See the
+[CLI reference](docs/cli-reference.md) for every command.
 
 ## Before implementing Reolink-related behavior
 

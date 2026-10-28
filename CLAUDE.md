@@ -1,15 +1,16 @@
 # ReoVault
 
-ReoVault is a local-first, self-hosted application for securely archiving recordings from Reolink cameras.
+ReoVault is a self-hosted application that backs up the clips on Reolink cameras' SD cards into restic, before the cards' loop recording overwrites them.
 
 ## Current direction
 
 * Project name: **ReoVault**
-* Initial camera integration: **`reolink-cli`**
-* Recordings remain on the camera's local storage and are periodically archived by ReoVault.
-* A web dashboard is part of the project.
-* Reliability, deduplication, integrity verification, and encrypted storage are core requirements.
-* Keep camera-specific functionality isolated behind a provider/adapter boundary.
+* Camera integration: **`reolink-cli`**, pulling clips (`vod search` / batch `vod download`). Not FTP.
+* Storage: **restic**, one repository per camera at `<repository>/<alias>`, reaching any destination through **rclone** (user-mounted `rclone.conf`). restic owns encryption, deduplication, integrity checks and retention; don't rebuild any of them.
+* A web dashboard is part of the project: overview, download (no playback), activity, cameras, settings.
+* Simplicity first: the previous version was over-engineered. Every module and setting must earn its place.
+* Keep camera-specific functionality behind the small `Camera` protocol in `reovault/camera.py`.
+* The architecture is documented in `docs/architecture.md`.
 
 ## Research before implementation
 
@@ -45,8 +46,10 @@ When sources disagree, prefer the actual behavior of the target camera and curre
 * Keep the architecture simple and modular.
 * Prefer existing upstream functionality over reimplementing Reolink protocol behavior.
 * Treat network failures, interrupted downloads, duplicate recordings, camera restarts, and process restarts as normal conditions.
-* Never re-download or overwrite successfully archived recordings unnecessarily.
-* Never mark a recording as archived before verification and finalization succeed.
+* Never re-download a clip that was backed up, lost, or expired by retention.
+* A clip is `backed_up` only after its size matched the card's, restic exited 0 with a snapshot id, and the database committed; local files are deleted only after that.
+* Never auto-create a restic repository where a camera already has history: a missing repository then means a dropped mount or a wrong path.
+* Never call `reolink-cli gateway stop`: it kills every gateway on the host, including other tools'.
 * Never store secrets in source control.
 * Avoid unnecessary infrastructure and dependencies.
 * Keep external integrations behind clear interfaces.

@@ -1,10 +1,8 @@
-"""Password and session-key file lifecycle. Mirrors `crypto/keyring.py`'s
-own pattern for `master.key`: a 0600 file outside source control, written
-via tmp-file + atomic replace.
+"""Password and session-key file lifecycle: 0600 files outside source
+control, written via tmp-file + atomic replace.
 
-A web password verifier is not a secret in the same sense the master key
-is, but it's offline-attackable, so it stays out of `reovault.toml` by
-default and lives in a 0600 file beside `master.key`, or in
+A web password verifier is offline-attackable, so it stays out of
+`reovault.toml`: it lives in a 0600 file in the data folder, or in
 `REOVAULT_WEB__PASSWORD_HASH` for the Docker-secret path.
 """
 
@@ -14,7 +12,22 @@ import os
 from pathlib import Path
 
 from reovault.config import WebConfig
-from reovault.crypto.keyring import InsecureKeyFilePermissionsError, check_permissions
+
+
+class InsecureKeyFilePermissionsError(Exception):
+    """A credential file is group- or world-accessible."""
+
+
+def check_permissions(path: Path) -> None:
+    """Refuse anything group- or world-readable/writable, before the file's
+    contents are touched at all (mirrors `reolink-cli`'s own guard on
+    `credentials.key`)."""
+    mode = path.stat().st_mode
+    if mode & 0o077:
+        raise InsecureKeyFilePermissionsError(
+            f"{path} is group- or world-accessible (mode {oct(mode & 0o777)}); "
+            "chmod 600 it before starting ReoVault"
+        )
 
 
 def load_password_hash(web: WebConfig) -> str | None:
@@ -38,9 +51,9 @@ def write_password_file(path: Path, phc_encoded: str) -> None:
 
 
 def load_or_create_session_key(path: Path) -> bytes:
-    """Persists across restarts (a 30-day cookie that dies on every restart
-    is worse than useless) and is never derived from the master key: a web
-    secret and the archive key shouldn't share a compromise."""
+    """Persists across restarts: a 30-day cookie that dies on every restart
+    is worse than useless. Random, never derived from the restic password,
+    so a web secret and the backups never share a compromise."""
     if path.exists():
         check_permissions(path)
         return path.read_bytes()

@@ -1,8 +1,7 @@
 Captured payloads from a real Reolink camera (protocol v20), used to
-fixture-pin `ReolinkCliProvider`/`ReolinkCliRegistry` parsing so a
+fixture-pin the parsing in `reovault/camera.py` so a
 `reolink-cli` schema change fails loudly here instead of drifting silently.
 
-- `device_info.json`: `info` output; `serial` is redacted.
 - `discover.json`: `discover --output json` output, no gateway needed. `uid`
   and `mac` are redacted; `host`/`protocol`/`scopes` are real. Model comes
   from an `onvif://...hardware/<MODEL>` scope entry, the friendly name from a

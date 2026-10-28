@@ -1,8 +1,8 @@
 # Security Policy
 
 ReoVault handles camera credentials (via `reolink-cli`'s own encrypted
-registry) and archives recordings encrypted at rest, so security issues are
-treated as a priority.
+registry), cloud logins (`rclone.conf`) and the password to every backup, so
+security issues are treated as a priority.
 
 ## Supported versions
 
@@ -36,12 +36,14 @@ notes unless you'd prefer otherwise.
 In scope:
 
 * ReoVault's own code (`reovault/`): auth, session/CSRF handling,
-  encryption/key management, path handling, the web dashboard
+  how it handles the restic password and tool output, path handling, the
+  web dashboard
 * The released Docker image and its build/release pipeline
 
 Out of scope (report upstream instead):
 
 * `reolink-cli` itself. See its own
   [security documentation](https://github.com/reolink/reolink-cli/blob/main/SECURITY.md)
+* `restic` and `rclone` themselves; report to those projects
 * Reolink camera firmware/protocol vulnerabilities. See
   [Reolink support](https://support.reolink.com/)

@@ -1,95 +1,40 @@
-# Copy to reovault.toml and adjust. Never commit the real file if it ever
-# grows a secret, as of Phase 0 it shouldn't (see CLAUDE.md: never store
-# secrets in source control). The camera password lives in reolink-cli's own
-# encrypted aliases.toml, never here.
+# Copy to config/reovault.toml and adjust. This file is the source of truth:
+# the dashboard's Settings and Cameras pages write their changes back into it
+# (comments kept), and edits made here are picked up live.
 #
-# This file is the source of truth: the dashboard's Settings page writes its
-# changes back into it (keeping these comments), and edits made here are
-# picked up live. [[devices]] is the set of cameras: adding one in the
-# dashboard appends an entry, turning one off writes `enabled = false`, and
-# removing an entry disables that camera (its footage stays). Two entries
-# below to show the fleet shape; a single-camera setup just deletes the
-# second one.
+# No secrets in this file. Camera passwords live in reolink-cli's own
+# encrypted registry; the restic password is a Docker secret; alert tokens are
+# file paths.
 
-[[devices]]
-alias = "front-door"     # must match `reolink-cli device add <alias> ...`
-channel = 0
-timezone = "America/New_York"
-name = "Front door"      # optional: shown in the dashboard instead of the
-                          # alias until the camera's own `device_info` name
-                          # backfills it anyway; set it here to skip that wait
+# The cameras to back up. `alias` is the `reolink-cli device add <alias>` name
+# and also names the camera's restic repository, so it never changes. The
+# dashboard's Cameras page adds entries here for you.
+[[cameras]]
+alias = "front-door"
+name = "Front door"
+timezone = "Europe/Brussels"  # the camera's own clock
+# enabled = false             # stop backing it up; its backups stay
 
-[[devices]]
-alias = "back-yard"
-channel = 0
-timezone = "America/New_York"
-name = "Back yard"
-# enabled = false        # stop archiving this camera; its footage stays
-# This camera's own schedule; without it, it follows [schedule] below.
-# [devices.schedule]
-# archive_cron = "30 6 * * *"
-
-# A pretend camera for trying the dashboard with several devices: no
-# reolink-cli needed, it serves a sliding week of tiny clips, some of which
-# "rotate off" before they can be archived.
-# [[devices]]
-# alias = "fake"
-# provider = "fake"
+# A pretend camera with a sliding week of tiny clips, to try ReoVault
+# without hardware:
+# [[cameras]]
+# alias = "demo"
 # timezone = "Europe/Brussels"
-# name = "Test cam"
+# demo = true
 
-[reolink_cli]
-binary = "reolink-cli"
-pinned_version = "0.19.0"
-gateway_addr = "127.0.0.1:9000"
-search_timeout_secs = 30
-download_timeout_secs = 300
-# registry_dir = "/home/reovault/.config/reolink-cli"  # default: $HOME/.config/reolink-cli.
-                                 # Where reolink-cli's own aliases.toml/credentials.key live;
-                                 # `doctor` checks it's writable. Must match reolink-cli's
-                                 # actual default (i.e. the container's $HOME), never
-                                 # `--config-file`'d, or the Devices tab and the archiver
-                                 # would read two different registries.
-
-[storage]
-config_dir = "./data/config"
-vault_dir = "./data/vault"
-staging_dir = "./data/staging"
-db_path = "./data/config/reovault.db"
-master_key_path = "./data/config/master.key"
-
-# Seeds the dashboard's per-camera schedule on first boot only (see
-# reovault/scheduler.py's `load_effective_schedule`): once a camera's
-# schedule has been saved from the Schedule tab, that camera's own saved
-# schedule wins from then on, and this table is never consulted again for
-# it. Setting any REOVAULT_SCHEDULE__* env var instead pins this schedule
-# for every camera and takes the dashboard's Schedule tab out of the loop
-# entirely (see `is_schedule_env_pinned`).
-[schedule]
-archive_cron = "0 5 * * *"
-archive_enabled = true
-archive_overlap_hours = 48
-backfill_cron = "0 4 * * 0"
-backfill_enabled = true
-backfill_days = 30
-reconcile_interval_hours = 6
-reconcile_enabled = true
-integrity_scan_sample_pct = 5.0
-integrity_scan_enabled = true
-# timezone = "Europe/Brussels"  # uncomment to force every camera onto one
-                                 # zone instead of each camera's own
-
-# Global cap on the vault, all cameras together. When either limit is
-# exceeded, the oldest archived clips are permanently deleted from the vault
-# (their database rows stay, marked `pruned`, so they are never downloaded
-# again). Both are off by default. Like [schedule], this only seeds the
-# dashboard on first boot; any REOVAULT_RETENTION__* env var pins it.
-[retention]
-# max_age_days = 90
-# max_vault_gb = 500
+[backup]
+# Where backups go. Each camera gets its own restic repository inside it:
+#   a local path, mounted into the container:  "/backups"
+#   an rclone remote from config/rclone/rclone.conf:  "rclone:nextcloud:reovault"
+#   any other restic backend:  "sftp:user@host:/reovault", "s3:...", "rest:..."
+repository = "rclone:nextcloud:reovault"
+interval_minutes = 60
+# Delete backups older than this many days, counted from the newest backup
+# (so an outage never deletes history). 0 keeps everything.
+keep_days = 0
 
 # Where alerts go (see docs/configuration.md#alerts). Secrets live in files,
-# mounted as Docker secrets; never put a token or webhook URL in this file.
+# mounted as Docker secrets.
 [alerts]
 # ntfy_url = "https://ntfy.sh/an-unguessable-topic"
 # ntfy_token_file = "/run/secrets/ntfy_token"
@@ -99,16 +44,10 @@ integrity_scan_enabled = true
 # smtp_password_file = "/run/secrets/smtp_password"
 # smtp_to = ["you@example.com"]
 
-# What to alert on. Seeds the dashboard's Settings > Alerts on first boot.
 [alerts.rules]
-# gateway_down_minutes = 15
 # renotify_hours = 24
 
 [web]
-host = "127.0.0.1"
-port = 8080
-# email = "you@example.com"     # required before `reovault web set-password`; the login's username field
-cookie_secure = true
-cookie_samesite = "lax"
+# email = "you@example.com"  # required before `reovault web set-password`
+cookie_secure = true          # false for a plain-http direct port (compose Mode A)
 session_max_age_days = 30
-page_size = 100

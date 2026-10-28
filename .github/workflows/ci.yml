@@ -31,6 +31,26 @@ jobs:
       - name: mypy
         run: uv run mypy reovault
 
+      - name: Install pinned restic and rclone
+        # The engine tests run the real binaries, never a fake. Same
+        # versions and checksum checks as the Dockerfile.
+        env:
+          RESTIC_RELEASE: "0.19.1"
+          RCLONE_RELEASE: "1.75.2"
+        run: |
+          set -eu
+          mkdir -p "$HOME/bin" /tmp/tools && cd /tmp/tools
+          curl -fsSLO "https://github.com/restic/restic/releases/download/v${RESTIC_RELEASE}/restic_${RESTIC_RELEASE}_linux_amd64.bz2"
+          curl -fsSL "https://github.com/restic/restic/releases/download/v${RESTIC_RELEASE}/SHA256SUMS" -o restic.sums
+          grep " restic_${RESTIC_RELEASE}_linux_amd64.bz2$" restic.sums | sha256sum -c -
+          bunzip2 -c "restic_${RESTIC_RELEASE}_linux_amd64.bz2" > "$HOME/bin/restic"
+          curl -fsSLO "https://github.com/rclone/rclone/releases/download/v${RCLONE_RELEASE}/rclone-v${RCLONE_RELEASE}-linux-amd64.zip"
+          curl -fsSL "https://github.com/rclone/rclone/releases/download/v${RCLONE_RELEASE}/SHA256SUMS" -o rclone.sums
+          grep -a " rclone-v${RCLONE_RELEASE}-linux-amd64.zip$" rclone.sums | sha256sum -c -
+          unzip -p "rclone-v${RCLONE_RELEASE}-linux-amd64.zip" "rclone-v${RCLONE_RELEASE}-linux-amd64/rclone" > "$HOME/bin/rclone"
+          chmod +x "$HOME/bin/restic" "$HOME/bin/rclone"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
       - name: pytest (unit + integration, contract excluded)
         run: uv run pytest -q --cov=reovault --cov-report=term-missing
 

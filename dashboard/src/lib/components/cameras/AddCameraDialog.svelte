@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { api, type AddDevice, type Devices, type Discovered } from '#lib/api/index.js';
+	import { api, type AddCamera, type Camera, type Discovered } from '#lib/api/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import * as Field from '#lib/components/ui/field/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import { Switch } from '#lib/components/ui/switch/index.js';
 	import { Spinner } from '#lib/components/ui/spinner/index.js';
 	import TimezoneInput from '#lib/components/app/TimezoneInput.svelte';
 	import { toast } from 'svelte-sonner';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Radar from '@lucide/svelte/icons/radar';
 
-	let { onadded }: { onadded: (d: Devices) => void } = $props();
+	let { onadded }: { onadded: (cameras: Camera[]) => void } = $props();
 
 	let open = $state(false);
 	let busy = $state(false);
@@ -18,7 +19,7 @@
 	let found = $state<Discovered[] | null>(null);
 	let scanning = $state(false);
 	const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const blank = () => ({ alias: '', host: '', user: 'admin', password: '', timezone: browserTz, name: '' });
+	const blank = () => ({ alias: '', host: '', user: 'admin', password: '', timezone: browserTz, name: '', demo: false });
 	let form = $state(blank());
 
 	$effect(() => {
@@ -33,7 +34,7 @@
 		scanning = true;
 		error = null;
 		try {
-			found = await api<Discovered[]>('/devices/discover', { method: 'POST' });
+			found = await api<Discovered[]>('/cameras/discover', { method: 'POST' });
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -52,8 +53,10 @@
 		busy = true;
 		error = null;
 		try {
-			const body: AddDevice = { ...form, name: form.name || null };
-			onadded(await api<Devices>('/devices', { method: 'POST', body }));
+			const body: AddCamera = form.demo
+				? { alias: form.alias, name: form.name || null, timezone: form.timezone, demo: true }
+				: { ...form, name: form.name || null };
+			onadded(await api<Camera[]>('/cameras', { method: 'POST', body }));
 			toast.success(`${form.name || form.alias} added.`);
 			open = false;
 		} catch (err) {
@@ -74,11 +77,16 @@
 			<Dialog.Title>Add a camera</Dialog.Title>
 			<Dialog.Description>
 				The password goes straight to reolink-cli's encrypted credential store; ReoVault never
-				keeps it.
+				keeps it. A demo camera needs no hardware: it serves a sliding week of tiny clips.
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="flex flex-col gap-2">
+		<div class="flex items-center gap-2">
+			<Switch id="cam-demo" bind:checked={form.demo} />
+			<label for="cam-demo" class="text-sm">Demo camera</label>
+		</div>
+
+		<div class="flex flex-col gap-2" hidden={form.demo}>
 			<Button variant="outline" onclick={scan} disabled={scanning} class="self-start">
 				{#if scanning}<Spinner />{:else}<Radar />{/if} Find cameras on my network
 			</Button>
@@ -105,21 +113,24 @@
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Field.Field>
 					<Field.Label for="cam-alias">Alias</Field.Label>
-					<Input id="cam-alias" required maxlength={100} bind:value={form.alias} placeholder="front-door" />
-					<Field.Description>Short id used by reolink-cli.</Field.Description>
+					<Input id="cam-alias" required maxlength={64} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" bind:value={form.alias} placeholder="front-door" />
+					<Field.Description>Letters, digits, - and _. Names its backup repository.</Field.Description>
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="cam-name">Display name</Field.Label>
 					<Input id="cam-name" maxlength={100} bind:value={form.name} placeholder="Front door" />
 				</Field.Field>
+				{#if !form.demo}
 				<Field.Field>
 					<Field.Label for="cam-host">Address</Field.Label>
 					<Input id="cam-host" required bind:value={form.host} placeholder="192.168.1.40" />
 				</Field.Field>
+				{/if}
 				<Field.Field>
 					<Field.Label for="cam-tz">Timezone</Field.Label>
 					<TimezoneInput id="cam-tz" bind:value={form.timezone} />
 				</Field.Field>
+				{#if !form.demo}
 				<Field.Field>
 					<Field.Label for="cam-user">Username</Field.Label>
 					<Input id="cam-user" required autocomplete="off" bind:value={form.user} />
@@ -128,6 +139,7 @@
 					<Field.Label for="cam-pass">Password</Field.Label>
 					<Input id="cam-pass" type="password" required autocomplete="new-password" bind:value={form.password} />
 				</Field.Field>
+				{/if}
 			</div>
 			{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 			<Dialog.Footer>

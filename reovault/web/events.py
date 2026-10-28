@@ -1,11 +1,11 @@
 """In-process fan-out for the dashboard's single SSE stream.
 
-Publishers are plain threads (APScheduler jobs, threadpool route handlers);
+Publishers are plain threads (camera workers, threadpool route handlers);
 subscribers are asyncio generators on the server's event loop. `publish`
 hops onto each subscriber's loop with `call_soon_threadsafe`, so it's safe
 from anywhere and never blocks the caller.
 
-Events are invalidation hints ("device 3's activity changed"), not state:
+Events are invalidation hints ("the doorbell's activity changed"), not state:
 the dashboard refetches the matching snapshot endpoint. A dropped event is
 therefore never fatal, and the client also refetches after every reconnect.
 """
@@ -56,16 +56,6 @@ class EventBus:
             # generator's own `finally` will unsubscribe.
             with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(_offer, queue, event)
-
-    def apscheduler_listener(self, event: Any) -> None:
-        """Every job lifecycle event becomes an `activity` hint for its
-        device: a run starting or finishing changes the activity card, the
-        Health verdict, the runs list and possibly the problems count."""
-        from reovault.scheduler import device_of_job_id
-
-        device_id = device_of_job_id(event.job_id)
-        if device_id is not None:  # skip fleet-wide housekeeping (alerts)
-            self.publish("activity", device_id=device_id)
 
 
 def _offer(queue: asyncio.Queue[Event], event: Event) -> None:

@@ -1,70 +1,55 @@
-# Two equally-supported ways to reach the dashboard; pick one. Whichever you
-# pick, leave REOVAULT_WEB__HOST unset/0.0.0.0 (the image's default). Inside
-# a container, binding 127.0.0.1 makes the app unreachable from both a
-# published port and a reverse proxy, since neither connects over loopback.
+# Two equally supported ways to reach the dashboard; pick one. Either way,
+# leave REOVAULT_WEB__HOST at the image's 0.0.0.0: inside a container,
+# 127.0.0.1 is unreachable from a published port and from a reverse proxy.
 #
-# Mode A: publish the port directly (LAN/VPN access, no reverse proxy).
-#   Uncomment `ports:` below AND the two REOVAULT_WEB__* lines under it.
-#   Plain HTTP has no certificate, so the session cookie must not require
-#   TLS (cookie_secure=false) or login will silently fail: the browser
-#   accepts the login redirect but discards a Secure cookie sent over HTTP,
-#   which just bounces you back to /login. Restricting exposure (firewall,
-#   VPN, trusted LAN only) is then on you, same as any other self-hosted app
-#   you publish a port for.
+# Mode A: publish the port directly (LAN/VPN). Uncomment `ports:` and the two
+#   REOVAULT_WEB__* lines under it. Plain HTTP has no certificate, so the
+#   session cookie must not require TLS (cookie_secure=false), or login
+#   silently bounces back to /login.
 #
-# Mode B: put it behind a reverse proxy (Traefik, Nginx Proxy Manager,
-#   Caddy, ...) on a shared Docker network, proxy handles TLS. This is the
-#   active default below. Uncomment `networks:` at the bottom of the service
-#   and the top-level `networks:` block, and set REOVAULT_WEB__FORWARDED_ALLOW_IPS
-#   to your proxy's actual container IP/subnet (never "*": uvicorn trusts the
-#   rightmost X-Forwarded-For hop not in this list, and "*" makes it trust
-#   the leftmost instead, which any client can spoof).
+# Mode B (active default): behind a reverse proxy (Traefik, Nginx Proxy
+#   Manager, Caddy, ...) on a shared Docker network; the proxy handles TLS.
+#   Uncomment `networks:` below, and set REOVAULT_WEB__FORWARDED_ALLOW_IPS to
+#   the proxy's container IP/subnet (never "*": any client could then spoof
+#   its address).
 
 services:
   reovault:
-    # Signed release image (see docs/installation.md to verify it). `latest`
-    # tracks the newest release; pin a tag like `:0.4.0` to upgrade on your
-    # own schedule instead.
+    # Signed release image (see docs/installation.md to verify it). Pin a tag
+    # like `:2.0.0` to upgrade on your own schedule.
     image: ghcr.io/wiebe-vandendriessche/reovault:latest
-    # To build from a source checkout instead, comment out `image:` above and
-    # uncomment this block:
-    # build:
-    #   context: .
-    #   args:
-    #     REOLINK_CLI_VERSION: "0.19.0"
+    # To build from a source checkout instead:
+    # build: .
     restart: unless-stopped
+    # restic groups retention by host name, and Docker gives every recreated
+    # container a new one: keep it fixed.
+    hostname: reovault
     # Mode A: direct port publish:
     # ports:
     #   - "8080:8080"
     environment:
-      REOVAULT_CONFIG_FILE: /etc/reovault/reovault.toml
-      REOVAULT_MASTER_PASSPHRASE_FILE: /run/secrets/reovault_master_passphrase
-      # Mode B (active default): reverse proxy's own container IP/subnet:
+      # Mode B (active default): the reverse proxy's own container IP/subnet:
       REOVAULT_WEB__FORWARDED_ALLOW_IPS: "172.16.0.0/12"
       # Mode A: uncomment these two instead, comment out the line above:
       # REOVAULT_WEB__FORWARDED_ALLOW_IPS: "127.0.0.1"
       # REOVAULT_WEB__COOKIE_SECURE: "false"
     secrets:
-      - reovault_master_passphrase
+      - restic_password
       # Alert channel secrets (see docs/installation.md#alerts), e.g.:
       # - ntfy_token
     volumes:
-      # Your settings: ./config/reovault.toml. Read-write, and a folder rather
-      # than the single file: the dashboard's Settings page writes changes
-      # back into the file (atomically, via a temp file in this folder), and
-      # hand edits are picked up live. Create it before the first
-      # `docker compose` command and `chown 1000` it.
-      - ./config:/etc/reovault
-      # config/DB/master.key: kept outside the vault tree so a backup tool
-      # watching the vault never replicates the key alongside it.
-      - ./data/config:/config
-      - ./data/vault:/vault
-      # Must share a filesystem with /vault: archiving finalizes with an
-      # atomic rename, asserted at startup.
-      - ./data/staging:/staging
-      # reolink-cli's own credential registry, isolated from any host
-      # ~/.config/reolink-cli.
-      - ./data/reolink-cli:/home/reovault/.config/reolink-cli
+      # reovault.toml and rclone/rclone.conf. Read-write folders, not single
+      # files: the dashboard writes settings back atomically, and rclone
+      # rewrites the config whenever it refreshes an OAuth token.
+      - ./config:/config
+      # Database, restic cache, and the one batch of clips waiting for upload.
+      - ./data:/data
+      # reolink-cli's own encrypted camera registry (passwords live here, not
+      # in ReoVault).
+      - ./reolink-cli:/home/reovault/.config/reolink-cli
+      # Only when the backup destination is a local path, e.g.
+      # repository = "/backups" in reovault.toml:
+      # - /mnt/backup-disk/reovault:/backups
     healthcheck:
       test:
         [
@@ -77,16 +62,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    # Uncomment to join a reverse proxy's network instead of publishing a
-    # port (see the file header):
+    # Mode B: join the reverse proxy's network:
     # networks:
     #   - proxy_network
 
 secrets:
-  reovault_master_passphrase:
-    file: ./secrets/reovault_master_passphrase.txt
-  # Referenced from reovault.toml as /run/secrets/<name>, e.g.
-  # `ntfy_token_file = "/run/secrets/ntfy_token"`:
+  # The restic repository password. Losing it makes every backup
+  # unreadable: keep a copy in your password manager.
+  restic_password:
+    file: ./secrets/restic_password.txt
   # ntfy_token:
   #   file: ./secrets/ntfy_token.txt
 

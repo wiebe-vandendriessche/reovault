@@ -1,20 +1,18 @@
 # syntax=docker/dockerfile:1
 #
 # Multi-stage build (see docs/architecture.md):
-# - `dashboard` builds the Svelte SPA (dashboard/) with Node. Node exists only
-#   in this stage; the image ships the static output, no Node runtime.
-# - `reolink-cli-download` fetches the pinned `reolink-cli` release and its
-#   per-asset `.sha256`, verifies it, and extracts the two binaries it ships
-#   (`reolink-cli`, `reolink-gateway`).
-# - `runtime` is `python:3.14-slim` with `uv`-installed deps, running as uid
-#   1000, serving the API and the built dashboard from one process. The gateway daemon stays supervised in-process by
-# `GatewaySupervisor` (reovault/providers/gateway.py); no supervisord, no
-# second entrypoint.
+# - `dashboard` builds the Svelte SPA with Node; the image ships only the
+#   static output, no Node runtime.
+# - `tools` fetches the pinned reolink-cli, restic and rclone releases, checks
+#   each against its published SHA-256, and runs it once.
+# - `runtime` is `python:3.15-slim` with `uv`-installed deps, running as uid
+#   1000: one process backs up the cameras and serves the dashboard.
 
-ARG REOLINK_CLI_VERSION=0.19.0
+ARG REOLINK_CLI_VERSION=0.20.0
+ARG RESTIC_RELEASE=0.19.1
+ARG RCLONE_RELEASE=1.75.2
 
-# Static output is architecture-independent: build it once, natively, on the
-# build host instead of under QEMU for every target platform.
+# Static output is architecture-independent: build it once, natively.
 FROM --platform=$BUILDPLATFORM node:26-alpine AS dashboard
 WORKDIR /dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
@@ -23,11 +21,13 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY dashboard/ ./
 RUN npm run build
 
-FROM python:3.15-slim AS reolink-cli-download
+FROM python:3.15-slim AS tools
 ARG REOLINK_CLI_VERSION
+ARG RESTIC_RELEASE
+ARG RCLONE_RELEASE
 ARG TARGETARCH
 WORKDIR /dl
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl bzip2 unzip \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eu; \
     case "$TARGETARCH" in \
@@ -35,39 +35,61 @@ RUN set -eu; \
         arm64) rl_arch=arm64 ;; \
         *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
+    mkdir -p /out; \
+    # reolink-cli: per-asset .sha256
     asset="reolink-cli-${REOLINK_CLI_VERSION}-external-linux-${rl_arch}.tar.gz"; \
-    base_url="https://github.com/reolink/reolink-cli/releases/download/v${REOLINK_CLI_VERSION}"; \
-    curl -fsSLo "$asset" "$base_url/$asset"; \
-    curl -fsSLo "$asset.sha256" "$base_url/$asset.sha256"; \
+    base="https://github.com/reolink/reolink-cli/releases/download/v${REOLINK_CLI_VERSION}"; \
+    curl -fsSLo "$asset" "$base/$asset"; \
+    curl -fsSLo "$asset.sha256" "$base/$asset.sha256"; \
     sha256sum -c "$asset.sha256"; \
     tar -xzf "$asset" --exclude='._*'; \
-    mkdir -p /out; \
-    cp "reolink-cli-${REOLINK_CLI_VERSION}-external-linux-${rl_arch}/bin/reolink-cli" /out/; \
-    cp "reolink-cli-${REOLINK_CLI_VERSION}-external-linux-${rl_arch}/bin/reolink-gateway" /out/; \
-    chmod +x /out/reolink-cli /out/reolink-gateway; \
-    /out/reolink-cli --version | grep -qF "$REOLINK_CLI_VERSION"
+    cp "reolink-cli-${REOLINK_CLI_VERSION}-external-linux-${rl_arch}/bin/reolink-cli" \
+       "reolink-cli-${REOLINK_CLI_VERSION}-external-linux-${rl_arch}/bin/reolink-gateway" /out/; \
+    # restic: SHA256SUMS
+    asset="restic_${RESTIC_RELEASE}_linux_${TARGETARCH}.bz2"; \
+    base="https://github.com/restic/restic/releases/download/v${RESTIC_RELEASE}"; \
+    curl -fsSLo "$asset" "$base/$asset"; \
+    curl -fsSLo restic.sums "$base/SHA256SUMS"; \
+    grep " $asset\$" restic.sums | sha256sum -c -; \
+    bunzip2 -c "$asset" > /out/restic; \
+    # rclone: SHA256SUMS
+    asset="rclone-v${RCLONE_RELEASE}-linux-${TARGETARCH}.zip"; \
+    base="https://github.com/rclone/rclone/releases/download/v${RCLONE_RELEASE}"; \
+    curl -fsSLo "$asset" "$base/$asset"; \
+    curl -fsSLo rclone.sums "$base/SHA256SUMS"; \
+    grep -a " $asset\$" rclone.sums | sha256sum -c -; \
+    unzip -p "$asset" "rclone-v${RCLONE_RELEASE}-linux-${TARGETARCH}/rclone" > /out/rclone; \
+    chmod +x /out/*; \
+    for check in "reolink-cli --version:$REOLINK_CLI_VERSION" "restic version:$RESTIC_RELEASE" \
+                 "rclone version:v$RCLONE_RELEASE"; do \
+        out=$(/out/${check%%:*}); \
+        case "$out" in *"${check#*:}"*) ;; *) echo "unexpected: $out" >&2; exit 1 ;; esac; \
+    done
 
 FROM python:3.15-slim AS runtime
 ARG REOLINK_CLI_VERSION
+ARG RESTIC_RELEASE
+ARG RCLONE_RELEASE
 ARG REOVAULT_VERSION=dev
-ENV REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \
-    REOVAULT_VERSION=${REOVAULT_VERSION} \
+ENV REOVAULT_VERSION=${REOVAULT_VERSION} \
     PYTHONUNBUFFERED=1 \
     HOME=/home/reovault \
     REOVAULT_CONFIG_FILE=/config/reovault.toml \
-    REOVAULT_STORAGE__CONFIG_DIR=/config \
-    REOVAULT_STORAGE__DB_PATH=/config/reovault.db \
-    REOVAULT_STORAGE__MASTER_KEY_PATH=/config/master.key \
-    REOVAULT_STORAGE__VAULT_DIR=/vault \
-    REOVAULT_STORAGE__STAGING_DIR=/staging \
-    REOVAULT_WEB__PASSWORD_FILE=/config/web_password \
-    REOVAULT_WEB__SESSION_KEY_PATH=/config/web_session.key \
-    REOVAULT_REOLINK_CLI__PINNED_VERSION=${REOLINK_CLI_VERSION} \
-    REOVAULT_WEB__HOST=0.0.0.0
+    REOVAULT_STORAGE__DATA_DIR=/data \
+    REOVAULT_STORAGE__STAGING_DIR=/data/staging \
+    REOVAULT_WEB__PASSWORD_FILE=/data/web_password \
+    REOVAULT_WEB__SESSION_KEY_PATH=/data/web_session.key \
+    REOVAULT_WEB__HOST=0.0.0.0 \
+    REOVAULT_TOOLS__REOLINK_CLI_VERSION=${REOLINK_CLI_VERSION} \
+    REOVAULT_TOOLS__RESTIC_VERSION=${RESTIC_RELEASE} \
+    REOVAULT_TOOLS__RCLONE_VERSION=${RCLONE_RELEASE} \
+    RESTIC_CACHE_DIR=/data/restic-cache \
+    RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
+    RCLONE_CONFIG=/config/rclone/rclone.conf
 
 RUN groupadd -g 1000 reovault && useradd -u 1000 -g reovault -m -d /home/reovault reovault
 
-COPY --from=reolink-cli-download /out/reolink-cli /out/reolink-gateway /usr/local/bin/
+COPY --from=tools /out/ /usr/local/bin/
 
 RUN pip install --no-cache-dir uv==0.12.*
 
@@ -80,8 +102,8 @@ RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:${PATH}"
 
-RUN mkdir -p /config /vault /staging /home/reovault/.config/reolink-cli \
-    && chown -R reovault:reovault /app /config /vault /staging /home/reovault
+RUN mkdir -p /config/rclone /data /home/reovault/.config/reolink-cli \
+    && chown -R reovault:reovault /app /config /data /home/reovault
 
 USER reovault
 
