@@ -34,7 +34,7 @@
 
 <svelte:head><title>Activity | ReoVault</title></svelte:head>
 
-<PageHeader title="Activity" description="Every backup run, and the clips that need a word of explanation.">
+<PageHeader title="Activity" description="Every backup run, plus clips that keep failing or that the SD card overwrote.">
 	{#snippet actions()}
 		{#if cameras.data && cameras.data.length > 1}
 			<CameraPicker
@@ -93,7 +93,27 @@
 				{#if a.runs.length === 0}
 					<p class="text-muted-foreground text-sm">No backup has run yet.</p>
 				{:else}
-					<Table.Root>
+					<!-- Phones: one card per run; the table needs more width than a phone has. -->
+					<ul class="flex flex-col gap-3 md:hidden">
+						{#each a.runs as run (run.id)}
+							<li class="flex flex-col gap-1.5 rounded-lg border px-3 py-2.5">
+								<div class="flex items-center justify-between gap-3">
+									<span class="text-sm font-medium">{localTime(run.started_at, tz)}</span>
+									<RunOutcome {run} />
+								</div>
+								<p class="text-muted-foreground flex flex-wrap gap-x-3 text-sm tabular-nums">
+									{#if !camera}<span>{names.get(run.camera) ?? run.camera}</span>{/if}
+									<span>{plural(run.clips, 'clip')}</span>
+									<span>{bytes(run.bytes)}</span>
+									<span>{took(run.started_at, run.finished_at)}</span>
+									<span>{triggerLabel(run.trigger)}</span>
+								</p>
+								{#if run.error}<p class="text-muted-foreground text-xs break-words">{run.error}</p>{/if}
+								{#if run.lost}<p class="text-subtle text-xs">{plural(run.lost, 'clip')} lost</p>{/if}
+							</li>
+						{/each}
+					</ul>
+					<Table.Root class="hidden md:table">
 						<Table.Header>
 							<Table.Row>
 								<Table.Head>Started</Table.Head>

@@ -25,6 +25,15 @@ Nothing else was using the cameras during these runs.
   Nextcloud over WebDAV: download 403 to 510 s, upload 350 s (about 6.1 MB/s).
   A clip restored from that Nextcloud matched a fresh download from the
   camera byte for byte.
+* **With download and upload overlapping** (2026-11-02, same cameras and
+  Nextcloud): a new 2 GB batch every 7.5 to 8.5 minutes, about 4.1 MB/s
+  overall for the doorbell and 4.3 to 4.8 MB/s for the E1, against 2.5 and
+  2.8 MB/s when they took turns. A full 237 GB doorbell card then takes about
+  16 hours instead of 30.
+* **Index rebuild from the backups** (database deleted, same Nextcloud): both
+  cameras' indexes back in about one second each from the newest snapshot,
+  every backed-up clip identical (snapshot, path, detection types), lost
+  clips included, nothing downloaded again.
 * **A busy day:** about 9.4 GB of motion clips in 6 hours (19 MB clips at about
   4.6 Mbit/s), so 25 to 35 GB per day, against roughly 350 GB per day the
   camera can be read at.

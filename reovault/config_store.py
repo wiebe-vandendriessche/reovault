@@ -270,8 +270,17 @@ class ConfigStore:
         path = self.path
 
         def run() -> None:
-            for changes in watchfiles.watch(path.parent, stop_event=stop, debounce=500):
-                if any(Path(p).resolve() == path for _change, p in changes):
+            # Only reovault.toml: its folder may also hold rclone.conf (rewritten
+            # on token refresh) or, in a dev setup, the database.
+            only_config = watchfiles.DefaultFilter()
+
+            def is_config(change: watchfiles.Change, p: str) -> bool:
+                return Path(p).resolve() == path and only_config(change, p)
+
+            for changes in watchfiles.watch(
+                path.parent, stop_event=stop, debounce=500, watch_filter=is_config
+            ):
+                if changes:
                     try:
                         self.reload()
                     except Exception as exc:  # noqa: BLE001 - the watcher must survive

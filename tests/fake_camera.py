@@ -23,6 +23,7 @@ class FakeCamera:
     always_short: set[str] = field(default_factory=set)
     refuse: set[str] = field(default_factory=set)  # skipped, but still on the card
     vanish: set[str] = field(default_factory=set)  # overwritten just before download
+    breaks_batch: set[str] = field(default_factory=set)  # fails any download it is part of
     downloads: list[list[str]] = field(default_factory=list)
     on_download: object = None  # callable(dest) to observe staging mid-run
 
@@ -41,6 +42,8 @@ class FakeCamera:
         if self.offline:
             raise ToolError("camera unreachable", code=2)
         self.downloads.append(list(names))
+        if self.breaks_batch & set(names):
+            raise ToolError("unexpected EOF while reading HTTP chunk header", code=4)
         if callable(self.on_download):
             self.on_download(dest)
         dest.mkdir(parents=True, exist_ok=True)

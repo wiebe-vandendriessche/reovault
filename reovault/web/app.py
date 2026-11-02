@@ -39,10 +39,26 @@ _MAX_BODY_BYTES = 64 * 1024
 _INLINE_SCRIPT = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S)
 
 
-def _csp(script_hashes: list[str]) -> str:
+_ANNOUNCER_STYLE = re.compile(rb'id="svelte-announcer"[^>]*?style="([^"]+)"', re.S)
+
+
+def _sha256(data: bytes) -> str:
+    return base64.b64encode(hashlib.sha256(data).digest()).decode()
+
+
+def _csp(script_hashes: list[str], style_hashes: list[str] | None = None) -> str:
     scripts = " ".join(["'self'", *(f"'sha256-{h}'" for h in script_hashes)])
+    # 'unsafe-hashes' allows exactly the listed style *attributes* (SvelteKit's
+    # route announcer), still no other inline style.
+    styles = " ".join(
+        [
+            "'self'",
+            *(["'unsafe-hashes'"] if style_hashes else []),
+            *(f"'sha256-{h}'" for h in style_hashes or []),
+        ]
+    )
     return (
-        f"default-src 'self'; script-src {scripts}; style-src 'self'; "
+        f"default-src 'self'; script-src {scripts}; style-src {styles}; "
         "img-src 'self' data:; frame-ancestors 'none'; "
         "base-uri 'none'; form-action 'self'; object-src 'none'"
     )
@@ -51,10 +67,17 @@ def _csp(script_hashes: list[str]) -> str:
 def _inline_script_hashes(index_html: bytes) -> list[str]:
     """SvelteKit's SPA page boots from one inline script; hashing it from the
     file actually served keeps 'unsafe-inline' out of script-src."""
-    return [
-        base64.b64encode(hashlib.sha256(m.group(1)).digest()).decode()
-        for m in _INLINE_SCRIPT.finditer(index_html)
-    ]
+    return [_sha256(m.group(1)) for m in _INLINE_SCRIPT.finditer(index_html)]
+
+
+def _announcer_style_hashes(dist: Path) -> list[str]:
+    """SvelteKit's screen-reader route announcer is rendered with a fixed
+    inline `style` attribute, which `style-src 'self'` would refuse on every
+    page load. Found in the built bundle, so a SvelteKit update can't drift."""
+    found: set[bytes] = set()
+    for js in (dist / "_app").rglob("*.js") if (dist / "_app").is_dir() else []:
+        found.update(m.group(1) for m in _ANNOUNCER_STYLE.finditer(js.read_bytes()))
+    return sorted(_sha256(s) for s in found)
 
 
 def _origin_matches_host(origin: str, request: Request) -> bool:
@@ -89,7 +112,9 @@ def create_app(rt: Runtime, *, dashboard_dir: Path | None = None) -> FastAPI:
     dist = (dashboard_dir or DEFAULT_DASHBOARD_DIR).resolve()
     index_path = dist / "index.html"
     index_html = index_path.read_bytes() if index_path.is_file() else None
-    csp = _csp(_inline_script_hashes(index_html) if index_html else [])
+    csp = _csp(
+        _inline_script_hashes(index_html) if index_html else [], _announcer_style_hashes(dist)
+    )
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception) -> Response:

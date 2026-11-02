@@ -80,7 +80,9 @@ class Runtime:
             label = cam.name or cam.alias
             worker = self.workers.get(cam.alias)
             status = camera_status(cam.alias, self.db, worker.state if worker else None)
-            runs = self.db.runs(cam.alias, limit=2)
+            # Finished runs only: the one in progress would resolve the alert
+            # at the start of every run and reopen it when it fails again.
+            runs = self.db.runs(cam.alias, limit=2, finished=True)
             if len(runs) == 2 and all(r.outcome == "error" for r in runs):
                 out.append(
                     Condition(

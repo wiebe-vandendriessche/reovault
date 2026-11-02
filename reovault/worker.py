@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from reovault.backup import AlreadyRunning, BackupRun, CameraState, RunResult
+from reovault.backup import BackupRun, CameraState, RunResult
 from reovault.camera import Camera, DemoCamera, Gateway, ReolinkCamera
 from reovault.config import CameraConfig, Settings
 from reovault.db import Db, now_iso, parse_iso
@@ -116,12 +116,18 @@ class Worker:
             cfg = settings.camera(self.alias)
             if cfg is None or not cfg.enabled:
                 return
-            if first:
-                first = False
-                with contextlib.suppress(ToolError):
-                    restic_for(settings, self.alias).unlock()  # locks a crash left behind
-            self._backup(settings, cfg)
-            self._maintain(settings)
+            try:
+                if first:
+                    first = False
+                    self.health.check_errors = int(
+                        self.db.get_setting(f"check_errors:{self.alias}") or 0
+                    )
+                    with contextlib.suppress(ToolError):
+                        restic_for(settings, self.alias).unlock()  # locks a crash left behind
+                self._backup(settings, cfg)
+                self._maintain(settings)
+            except Exception:  # noqa: BLE001 - the camera's thread must outlive any bug
+                logger.exception("worker.loop_failed", camera=self.alias)
             self._last_end = datetime.now(UTC)
             self._wait()
 
@@ -159,7 +165,7 @@ class Worker:
                 interval=timedelta(minutes=settings.backup.interval_minutes),
                 on_progress=lambda: self.publish("activity", camera=self.alias),
             ).run(trigger)
-        except (ToolError, AlreadyRunning) as exc:  # no destination configured
+        except ToolError as exc:  # no destination configured
             logger.error("worker.run_not_started", camera=self.alias, error=str(exc))
             return None
         finally:
@@ -175,17 +181,22 @@ class Worker:
             restic = restic_for(settings, self.alias)
             if restic.state() != "ok":
                 return
+            # Stamped before running: a forget or check that fails or times
+            # out (up to 6 h) waits for its next due time instead of being
+            # retried after every backup run.
             if self._due("forget", FORGET_EVERY):
+                self.db.set_setting(f"forget:{self.alias}", now_iso())
                 if settings.backup.keep_days:
                     restic.forget(settings.backup.keep_days)
                 self._reconcile(restic)
-                self.db.set_setting(f"forget:{self.alias}", now_iso())
             if self.db.get_setting(f"check:{self.alias}") is None:
                 # First check a week after the first backup, not right away.
                 self.db.set_setting(f"check:{self.alias}", now_iso())
             elif self._due("check", CHECK_EVERY):
-                self.health.check_errors = restic.check(CHECK_SUBSET)
                 self.db.set_setting(f"check:{self.alias}", now_iso())
+                self.health.check_errors = restic.check(CHECK_SUBSET)
+                # Persisted: a restart must not "resolve" a corruption alert.
+                self.db.set_setting(f"check_errors:{self.alias}", str(self.health.check_errors))
             self.health.maintenance_error = None
         except ToolError as exc:
             self.health.maintenance_error = str(exc)

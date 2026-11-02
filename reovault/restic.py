@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -84,6 +85,34 @@ class Restic:
         if proc.returncode != 0:
             raise self._fail("snapshots", proc)
         return {s["id"] for s in json.loads(proc.stdout or "[]")}
+
+    def latest(self) -> dict[str, Any]:
+        """The newest snapshot: `id`, `time`, `paths`. `--latest 1` returns
+        one per host and path group, so pick by parsed time (restic writes
+        local time with an offset, which doesn't sort as text)."""
+        proc = self._run("snapshots", "--host", HOST, "--latest", "1", "--json", timeout=300)
+        if proc.returncode != 0:
+            raise self._fail("snapshots", proc)
+        snaps = json.loads(proc.stdout or "[]")
+        if not snaps:
+            raise ToolError("restic found no snapshot")
+        newest: dict[str, Any] = max(snaps, key=lambda s: datetime.fromisoformat(s["time"]))
+        return newest
+
+    def files(self, snapshot_id: str) -> set[str]:
+        """Every file path in a snapshot."""
+        proc = self._run("ls", "--json", snapshot_id, timeout=600)
+        if proc.returncode != 0:
+            raise self._fail("ls", proc)
+        nodes = (json.loads(line) for line in proc.stdout.splitlines() if line.startswith("{"))
+        return {n["path"] for n in nodes if n.get("type") == "file"}
+
+    def read(self, snapshot_id: str, path: str) -> str:
+        """One small text file out of a snapshot."""
+        proc = self._run("--no-lock", "dump", snapshot_id, path, timeout=600)
+        if proc.returncode != 0:
+            raise self._fail("dump", proc)
+        return proc.stdout
 
     def forget(self, keep_days: int) -> None:
         # `--prune` mixes JSON and text output, so only the exit code counts.

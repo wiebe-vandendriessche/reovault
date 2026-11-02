@@ -7,7 +7,7 @@ deduplication, integrity checks, retention) is restic's job, not ReoVault's.
 
 ```
 camera SD card --reolink-cli vod download--> local batch --restic backup--> destination
-                                             (one batch at a time)          (local disk, Nextcloud,
+                                             (at most two batches)          (local disk, Nextcloud,
                                                                              OneDrive, S3, ... via rclone)
 ```
 
@@ -29,44 +29,60 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> dest
 
 `backup.py` runs one camera, in that camera's thread:
 
-1. **Recover.** Half-finished downloads from a crash are deleted. Clips that
-   were downloaded and verified but not yet uploaded are uploaded first.
-2. **Open the repository.** Each camera has its own restic repository at
+1. **Open the repository.** Each camera has its own restic repository at
    `<destination>/<alias>`. A missing repository is created only if this
    camera never backed anything up there before. If it did, a missing
    repository means a disk isn't mounted or the path is wrong, and the run
    stops with that message instead of starting a fresh, empty backup.
-3. **List the card.** On the first run, once a day and after an error, the
+2. **Catch the index up** if the repository has snapshots the database
+   doesn't know (see [The index](#the-index)).
+3. **Recover.** Half-finished downloads from a crash are deleted. Clips that
+   were downloaded and verified but not yet uploaded are uploaded first.
+4. **List the card.** On the first run, once a day and after an error, the
    whole card is read, one camera-local day at a time, going back until three
    empty days in a row. Otherwise only the last couple of hours are searched.
-4. **Batches**, until nothing is left:
+5. **Batches**, until nothing is left:
    * **Pick** up to 2 GB of clips: the newest first (recorded since the last
      run), then the oldest, because the oldest is what the card overwrites
      next. A first run on a full card works through the backlog oldest-first
      while new clips still go out within the hour.
-   * **Download** them with one `reolink-cli vod download` call, which shares
-     one camera connection.
+   * **Download** them into `<staging>/<alias>/incoming/` with one
+     `reolink-cli vod download` call, which shares one camera connection.
+     This happens while the previous batch uploads (see below). If the whole
+     call fails while the camera still answers, the batch is downloaded one
+     clip at a time, so a single bad clip can't hold up the rest.
    * **Verify** each file's size against what the card reported. A short file
      gets one retry after a pause (a D340W quirk); a clip that keeps failing
      moves to the back and is retried once a day.
-   * **Stage** the verified files in `<staging>/<alias>/batch/<date>/`.
-   * **Upload** with `restic backup`. Only when restic exits 0 with a snapshot
-     id are the clips marked backed up, and only then are the local files
-     deleted.
-   * If the upload fails, the batch stays on disk and the run stops: nothing
-     more is downloaded until the destination is back, so local disk never
-     holds more than one batch. The clips wait on the SD card.
+   * **Wait** for the previous batch's upload, then **stage** the verified
+     files in `<staging>/<alias>/batch/<date>/`.
+   * **Upload** with `restic backup` on a background thread, while the next
+     batch downloads. Only when restic exits 0 with a snapshot id are the
+     clips marked backed up, and only then are the local files deleted.
+   * If an upload fails, the next batch is still staged next to it and the
+     run stops: nothing more is downloaded until the destination is back.
+     The next run uploads both in one snapshot. Local disk holds at most two
+     batches (one uploading, one downloading), about 4.8 GB per camera. The
+     clips wait on the SD card.
+
+Overlapping the two cuts a first backup of a full card by about a third:
+download (about 4 to 6 MB/s) and upload no longer take turns.
 
 **The invariant:** a clip counts as backed up only after its size matched,
 restic confirmed a snapshot, and the database recorded it. A crash anywhere
 before that just means the next run uploads the same files again; restic
 stores the data once.
 
-**Lost clips:** when a download fails, ReoVault searches that day on the card
-again. A clip the card no longer lists was overwritten before it could be
-backed up: it's marked lost, counted, and never retried. Any other failure is
-retried. The decision never depends on error wording, which differs between
-models and reolink-cli versions.
+**Lost clips:** when a download fails, ReoVault searches that day and the next
+on the card again. A clip counts as lost only with proof: the card no longer
+lists it *and* it is older than the oldest clip the card still has (cards
+overwrite oldest first). It's then counted and never retried. An empty or
+truncated listing proves nothing, so that clip is retried. The decision never
+depends on error wording, which differs between models and reolink-cli
+versions.
+
+**Clips without a size** (the card may list a clip that is still recording)
+wait until the card reports one: without it a download can't be verified.
 
 ## Snapshots and retention
 
@@ -96,6 +112,16 @@ expired. It exists so that:
 restic stays the source of truth. A download uses the snapshot and path
 stored in the index, so it keeps working after the destination changes.
 
+**Every snapshot carries the index.** Before each upload, ReoVault writes
+`batch/.reovault/index.json` into the batch: the camera's whole index (every
+backed-up clip with its snapshot, every lost and expired clip, detection types
+included). If the database is lost, restored from an older copy, or a crash
+left a snapshot unrecorded, the next run notices restic has snapshots the
+database doesn't know, reads the newest snapshot's index (two restic calls),
+and carries on. Nothing is downloaded again and old backups stay visible. Its
+own clips are only trusted if they really are in that snapshot, because a
+`restic backup` that exits 3 (a file unreadable) still writes one.
+
 ## Downloads
 
 A clip is downloaded with `restic dump`, streamed straight to the browser. A
@@ -108,7 +134,8 @@ it.
 
 Each camera has one thread, and everything that touches that camera's
 repository (backups, `forget`, `check`) happens in it, one step after
-another. Cameras run in parallel; a camera never does. `reovault run` shares
+another; the only helper is the upload thread of the run in progress, joined
+before the run ends. Cameras run in parallel; a camera never does. `reovault run` shares
 the same per-camera lock file as the daemon.
 
 ## Why these tools

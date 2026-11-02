@@ -22,6 +22,14 @@ def backed_up(env, web_settings, web_password_hash):
     worker = Worker("demo", rt.settings, rt.db, rt.gateway, rt.bus.publish)
     rt.workers.by_alias["demo"] = worker  # registered, but no thread: runs inline
     worker._backup(rt.settings(), rt.settings().camera("demo"))
+    # One clip the card overwrote before it could be backed up.
+    from datetime import UTC, datetime, timedelta
+
+    rt.db.upsert_clips(
+        "demo", [("0199990101000000", datetime.now(UTC) - timedelta(days=6), None, 10, "md")]
+    )
+    (gone,) = rt.db.clips_by_name("demo", ["0199990101000000"]).values()
+    rt.db.mark_lost(gone.id)
     client = login(TestClient(create_app(rt, dashboard_dir=env.tmp_path / "no-dist")))
     return rt, client
 
@@ -116,3 +124,20 @@ def test_errors_never_leak_repository_credentials(backed_up):
     text = "restic open failed: rest:https://alice:s3cret@backup.lan/reovault/demo"
     assert "s3cret" not in rt.redact(text)
     assert "alice:s3cret" not in rt.scrub_credentials(text)
+
+
+def test_alert_channels_cant_be_changed_from_the_dashboard(backed_up):
+    """A token file pointed at the restic password, sent to any URL, would
+    leak it: channels change in reovault.toml only."""
+    _rt, client = backed_up
+    cfg = client.get("/api/v1/config").json()
+    (alerts,) = [s for s in cfg["sections"] if s["path"] == ["alerts"]]
+    assert not any(f["editable"] for f in alerts["fields"])
+    r = client.put(
+        "/api/v1/config/alerts",
+        json={
+            "version": cfg["version"],
+            "values": {"ntfy_token_file": "/run/secrets/restic_password"},
+        },
+    )
+    assert r.status_code == 404

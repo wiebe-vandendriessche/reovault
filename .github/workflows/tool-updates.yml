@@ -1,0 +1,23 @@
+name: Tool updates
+
+# Opens an issue when reolink-cli, restic or rclone has a release newer than
+# the one pinned in the Dockerfile. Dependabot can't track these. Scheduled
+# workflows only run from the default branch.
+on:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays, next to Dependabot's run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check pinned tool versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_tool_updates.py --open-issues

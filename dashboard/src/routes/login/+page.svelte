@@ -51,7 +51,7 @@
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Sign in</Card.Title>
-				<Card.Description>Your recordings stay on this server, encrypted.</Card.Description>
+				<Card.Description>Your camera backups, encrypted by restic.</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<form onsubmit={submit} class="flex flex-col gap-5">

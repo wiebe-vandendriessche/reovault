@@ -78,3 +78,19 @@ def test_an_alert_opens_once_renotifies_and_resolves(tmp_path):
     notifier.evaluate()
     assert channel.sent[-1].resolved and channel.sent[-1].title.startswith("Resolved:")
     assert db.list_alerts() == []
+
+
+def test_a_run_in_progress_does_not_resolve_a_failing_alert(tmp_path):
+    db = _db(tmp_path)
+    for _ in range(2):
+        db.finish_run(db.start_run("cam", "schedule"), "error", "boom")
+    db.start_run("cam", "schedule")  # in progress: no outcome yet
+    runs = db.runs("cam", limit=2, finished=True)
+    assert [r.outcome for r in runs] == ["error", "error"]
+
+
+def test_a_first_run_in_progress_does_not_claim_everything_is_backed_up(tmp_path):
+    db = _db(tmp_path)
+    db.start_run("cam", "schedule")  # running, card not read yet: no clips known
+    status = camera_status("cam", db, CameraState())
+    assert status.verdict == "unknown"

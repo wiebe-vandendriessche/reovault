@@ -240,17 +240,14 @@ class ReolinkCamera:
 class DemoCamera:
     """A pretend camera (`demo = true`): its card holds one tiny clip every
     `every` for the last `window`, sliding with the wall clock so old clips
-    roll off like a real looping card. Every `gone_every`-th clip is
-    overwritten the moment it's downloaded, so "lost" has something to show."""
+    roll off the old end like a real looping card."""
 
     alias: str
     timezone: str
     every: timedelta = timedelta(minutes=15)
     window: timedelta = timedelta(days=7)
-    gone_every: int = 97
     clip_bytes: int = 4096
     now: Any = field(default=lambda: datetime.now(UTC))
-    _vanished: set[str] = field(default_factory=set)
     _TYPES = ("md", "md,people", "md,vehicle", "md,people,vehicle")
 
     def _slot(self, i: int) -> Found:
@@ -272,16 +269,14 @@ class DemoCamera:
         lo = -(-max(from_utc, self.now() - self.window).timestamp() // step)
         hi = min(to_utc, self.now()).timestamp() // step
         slots = (self._slot(int(i)) for i in range(int(lo), int(hi) + 1))
-        return [s for s in slots if s.name not in self._vanished and s.start_utc < to_utc]
+        return [s for s in slots if s.start_utc < to_utc]
 
     def download(self, names: list[str], dest: Path, timeout: float) -> Downloaded:
         dest.mkdir(parents=True, exist_ok=True)
         out = Downloaded()
         oldest = self.now() - self.window
         for name in names:
-            i = self._index(name)
-            if i % self.gone_every == 0 or self._slot(i).start_utc < oldest:
-                self._vanished.add(name)
+            if self._slot(self._index(name)).start_utc < oldest:  # rolled off meanwhile
                 out.failed[name] = "device rejected command 14 (400)"
                 continue
             path = dest / f"{name}.mp4"

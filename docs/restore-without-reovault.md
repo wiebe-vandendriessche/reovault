@@ -46,6 +46,22 @@ restic -r "$REPO" snapshots --json | python3 -c 'import json,sys; [print(s["id"]
 
 The clips end up under `restored/data/staging/<alias>/batch/<date>/`.
 
+## The clip list
+
+Every snapshot also holds `.../batch/.reovault/index.json`: ReoVault's list of
+every clip of that camera at the time, with its start time (UTC), size,
+detection types (`md` motion, `people`, `vehicle`, ...) and the snapshot it
+is in. The newest one is complete, so it's a handy table of contents:
+
+```bash
+restic -r "$REPO" dump latest "$(restic -r "$REPO" snapshots latest --json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["paths"][0])')/.reovault/index.json" \
+  | python3 -m json.tool | less
+```
+
+You can ignore these files otherwise; restoring everything (above) just puts
+one copy next to the clips.
+
 ## Browse
 
 On a Linux or macOS machine with FUSE:

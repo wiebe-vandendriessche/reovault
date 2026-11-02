@@ -36,7 +36,7 @@ startup: change them in the file, then restart.
 | `repository` | none | Where backups go. Each camera gets `<repository>/<alias>`. A local path (`/backups`), an rclone remote (`rclone:nextcloud:reovault`), or any restic backend (`sftp:`, `s3:`, `rest:`, ...). |
 | `password_file` | `$RESTIC_PASSWORD_FILE` | The restic password. The image reads it from the `restic_password` Docker secret. |
 | `interval_minutes` | `60` | Time between backup runs. A run that takes longer just continues. |
-| `keep_days` | `0` | Delete backups older than this, counted from the newest backup. `0` keeps everything. |
+| `keep_days` | `0` | Delete backups older than this, counted from the newest backup, e.g. `14`. `0` keeps everything. Keep it longer than your SD cards hold (about 7 days on a busy 256 GB doorbell), so a clip is never only on the card. |
 
 Changing `repository` starts fresh at the new destination: the cards are
 backed up there again. Clips backed up to the old destination stay

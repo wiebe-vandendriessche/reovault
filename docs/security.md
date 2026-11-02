@@ -69,10 +69,10 @@ reaches the dashboard or an alert.
 * **Content Security Policy:** `script-src 'self'` plus the SHA-256 of the
   one inline boot script, which the server computes from the `index.html`
   it actually serves; `style-src 'self'` with no `'unsafe-inline'`. Dynamic
-  styles go through the CSSOM, which CSP permits. The browser console
-  reports one refused inline style at startup: SvelteKit's screen-reader
-  route announcer hard-codes a `style` attribute, and the stylesheet
-  supplies the same rules instead, so nothing is lost.
+  styles go through the CSSOM, which CSP permits. The one inline `style`
+  attribute (SvelteKit's screen-reader route announcer) is allowed by its
+  exact hash with `'unsafe-hashes'`, found in the built bundle at startup;
+  no other inline style is. A browser test fails on any CSP violation.
 * **Request size:** bodies over 64 KB get 413, and chunked request bodies
   (which carry no length to check) get 411.
 * **`/healthz`** is public and status-only, for the Docker healthcheck.

@@ -15,6 +15,23 @@ Self-hosted backups of Reolink SD cards: ReoVault copies every clip off each cam
 
 Full docs (installation, dashboard guide, configuration reference, architecture): **https://wiebe-vandendriessche.github.io/reovault/**
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and the backup destination" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup" /></td>
+</tr>
+<tr>
+<td width="50%"><img src="img/screenshot-activity.png" alt="Activity: every backup run, plus clips that keep failing or that the card overwrote" /></td>
+<td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera with its status and backup totals, add from LAN discovery, turn backups on or off" /></td>
+</tr>
+<tr>
+<td width="50%"><img src="img/screenshot-settings-backup.png" alt="Settings, Backups: the destination with a test, how often to back up, how long to keep backups" /></td>
+<td width="50%"><img src="img/screenshot-settings-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and what alerts" /></td>
+</tr>
+</table>
+
 ## How it works
 
 ```
@@ -23,7 +40,7 @@ camera SD card --reolink-cli--> one 2 GB batch on local disk --restic--> your de
 
 * Backs up every hour by default: clips recorded since the last run first, then the oldest ones, which the card overwrites next.
 * restic does the storing: encryption, deduplication, integrity checks and retention ("keep N days", or forever).
-* A clip counts as backed up only after its size matched the card's and restic confirmed a snapshot. When the destination is down, ReoVault stops downloading and the clips wait on the SD card, so local disk never holds more than one batch.
+* A clip counts as backed up only after its size matched the card's and restic confirmed a snapshot. Download and upload overlap; when the destination is down, ReoVault stops downloading and the clips wait on the SD card, so local disk never holds more than two batches (about 5 GB per camera).
 * Alerts over ntfy, a webhook (Slack and Discord URLs work as-is) or email when backups keep failing or clips are about to be overwritten before they're backed up.
 * Playback stays in the Reolink app for what's still on the card; ReoVault's dashboard downloads anything that's backed up.
 

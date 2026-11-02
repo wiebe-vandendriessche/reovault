@@ -26,12 +26,15 @@
 		{#if clip.state !== 'backed_up'}
 			<StatusBadge {level}>{stateLabel(clip.state)}</StatusBadge>
 		{/if}
-		<span class="text-muted-foreground ml-auto text-sm tabular-nums">{bytes(clip.size)}</span>
-		{#if clip.state === 'backed_up'}
-			<Button size="sm" variant="outline" href={apiUrl(`/clips/${clip.id}/download`)} aria-label="Download clip from {when}">
-				<Download /> Download
-			</Button>
-		{/if}
+		<!-- Size and button wrap as one group, so every row breaks the same way. -->
+		<div class="ml-auto flex items-center gap-3">
+			<span class="text-muted-foreground text-sm tabular-nums">{bytes(clip.size)}</span>
+			{#if clip.state === 'backed_up'}
+				<Button size="sm" variant="outline" href={apiUrl(`/clips/${clip.id}/download`)} aria-label="Download clip from {when}">
+					<Download /> Download
+				</Button>
+			{/if}
+		</div>
 	</div>
 	{#if clip.state === 'pending' && clip.last_error}
 		<div class="border-t px-3 py-2.5 text-sm">

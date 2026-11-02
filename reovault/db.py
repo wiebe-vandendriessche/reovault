@@ -121,6 +121,19 @@ class Run:
 
 
 _CLIP_COLS = ", ".join(Clip.__slots__)
+# No `repository`: a rebuild knows which one it reads from, and the string
+# may carry credentials (`rest:https://user:pass@...`).
+_MANIFEST_KEYS = (
+    "name",
+    "start_utc",
+    "end_utc",
+    "size",
+    "rec_type",
+    "state",
+    "snapshot_id",
+    "path",
+    "backed_up_at",
+)
 _RUN_COLS = ", ".join(Run.__slots__)
 
 
@@ -272,6 +285,81 @@ class Db:
                 "WHERE id = ? AND state = 'pending'",
                 (now_iso(), clip_id),
             )
+
+    def snapshot_ids(self, camera: str, repository: str) -> set[str]:
+        rows = self._all(
+            "SELECT DISTINCT snapshot_id FROM clips WHERE camera = ? AND repository = ? "
+            "AND snapshot_id IS NOT NULL",
+            (camera, repository),
+        )
+        return {r["snapshot_id"] for r in rows}
+
+    def index_rows(
+        self, camera: str, repository: str, staged: dict[int, Path]
+    ) -> list[dict[str, object]]:
+        """The camera's index for a snapshot's manifest: every backed-up clip
+        of this repository, every lost and expired clip (any could still be on
+        a big card, so a rebuild must never download them again), and the
+        clips being staged now (`snapshot_id` None: this snapshot)."""
+        # ponytail: grows by ~250 B per clip forever (~30 MB/year for a busy
+        # doorbell; restic stores the unchanged part once). Trim old lost and
+        # expired rows if it ever matters.
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND ("
+            "(state = 'backed_up' AND repository = ?) OR state IN ('lost', 'expired')"
+            ") ORDER BY start_utc",
+            (camera, repository),
+        )
+        out: list[dict[str, object]] = []
+        for r in rows:
+            out.append({k: r[k] for k in _MANIFEST_KEYS})
+        if staged:
+            marks = ",".join("?" * len(staged))
+            for r in self._all(
+                f"SELECT {_CLIP_COLS} FROM clips WHERE id IN ({marks})", tuple(staged)
+            ):
+                row = {k: r[k] for k in _MANIFEST_KEYS}
+                row.update(state="backed_up", snapshot_id=None, path=str(staged[r["id"]]))
+                out.append(row)
+        return out
+
+    def import_index(
+        self, camera: str, repository: str, snapshot_id: str, snapshot_time: str, rows: list[dict]
+    ) -> int:
+        """Rows from a manifest. Never downgrades what this database already
+        knows: only new or still-pending clips take the manifest's state."""
+        when = iso(datetime.fromisoformat(snapshot_time))
+        with self.tx() as c:
+            c.executemany(
+                """
+                INSERT INTO clips (camera, name, start_utc, end_utc, size, rec_type, state,
+                                   repository, snapshot_id, path, backed_up_at, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (camera, name, start_utc) DO UPDATE SET
+                  state = excluded.state, repository = excluded.repository,
+                  snapshot_id = excluded.snapshot_id, path = excluded.path,
+                  backed_up_at = excluded.backed_up_at, rec_type = excluded.rec_type
+                WHERE clips.state = 'pending'
+                """,
+                [
+                    (
+                        camera,
+                        r["name"],
+                        r["start_utc"],
+                        r["end_utc"],
+                        r["size"],
+                        r["rec_type"],
+                        r["state"],
+                        repository if r["state"] == "backed_up" else None,
+                        r["snapshot_id"] or (snapshot_id if r["state"] == "backed_up" else None),
+                        r["path"],
+                        r["backed_up_at"] or (when if r["state"] == "backed_up" else None),
+                        r["backed_up_at"] or when,
+                    )
+                    for r in rows
+                ],
+            )
+        return len(rows)
 
     def expire_missing(self, camera: str, repository: str, existing: set[str]) -> int:
         """Clips whose snapshot `forget` removed become expired: never
@@ -441,8 +529,13 @@ class Db:
                 (now_iso(), outcome, error, run_id),
             )
 
-    def runs(self, camera: str | None = None, limit: int = 50) -> list[Run]:
-        where, params = ("WHERE camera = ?", (camera,)) if camera else ("", ())
+    def runs(
+        self, camera: str | None = None, limit: int = 50, *, finished: bool = False
+    ) -> list[Run]:
+        conds, params = (["camera = ?"], [camera]) if camera else ([], [])
+        if finished:
+            conds.append("finished_at IS NOT NULL")
+        where = f"WHERE {' AND '.join(conds)}" if conds else ""
         rows = self._all(
             f"SELECT {_RUN_COLS} FROM runs {where} ORDER BY started_at DESC, id DESC LIMIT ?",
             (*params, limit),

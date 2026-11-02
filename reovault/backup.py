@@ -6,20 +6,27 @@ restic exited 0 with a snapshot id, and the database committed. Local files
 are deleted only after that. A crash anywhere before the commit just means
 the next run backs the same files up again; restic stores the data once.
 
-Local disk never holds more than one batch: when restic can't upload, the
-run stops downloading and the clips wait on the SD card.
+Downloading and uploading overlap: while restic uploads `batch/`, the next
+batch downloads into `incoming/`. Local disk holds at most two batches, and
+when restic can't upload the run stops downloading, so the clips wait on the
+SD card.
+
+Every snapshot also carries `batch/.reovault/index.json`: the camera's whole
+index (every backed-up, lost and recently expired clip, detection types
+included). A lost or stale database is rebuilt from the newest one, so no
+clip is downloaded twice and older backups stay visible.
 """
 
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import shutil
 import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -35,15 +42,40 @@ from reovault.tools import ToolError
 logger = get_logger(__name__)
 
 BATCH_BYTES = 2 * 1024**3
-# Measured on a D340W: 1 invocation ~1.7 MB/s, 5 in parallel ~2.2 MB/s.
-# ponytail: 1 until the Step 4 hardware check says 2 is worth it.
-PARALLEL_DOWNLOADS = 1
 MAX_ATTEMPTS = 5
 SIZE_RETRY_PAUSE_SECS = 10.0  # D340W: a short file right after a big one
 FULL_SCAN_EVERY = timedelta(days=1)
 # Timeouts scale with the bytes: a flat limit would kill a 2 GB batch.
 _MIN_DOWNLOAD_RATE = 0.5 * 1024**2
 _MIN_UPLOAD_RATE = 0.25 * 1024**2
+
+
+MANIFEST_DIR = ".reovault"
+MANIFEST_NAME = "index.json"
+
+
+class _Upload:
+    """One commit on a daemon thread: a stuck restic never holds up the
+    process's exit, and its result or error is kept for `wait()`."""
+
+    def __init__(self, fn: Callable[..., tuple[int, int]], *args: object) -> None:
+        self._result: tuple[int, int] | None = None
+        self._error: BaseException | None = None
+        self._thread = threading.Thread(target=self._run, args=(fn, args), daemon=True)
+        self._thread.start()
+
+    def _run(self, fn: Callable[..., tuple[int, int]], args: tuple[object, ...]) -> None:
+        try:
+            self._result = fn(*args)
+        except BaseException as exc:  # noqa: BLE001 - handed to wait()
+            self._error = exc
+
+    def wait(self) -> tuple[int, int]:
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
+        assert self._result is not None
+        return self._result
 
 
 class RunError(Exception):
@@ -113,41 +145,106 @@ class BackupRun:
         return self.staging / "batch"
 
     def run(self, trigger: str) -> RunResult:
+        """One run. Never raises: every failure ends up in the run's row. A
+        run that finds another one in progress (`reovault run` next to the
+        daemon) leaves no row at all, so it can't look like a failure."""
         alias = self.camera.alias
         result = RunResult()
-        run_id = self.db.start_run(alias, trigger)
         try:
             with camera_lock(self.staging):
-                self._run(result, run_id)
-        except (RunError, ToolError, AlreadyRunning, OSError) as exc:
-            result.outcome, result.error = "error", str(exc)
-            logger.error("backup.run_failed", camera=alias, error=str(exc))
-        self.state.last_failed = result.outcome == "error"
-        self.db.finish_run(run_id, result.outcome, result.error)
+                run_id = self.db.start_run(alias, trigger)
+                try:
+                    self._run(result, run_id)
+                except (RunError, ToolError, OSError) as exc:
+                    result.outcome, result.error = "error", str(exc)
+                    logger.error("backup.run_failed", camera=alias, error=str(exc))
+                except Exception as exc:  # noqa: BLE001 - a bug must not end the camera's thread
+                    result.outcome, result.error = "error", f"unexpected error: {exc}"
+                    logger.exception("backup.run_crashed", camera=alias)
+                self.state.last_failed = result.outcome == "error"
+                self.db.update_run(
+                    run_id, clips=result.clips, bytes_=result.bytes, lost=result.lost
+                )
+                self.db.finish_run(run_id, result.outcome, result.error)
+        except AlreadyRunning as exc:
+            result.outcome, result.error = "skipped", str(exc)
+            logger.info("backup.run_skipped", camera=alias, reason=str(exc))
+        except OSError as exc:  # the staging folder itself (read-only, unmounted)
+            result.outcome, result.error = "error", f"staging folder unusable: {exc}"
+            logger.error("backup.run_failed", camera=alias, error=result.error)
+            self.state.last_failed = True
+            self.db.finish_run(self.db.start_run(alias, trigger), "error", result.error)
         self.on_progress()
         return result
 
     def _run(self, result: RunResult, run_id: int) -> None:
-        self._recover(result)
         self._ensure_repository()
+        self._rebuild_index()
+        self._recover(result)
         self._list()
         tried: set[int] = set()  # a clip that failed waits for the next run
-        while True:
-            if self.state.stop.is_set():
-                result.outcome = "stopped"
-                return
-            free = shutil.disk_usage(self.staging).free
-            if free < BATCH_BYTES * 1.2:
-                raise RunError(f"Not enough free space for a batch in {self.staging}")
-            pending = [c for c in self.db.pending(self.camera.alias) if c.id not in tried]
-            batch = pick(pending, self.clock(), self.interval)
-            if not batch:
-                return
-            tried.update(c.id for c in batch)
-            self._batch(batch, result)
-            self.db.update_run(run_id, clips=result.clips, bytes_=result.bytes, lost=result.lost)
-            self.on_progress()
-            self._search_recent()
+        upload: _Upload | None = None
+        try:
+            while True:
+                if self.state.stop.is_set():
+                    result.outcome = "stopped"
+                    break
+                # The batch being uploaded is already on disk, so this is
+                # room for one more.
+                free = shutil.disk_usage(self.staging).free
+                if free < BATCH_BYTES * 1.2:
+                    raise RunError(f"Not enough free space for a batch in {self.staging}")
+                pending = [c for c in self.db.pending(self.camera.alias) if c.id not in tried]
+                self._flag_sizeless(pending, tried)
+                batch = pick(pending, self.clock(), self.interval)
+                if not batch:
+                    break
+                tried.update(c.id for c in batch)
+                started = time.monotonic()
+                fetched = self._fetch(batch, result)
+                download_secs = time.monotonic() - started
+                try:
+                    self._join(upload, result, run_id)
+                finally:
+                    # Even when that upload failed: the next run's `_recover`
+                    # then sends both batches, nothing is downloaded twice.
+                    upload = None
+                    staged = self._stage(fetched)
+                if staged:
+                    upload = _Upload(self._commit, staged, download_secs)
+                self._search_recent()
+        except BaseException:
+            # Still wait for the upload in flight, and keep both errors.
+            if upload is not None:
+                try:
+                    self._join(upload, result, run_id)
+                except Exception as exc:  # noqa: BLE001 - the main error wins
+                    logger.error("backup.upload_failed", camera=self.camera.alias, error=str(exc))
+            raise
+        self._join(upload, result, run_id)  # an upload failure beats "stopped"
+
+    def _flag_sizeless(self, pending: list[Clip], tried: set[int]) -> None:
+        """A finished clip the card still lists without a size can't be
+        verified, so it isn't downloaded; it counts an attempt each run so it
+        shows up (and alerts) as a clip that keeps failing."""
+        settled = self.clock() - 2 * self.interval
+        for c in pending:
+            if c.size is None and c.id not in tried and parse_iso(c.start_utc) < settled:
+                self.db.record_failure(
+                    c.id, "the camera reports no size for this clip, so it can't be verified"
+                )
+                tried.add(c.id)
+
+    def _join(self, upload: _Upload | None, result: RunResult, run_id: int) -> None:
+        """Waits for an upload; counters only ever change here, on the run's
+        own thread."""
+        if upload is None:
+            return
+        clips, size = upload.wait()
+        result.clips += clips
+        result.bytes += size
+        self.db.update_run(run_id, clips=result.clips, bytes_=result.bytes, lost=result.lost)
+        self.on_progress()
 
     # -- steps -----------------------------------------------------------
 
@@ -167,8 +264,9 @@ class BackupRun:
                 f.unlink()  # already safe, or not ours
         if keep:
             logger.info("backup.recovering_batch", camera=self.camera.alias, files=len(keep))
-            self._ensure_repository()
-            self._commit(keep, result)
+            clips_n, size = self._commit(keep)
+            result.clips += clips_n
+            result.bytes += size
 
     def _ensure_repository(self) -> None:
         state = self.restic.state()
@@ -212,9 +310,9 @@ class BackupRun:
             self.camera.alias, [(f.name, f.start_utc, f.end_utc, f.size, f.rec_type) for f in found]
         )
 
-    def _batch(self, batch: list[Clip], result: RunResult) -> None:
+    def _fetch(self, batch: list[Clip], result: RunResult) -> dict[Clip, Path]:
+        """Downloads and verifies a batch into `incoming/`."""
         by_name = {c.name: c for c in batch}
-        started = time.monotonic()
         got = self._download(batch)
         # A short file is retried once after a pause, then counts as a failure.
         short = [n for n, p in got.files.items() if _short(p, by_name[n])]
@@ -235,41 +333,52 @@ class BackupRun:
                 else:
                     got.failed[n] = again.failed.get(n, "no file on the retry")
         result.lost += self._settle_failures({by_name[n]: r for n, r in got.failed.items()})
+        return {by_name[n]: p for n, p in got.files.items()}
 
+    def _stage(self, fetched: dict[Clip, Path]) -> dict[int, Path]:
+        """Moves verified files into `batch/<camera-local day>/`. Only ever
+        called while no upload runs: restic must see `batch/` standing still."""
         staged: dict[int, Path] = {}
         tz = ZoneInfo(self.camera.timezone)
-        for name, path in got.files.items():
-            clip = by_name[name]
+        for clip, path in fetched.items():
             day = parse_iso(clip.start_utc).astimezone(tz).date().isoformat()
-            dest = self.batch_dir / day / f"{name}{path.suffix}"
+            dest = self.batch_dir / day / f"{clip.name}{path.suffix}"
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(path, dest)  # same filesystem: atomic
             staged[clip.id] = dest
         shutil.rmtree(self.incoming, ignore_errors=True)
-        if staged:
-            self._commit(staged, result, download_secs=time.monotonic() - started)
+        return staged
 
     def _download(self, clips: list[Clip]) -> Downloaded:
-        """Up to `PARALLEL_DOWNLOADS` batch invocations at once. When any
-        invocation fails as a whole (camera or network down), the run ends
-        without blaming a single clip."""
-        groups = [clips[i::PARALLEL_DOWNLOADS] for i in range(PARALLEL_DOWNLOADS)]
-        groups = [g for g in groups if g]
-
-        def fetch(i_group: tuple[int, list[Clip]]) -> Downloaded:
-            i, group = i_group
-            size = sum(c.size or 0 for c in group)
+        """One batch invocation. When it fails as a whole, a quick search
+        tells the two causes apart: the camera is unreachable (re-raise: the
+        run ends and no clip is blamed), or one clip breaks the batch (fall
+        back to one clip at a time, so only that clip is charged and the
+        rest still get backed up)."""
+        try:
             return self.camera.download(
-                [c.name for c in group],
-                self.incoming / str(i),
-                timeout=120 + size / _MIN_DOWNLOAD_RATE,
+                [c.name for c in clips], self.incoming, timeout=_timeout(clips)
             )
-
+        except ToolError as exc:
+            now = self.clock()
+            self.camera.search(now - timedelta(hours=1), now)  # raises when offline
+            logger.warning(
+                "backup.batch_failed_one_by_one", camera=self.camera.alias, error=str(exc)
+            )
+        # Only these clips' partial files: `incoming/` may also hold a batch
+        # already verified (this is how short files are retried).
+        for clip in clips:
+            for partial in self.incoming.glob(f"{clip.name}.*"):
+                partial.unlink()
         merged = Downloaded()
-        with ThreadPoolExecutor(len(groups)) as pool:
-            for got in pool.map(fetch, enumerate(groups)):
-                merged.files.update(got.files)
-                merged.failed.update(got.failed)
+        for clip in clips:
+            try:
+                got = self.camera.download([clip.name], self.incoming, timeout=_timeout([clip]))
+            except ToolError as exc:
+                merged.failed[clip.name] = str(exc)
+                continue
+            merged.files.update(got.files)
+            merged.failed.update(got.failed)
         return merged
 
     def _settle_failures(self, failed: dict[Clip, str]) -> int:
@@ -284,27 +393,36 @@ class BackupRun:
             by_day[parse_iso(clip.start_utc).astimezone(tz).date().isoformat()].append(clip)
         lost = 0
         for day, clips in by_day.items():
+            # Two days, so a day the card overwrote completely still has a
+            # later clip to compare against.
             start = datetime.fromisoformat(day).replace(tzinfo=tz)
-            listed = {
-                f.name
-                for f in self.camera.search(
-                    start.astimezone(UTC), (start + timedelta(days=1)).astimezone(UTC)
-                )
-            }
+            on_card = self.camera.search(
+                start.astimezone(UTC), (start + timedelta(days=2)).astimezone(UTC)
+            )
+            names = {f.name for f in on_card}
+            # Both days overwritten: the card scan's oldest clip is the proof.
+            oldest = min((f.start_utc for f in on_card), default=self.state.oldest_on_card)
             for clip in clips:
-                if clip.name in listed:
-                    self.db.record_failure(clip.id, failed[clip])
-                else:
+                # Lost only with proof: not listed, and older than the oldest
+                # clip the card still has (it overwrites oldest first). A
+                # truncated or empty answer proves nothing and costs one
+                # attempt instead.
+                if clip.name not in names and oldest and parse_iso(clip.start_utc) < oldest:
                     self.db.mark_lost(clip.id)
                     lost += 1
+                else:
+                    self.db.record_failure(clip.id, failed[clip])
         if lost:
             logger.warning("backup.clips_lost", camera=self.camera.alias, count=lost)
         return lost
 
     def _commit(
-        self, staged: dict[int, Path], result: RunResult, download_secs: float | None = None
-    ) -> None:
+        self, staged: dict[int, Path], download_secs: float | None = None
+    ) -> tuple[int, int]:
+        """`restic backup` of `batch/`, then the DB commit, then delete the
+        files. Runs on the upload thread. Returns (clips, bytes)."""
         size = sum(p.stat().st_size for p in staged.values())
+        self._write_manifest(staged)
         started = time.monotonic()
         summary = self.restic.backup(self.batch_dir, timeout=600 + size / _MIN_UPLOAD_RATE)
         upload_secs = time.monotonic() - started
@@ -316,11 +434,10 @@ class BackupRun:
         )
         for path in staged.values():
             path.unlink(missing_ok=True)
+        shutil.rmtree(self.batch_dir / MANIFEST_DIR, ignore_errors=True)
         for leftover in sorted(self.batch_dir.glob("*"), reverse=True):
             if leftover.is_dir() and not any(leftover.iterdir()):
                 leftover.rmdir()
-        result.clips += len(staged)
-        result.bytes += size
         logger.info(
             "backup.batch_done",
             camera=self.camera.alias,
@@ -330,12 +447,57 @@ class BackupRun:
             download_secs=round(download_secs, 1) if download_secs is not None else None,
             upload_secs=round(upload_secs, 1),
         )
+        return len(staged), size
+
+    def _write_manifest(self, staged: dict[int, Path]) -> None:
+        rows = self.db.index_rows(self.camera.alias, self.restic.repository, staged)
+        path = self.batch_dir / MANIFEST_DIR / MANIFEST_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"format": 1, "camera": self.camera.alias, "clips": rows}), encoding="utf-8"
+        )
+
+    def _rebuild_index(self) -> None:
+        """Snapshots the database doesn't know about (it was lost, restored
+        from an older copy, or a commit crashed after restic finished) mean
+        the index is behind: take the newest snapshot's manifest. Two restic
+        calls; if it fails the run fails, so a stale index never causes
+        downloads."""
+        alias, repository = self.camera.alias, self.restic.repository
+        ids = self.restic.snapshot_ids()
+        if not ids - self.db.snapshot_ids(alias, repository):
+            return
+        latest = self.restic.latest()
+        manifest = f"{latest['paths'][0]}/{MANIFEST_DIR}/{MANIFEST_NAME}"
+        try:
+            data = json.loads(self.restic.read(latest["id"], manifest))
+            # A clip the manifest says is in this snapshot must really be
+            # there: a `restic backup` that exited 3 (a file unreadable)
+            # still leaves an incomplete snapshot behind.
+            present = self.restic.files(latest["id"])
+        except (ToolError, ValueError) as exc:
+            raise RunError(
+                "The backup has snapshots this database doesn't know, and the newest one has "
+                f"no readable index to rebuild from: {exc}"
+            ) from exc
+        # Lost and expired clips carry no snapshot; only this snapshot's own
+        # backed-up clips need checking.
+        rows = [
+            c
+            for c in data["clips"]
+            if c["state"] != "backed_up" or c["snapshot_id"] or c["path"] in present
+        ]
+        imported = self.db.import_index(alias, repository, latest["id"], latest["time"], rows)
+        expired = self.db.expire_missing(alias, repository, ids)
+        logger.info("backup.index_rebuilt", camera=alias, clips=imported, expired=expired)
 
 
 def pick(pending: list[Clip], now: datetime, interval: timedelta) -> list[Clip]:
     """The next batch: clips recorded since the last run first, then the
     oldest (the next ones the card overwrites). Clips that keep failing go
-    last and are tried at most once a day."""
+    last and are tried at most once a day. A clip the card lists without a
+    size waits until it reports one (likely still recording): without it the
+    download can't be verified."""
     recent_cutoff = now - 2 * interval
     day_ago = now - timedelta(days=1)
 
@@ -347,7 +509,7 @@ def pick(pending: list[Clip], now: datetime, interval: timedelta) -> list[Clip]:
             stubborn(c) and c.last_attempt_at is not None and parse_iso(c.last_attempt_at) > day_ago
         )
 
-    due = [c for c in pending if not resting(c)]
+    due = [c for c in pending if not resting(c) and c.size is not None]
     recent = [c for c in due if not stubborn(c) and parse_iso(c.start_utc) >= recent_cutoff]
     rest = [c for c in due if c not in recent]
     ordered = recent + sorted(rest, key=lambda c: (stubborn(c), c.start_utc))
@@ -361,8 +523,12 @@ def pick(pending: list[Clip], now: datetime, interval: timedelta) -> list[Clip]:
     return batch
 
 
+def _timeout(clips: list[Clip]) -> float:
+    return 120 + sum(c.size or 0 for c in clips) / _MIN_DOWNLOAD_RATE
+
+
 def _short(path: Path, clip: Clip) -> bool:
-    return clip.size is not None and path.stat().st_size != clip.size
+    return path.stat().st_size != clip.size
 
 
 def _files(root: Path) -> list[Path]:

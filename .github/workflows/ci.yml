@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, "feat/**"]
   pull_request:
 
 jobs:
@@ -32,23 +32,10 @@ jobs:
         run: uv run mypy reovault
 
       - name: Install pinned restic and rclone
-        # The engine tests run the real binaries, never a fake. Same
-        # versions and checksum checks as the Dockerfile.
-        env:
-          RESTIC_RELEASE: "0.19.1"
-          RCLONE_RELEASE: "1.75.2"
+        # The engine tests run the real binaries, never a fake; same fetcher
+        # and checksums as the Dockerfile.
         run: |
-          set -eu
-          mkdir -p "$HOME/bin" /tmp/tools && cd /tmp/tools
-          curl -fsSLO "https://github.com/restic/restic/releases/download/v${RESTIC_RELEASE}/restic_${RESTIC_RELEASE}_linux_amd64.bz2"
-          curl -fsSL "https://github.com/restic/restic/releases/download/v${RESTIC_RELEASE}/SHA256SUMS" -o restic.sums
-          grep " restic_${RESTIC_RELEASE}_linux_amd64.bz2$" restic.sums | sha256sum -c -
-          bunzip2 -c "restic_${RESTIC_RELEASE}_linux_amd64.bz2" > "$HOME/bin/restic"
-          curl -fsSLO "https://github.com/rclone/rclone/releases/download/v${RCLONE_RELEASE}/rclone-v${RCLONE_RELEASE}-linux-amd64.zip"
-          curl -fsSL "https://github.com/rclone/rclone/releases/download/v${RCLONE_RELEASE}/SHA256SUMS" -o rclone.sums
-          grep -a " rclone-v${RCLONE_RELEASE}-linux-amd64.zip$" rclone.sums | sha256sum -c -
-          unzip -p "rclone-v${RCLONE_RELEASE}-linux-amd64.zip" "rclone-v${RCLONE_RELEASE}-linux-amd64/rclone" > "$HOME/bin/rclone"
-          chmod +x "$HOME/bin/restic" "$HOME/bin/rclone"
+          python3 scripts/fetch_tools.py --only restic,rclone "$HOME/bin"
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - name: pytest (unit + integration, contract excluded)
@@ -91,6 +78,46 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    # Every page in a real browser against a demo instance: catches CSP
+    # violations and console errors svelte-check can't see.
+    runs-on: ubuntu-latest
+    needs: dashboard
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.14
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Install pinned restic and rclone
+        run: |
+          python3 scripts/fetch_tools.py --only restic,rclone "$HOME/bin"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          cp -r build ../reovault/web/dist
+      - name: Start the browser
+        # The image tag must equal the playwright pin in pyproject.toml.
+        run: |
+          docker run -d --rm --name pw --network host --init \
+            mcr.microsoft.com/playwright:v1.64.1-noble \
+            npx -y playwright@1.64.1 run-server --port 3123 --host 127.0.0.1
+          for i in $(seq 1 60); do nc -z 127.0.0.1 3123 && break; sleep 1; done
+      - name: Browser tests
+        run: uv run pytest -m e2e -q
 
   docker-build:
     runs-on: ubuntu-latest

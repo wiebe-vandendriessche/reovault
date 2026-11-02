@@ -30,6 +30,9 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "httpx2>=0.28",  # required by starlette.testclient (FastAPI's TestClient)
+    # Client only: the browser runs in mcr.microsoft.com/playwright, whose tag
+    # must match this version exactly (tests/e2e, scripts/screenshots.py).
+    "playwright==1.64.1",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -50,8 +53,9 @@ testpaths = ["tests"]
 markers = [
     "contract: opt-in tests that hit a real doorbell; excluded from CI",
     "slow: opt-in tests that seed ~300k rows to measure query performance at scale",
+    "e2e: browser tests against a demo instance; need the Playwright container (CONTRIBUTING.md)",
 ]
-addopts = "-m 'not contract and not slow'"
+addopts = "-m 'not contract and not slow and not e2e'"
 
 [tool.ruff]
 line-length = 100

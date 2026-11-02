@@ -38,7 +38,9 @@ def camera_status(
     pending, pending_bytes, oldest = db.backlog(alias)
     oldest_pending = parse_iso(oldest) if oldest else None
     oldest_on_card = state.oldest_on_card if state else None
-    runs = db.runs(alias, limit=1)
+    # The last *finished* run: one in progress hasn't proven anything yet
+    # (on a first run the card may not even be read).
+    runs = db.runs(alias, limit=1, finished=True)
     last = runs[0] if runs else None
     rate = db.throughput(alias)
     eta = pending_bytes / rate if rate and pending_bytes else None
@@ -65,7 +67,7 @@ def camera_status(
         verdict = "catching_up"
         text = f"{pending} clips waiting" + (f", about {_human(eta)} left." if eta else ".")
     elif last is None:
-        verdict, text = "unknown", "No backup has run yet."
+        verdict, text = "unknown", "No backup has finished yet."
     else:
         verdict, text = "up_to_date", "Every clip on the SD card is backed up."
     return CameraStatus(

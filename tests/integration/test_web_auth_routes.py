@@ -29,7 +29,7 @@ _PUBLIC_ROUTES = {
     ("GET", "/{path:path}"),
 }
 
-_PATH_PARAM_FILLS = {"clip_id": "1", "alias": "demo", "section": "alerts", "rest": "x"}
+_PATH_PARAM_FILLS = {"clip_id": "1", "alias": "demo", "section": "web", "rest": "x"}
 
 _MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 
@@ -316,7 +316,7 @@ def test_mutating_route_enumeration_is_not_empty(app_and_client):
     app, _client = app_and_client
     routes = _mutating_api_routes(app)
     assert ("POST", "/api/v1/cameras/demo/run") in routes
-    assert ("PUT", "/api/v1/config/alerts") in routes
+    assert ("PUT", "/api/v1/config/web") in routes
     assert len(routes) > 10
 
 

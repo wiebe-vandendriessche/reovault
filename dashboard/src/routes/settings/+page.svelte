@@ -105,9 +105,8 @@
 			<ConfigSection
 				config={c}
 				path={['alerts']}
-				section="alerts"
 				title="Alert channels"
-				description="Point the *_file fields at files holding the secret (Docker secrets); the secrets themselves never go in reovault.toml."
+				description="Set these in reovault.toml (applied without a restart). The *_file fields point at files holding the secret, such as Docker secrets; they are read-only here so a stolen session can't redirect a secret."
 				labels={alertLabels}
 				{onsaved}
 			/>

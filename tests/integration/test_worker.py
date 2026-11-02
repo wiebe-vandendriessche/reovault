@@ -67,8 +67,7 @@ def test_a_demo_camera_is_backed_up_by_its_worker(setup):
         run = db.runs("demo")[0]
         assert run.outcome == "ok", run.error
         backed_up, _ = db.totals("demo")
-        assert backed_up > 600  # a week of clips every 15 minutes, minus the lost ones
-        assert run.lost >= 1  # every 97th demo clip is overwritten on download
+        assert backed_up > 600  # a week of clips every 15 minutes
         assert "activity" in events
         assert workers.get("demo").next_run_at is not None
     finally:

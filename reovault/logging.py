@@ -11,6 +11,8 @@ import structlog
 
 def configure_logging(level: str = "INFO") -> None:
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
+    # It logs "N changes detected" for every file event it sees.
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

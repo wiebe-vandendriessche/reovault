@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tomlkit.toml_document import TOMLDocument
 
-from reovault.config import AlertRules, AlertsConfig, BackupConfig, Settings, WebConfig
+from reovault.config import AlertRules, BackupConfig, Settings, WebConfig
 from reovault.config_store import (
     WEB_EDITABLE,
     ConfigConflictError,
@@ -47,6 +47,11 @@ SECTIONS: list[tuple[str, ...]] = [
 ]
 # Never shown or written: a credential. (Alert secrets are file *paths*.)
 HIDDEN = {("web", "password_hash")}
+# Alert channels name secret *files* and where to send them: editable from
+# the browser, a stolen session could point a token file at the restic
+# password and send it anywhere. They change in reovault.toml only (still
+# applied live); the rules stay editable here.
+FILE_ONLY = {("alerts",)}
 
 
 class FieldOut(BaseModel):
@@ -157,7 +162,7 @@ def config_out(st: AppState) -> ConfigOut:
                     default=_jsonable(getattr(defaults, key)),
                     source=source,
                     env_var=env_var,
-                    editable=store.writable and not env_var and not infra,
+                    editable=store.writable and not env_var and not infra and path not in FILE_ONLY,
                     restart=infra,
                 )
             )
@@ -179,7 +184,6 @@ def get_config(st: State) -> ConfigOut:
 
 _MODELS: dict[str, tuple[tuple[str, ...], type[BaseModel]]] = {
     "backup": (("backup",), BackupConfig),
-    "alerts": (("alerts",), AlertsConfig),
     "alerts.rules": (("alerts", "rules"), AlertRules),
     "web": (("web",), WebConfig),
 }
