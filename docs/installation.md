@@ -25,32 +25,46 @@ Docker creates them as root and the container (uid 1000) can't write to them.
    chmod 600 secrets/restic_password.txt
    ```
 
-2. **The destination.** In `config/reovault.toml`, set `[backup] repository`:
-   * a local disk: mount it in `compose.yaml` (`/mnt/disk/reovault:/backups`)
-     and use `repository = "/backups"`;
-   * Nextcloud, OneDrive, Google Drive, S3, SFTP and more: create a remote
-     with rclone and point at it, e.g. `repository = "rclone:nextcloud:reovault"`.
-     Run `rclone config` once on any machine, then copy the resulting
-     `rclone.conf` to `config/rclone/rclone.conf`. The folder must stay
-     writable: rclone saves refreshed login tokens back into it.
-
-3. **The dashboard login.** Set `[web] email` in `config/reovault.toml`, then:
-
-   ```bash
-   docker compose run --rm reovault web set-password
-   ```
-
-4. **Start it and check:**
+2. **Start it.**
 
    ```bash
    docker compose up -d
-   docker compose exec reovault reovault doctor
+   docker compose logs reovault | grep setup.code
    ```
 
-   `doctor` checks the tools, the folders and every camera's repository
-   without changing anything.
+3. **The first-run screen.** Open the dashboard (port 8080). With no login
+   yet, it asks for the one-time **setup code** printed in the log above
+   (`XXXX-XXXX`, shown on every start until setup is done), and for the email
+   and password you want to sign in with. Nobody who can reach the port but
+   can't read the log can take the dashboard over.
 
-5. **Cameras.** Add them on the dashboard's Cameras page (port 8080): find
+   Prefer the terminal? `docker compose run --rm reovault web set-password`
+   after setting `[web] email` does the same.
+
+4. **Destinations.** Settings, Destinations, **Connect**:
+   * a local disk: mount it in `compose.yaml` (`/mnt/disk/reovault:/backups`),
+     then connect the folder `/backups`;
+   * Nextcloud, SFTP, S3 and Backblaze B2: fill in the form;
+   * OneDrive and Google Drive: run `rclone config` on a computer with a
+     browser, make the remote, and paste its `[section]` from `rclone.conf`.
+
+   The first destination is the primary. Connect a second (a cloud account, a
+   NAS) and it receives copies of everything: that is 3-2-1. Each one can have
+   a keep-days and a size limit (`max_gb`). Editing `config/reovault.toml`
+   by hand works the same; see [Configuration](configuration.md).
+
+   Then check with `docker compose exec reovault reovault doctor`: it checks
+   the tools, the folders and every camera's repository without changing
+   anything.
+
+5. **Recovery.** Settings, Recovery says where the restic password lives and
+   offers a recovery sheet (no passwords in it). Store the restic password
+   somewhere other than this server, then tick the box: until you do, the
+   Overview reminds you. ReoVault also backs up its own config into each
+   destination, so a replacement server can start from the footage alone; see
+   [Restore without ReoVault](restore-without-reovault.md).
+
+6. **Cameras.** Add them on the dashboard's Cameras page (port 8080): find
    them on your network, enter the camera's user and password (they go
    straight into reolink-cli's encrypted registry, never into ReoVault), and
    pick its timezone. A `demo` camera needs no hardware.
@@ -61,7 +75,7 @@ the comments at its top and [Security](security.md#deployment-modes).
 
 ## The first run
 
-The first run backs up everything that's on each SD card. A full 256 GB card
+The first run backs up everything that's on each SD card. A second destination is seeded in the background (the dashboard shows "copying 120 of 430") without slowing the backups. A full 256 GB card
 at about 2 MB/s takes a day or two. ReoVault works through it oldest-first
 (the clips the card overwrites next) while new clips still go out within the
 hour; the dashboard shows the progress and an estimate. Only one 2 GB batch is

@@ -43,6 +43,8 @@ def env(tmp_path, restic_bin):
         restic = Restic.for_camera(restic_bin, str(tmp_path / "repos"), "cam", restic_env)
         staging = tmp_path / "staging" / "cam"
         state = CameraState()
+        commits = 0
+        hold = None
 
         def run(self, trigger: str = "schedule") -> backup.RunResult:
             return BackupRun(
@@ -53,14 +55,19 @@ def env(tmp_path, restic_bin):
                 state=self.state,
                 interval=INTERVAL,
                 sleep=lambda _s: None,
+                on_commit=self._committed,
+                hold=lambda: self.hold,
             ).run(trigger)
+
+        def _committed(self) -> None:
+            self.commits += 1
 
         def states(self) -> dict[str, str]:
             rows = self.db._all("SELECT name, state FROM clips")
             return {r["name"]: r["state"] for r in rows}
 
         def snapshots(self) -> set[str]:
-            return self.restic.snapshot_ids()
+            return {s.id for s in self.restic.snapshots()}
 
     yield Env()
 
@@ -82,6 +89,20 @@ def test_a_run_backs_up_the_card_and_restic_returns_the_same_bytes(env):
     data, _ = proc.communicate()
     assert data == env.cam.card[names[0]][1]
     assert clip.path.startswith(str(env.staging / "batch"))
+
+
+def test_every_committed_batch_tells_the_copies(env):
+    env.cam.add(NOW - timedelta(hours=3))
+    env.run()
+    assert env.commits == 1
+
+
+def test_a_hold_stops_the_run_before_any_download(env):
+    env.cam.add(NOW - timedelta(hours=3))
+    env.hold = "waiting for the copies"
+    result = env.run()
+    assert (result.outcome, result.error) == ("stopped", "waiting for the copies")
+    assert env.cam.downloads == [] and env.commits == 0
 
 
 def test_nothing_is_downloaded_twice(env):
@@ -298,7 +319,7 @@ def test_every_snapshot_carries_the_whole_index(env):
     second = env.cam.add(NOW - timedelta(minutes=5), rec_type="vehicle")
     env.run()
     latest = env.restic.latest()
-    data = _json.loads(env.restic.read(latest["id"], f"{latest['paths'][0]}/.reovault/index.json"))
+    data = _json.loads(env.restic.read(latest.id, f"{latest.paths[0]}/.reovault/index.json"))
     by_name = {c["name"]: c for c in data["clips"]}
     assert set(by_name) == {first, second}
     db_first = env.db.clips_by_name("cam", [first])[first]
@@ -456,3 +477,43 @@ def test_a_short_file_retry_that_falls_back_keeps_the_good_files(env):
     env.cam.download = retry_breaks
     assert env.run().outcome == "ok"
     assert env.states()[good] == "backed_up"
+
+
+def test_an_unreachable_camera_is_marked_and_cleared_without_blaming_a_clip(env):
+    from reovault.status import camera_status
+
+    name = env.cam.add(NOW - timedelta(hours=2))
+    env.cam.offline = True
+    result = env.run()
+    assert result.outcome == "error"
+    assert env.state.unreachable_since is not None
+    status = camera_status("cam", env.db, env.state)
+    assert status.verdict == "offline" and "hasn't answered" in status.text
+    assert env.db.pending("cam") == []  # never even discovered: nothing is blamed
+    env.cam.offline = False
+    assert env.run().outcome == "ok"
+    assert env.state.unreachable_since is None
+    assert env.states()[name] == "backed_up"
+
+
+def test_a_device_error_is_a_failure_not_an_outage(env):
+    env.cam.add(NOW - timedelta(hours=2))
+    bad = env.cam.add(NOW - timedelta(hours=1))
+    env.cam.breaks_batch.add(bad)
+    env.run()
+    assert env.state.unreachable_since is None
+
+
+def test_the_card_timeline_splits_the_card_into_slices(env):
+    from reovault.status import BUCKETS, timeline
+
+    for h in (70, 60, 40, 30, 20, 10):
+        env.cam.add(NOW - timedelta(hours=h))
+    env.cam.refuse.add(env.cam.add(NOW - timedelta(hours=5)))  # keeps failing
+    env.run()
+    slices = timeline("cam", env.db, env.state)
+    assert len(slices) == BUCKETS
+    assert sum(b.backed_up for b in slices) == 6
+    assert sum(b.waiting + b.failing for b in slices) == 1
+    assert slices[0].backed_up == 1  # the oldest clip is the first slice
+    assert timeline("cam", env.db, CameraState()) == []  # card not scanned yet: nothing to draw

@@ -21,8 +21,13 @@ export type TestResult = S['TestResultOut'];
 export type Config = S['ConfigOut'];
 export type ConfigField = S['FieldOut'];
 export type ConfigSection = S['SectionOut'];
-export type DestinationCheck = S['DestinationCameraOut'];
-export type RetentionPreview = S['RetentionPreviewOut'];
+export type Destination = S['DestinationOut'];
+export type DestinationKind = S['KindOut'];
+export type LimitPreview = S['LimitPreviewOut'];
+export type DownloadPreview = S['DownloadPreviewOut'];
+export type Recovery = S['RecoveryOut'];
+export type RunDetail = S['RunDetailOut'];
+export type Bucket = S['BucketOut'];
 export type Verdict = Camera['verdict'];
 
 export const API = '/api/v1';

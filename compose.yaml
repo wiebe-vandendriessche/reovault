@@ -48,7 +48,7 @@ services:
       # in ReoVault).
       - ./reolink-cli:/home/reovault/.config/reolink-cli
       # Only when the backup destination is a local path, e.g.
-      # repository = "/backups" in reovault.toml:
+      # a destination with repository = "/backups" (Settings, Destinations):
       # - /mnt/backup-disk/reovault:/backups
     healthcheck:
       test:

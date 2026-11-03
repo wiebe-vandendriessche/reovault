@@ -135,3 +135,41 @@ def test_registered_aliases_never_carry_a_password(tmp_path):
     aliases = registered_aliases(_stub(tmp_path, f"print({fixture!r})\n"))
     assert aliases and all(isinstance(a, str) for a in aliases)
     assert "password" not in fixture.lower().replace("haspassword", "")
+
+
+@pytest.mark.parametrize(
+    ("script", "unreachable"),
+    [
+        # reolink-cli exit 2 / NETWORK_ERROR: the camera didn't answer.
+        (
+            "print(json.dumps({'ok': False, 'error': {'code': 'NETWORK_ERROR', "
+            "'message': 'timed out'}})); sys.exit(2)\n",
+            True,
+        ),
+        # A device error is the camera answering "no": not offline.
+        (
+            "print(json.dumps({'ok': False, 'error': {'code': 'DEVICE_ERROR', "
+            "'message': 'rejected'}})); sys.exit(4)\n",
+            False,
+        ),
+        ("print(json.dumps({'ok': False, 'error': {'code': 'AUTH_ERROR'}})); sys.exit(3)\n", False),
+    ],
+)
+def test_only_a_silent_camera_counts_as_unreachable(tmp_path, script, unreachable):
+    cam = _camera(_stub(tmp_path, script))
+    with pytest.raises(ToolError) as err:
+        cam.search(datetime(2026, 4, 17, 0, tzinfo=UTC), datetime(2026, 4, 17, 12, tzinfo=UTC))
+    assert err.value.unreachable is unreachable
+
+
+def test_a_short_call_that_times_out_is_unreachable_a_long_download_is_not(tmp_path, monkeypatch):
+    from reovault import camera as camera_mod
+
+    monkeypatch.setattr(camera_mod, "_SHORT_CALL_SECS", 1)  # so "long" is 2 s here, not 60
+    cam = _camera(_stub(tmp_path, "import time; time.sleep(30)\n"))
+    with pytest.raises(ToolError) as err:
+        cam._call(["storage", "status"], timeout=0.5)  # nobody answered a quick question
+    assert err.value.unreachable is True
+    with pytest.raises(ToolError) as err:
+        cam._call(["vod", "download", "x"], timeout=2)  # a big download is just slow
+    assert err.value.unreachable is False

@@ -36,8 +36,11 @@ alias = "demo"
 timezone = "Europe/Brussels"
 demo = true
 
-[backup]
+[[destinations]]
+name = "local"
 repository = "{tmp_path / "repos"}"
+
+[backup]
 password_file = "{pw}"
 
 [web]

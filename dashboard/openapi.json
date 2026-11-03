@@ -165,6 +165,87 @@
         "title": "AlertsOut",
         "type": "object"
       },
+      "BatchOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "clips": {
+            "title": "Clips",
+            "type": "integer"
+          },
+          "download_secs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Secs"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "snapshot": {
+            "title": "Snapshot",
+            "type": "string"
+          },
+          "upload_secs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Secs"
+          }
+        },
+        "required": [
+          "snapshot",
+          "clips",
+          "bytes",
+          "download_secs",
+          "upload_secs",
+          "finished_at"
+        ],
+        "title": "BatchOut",
+        "type": "object"
+      },
+      "BucketOut": {
+        "properties": {
+          "backed_up": {
+            "title": "Backed Up",
+            "type": "integer"
+          },
+          "failing": {
+            "title": "Failing",
+            "type": "integer"
+          },
+          "lost": {
+            "title": "Lost",
+            "type": "integer"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "backed_up",
+          "waiting",
+          "failing",
+          "lost"
+        ],
+        "title": "BucketOut",
+        "type": "object"
+      },
       "CalendarDayOut": {
         "properties": {
           "backed_up": {
@@ -345,6 +426,20 @@
             "title": "Text",
             "type": "string"
           },
+          "timeline": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BucketOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline"
+          },
           "timezone": {
             "title": "Timezone",
             "type": "string"
@@ -355,6 +450,7 @@
               "catching_up",
               "at_risk",
               "failing",
+              "offline",
               "not_mounted",
               "unknown"
             ],
@@ -614,6 +710,71 @@
         "title": "ConfigUpdateIn",
         "type": "object"
       },
+      "ConfirmIn": {
+        "properties": {
+          "confirm_password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Password"
+          }
+        },
+        "title": "ConfirmIn",
+        "type": "object"
+      },
+      "ConnectIn": {
+        "properties": {
+          "keep_days": {
+            "default": 0,
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Keep Days",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_gb": {
+            "default": 0,
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Max Gb",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Path",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "ConnectIn",
+        "type": "object"
+      },
       "DayOut": {
         "properties": {
           "day": {
@@ -650,11 +811,11 @@
         "title": "DayOut",
         "type": "object"
       },
-      "DestinationCameraOut": {
+      "DestinationOut": {
         "properties": {
-          "camera": {
-            "title": "Camera",
-            "type": "string"
+          "behind": {
+            "title": "Behind",
+            "type": "boolean"
           },
           "error": {
             "anyOf": [
@@ -667,68 +828,81 @@
             ],
             "title": "Error"
           },
-          "state": {
-            "enum": [
-              "ok",
-              "missing",
-              "wrong_password",
-              "error"
-            ],
-            "title": "State",
-            "type": "string"
-          }
-        },
-        "required": [
-          "camera",
-          "state"
-        ],
-        "title": "DestinationCameraOut",
-        "type": "object"
-      },
-      "DestinationIn": {
-        "properties": {
-          "repository": {
-            "title": "Repository",
-            "type": "string"
-          }
-        },
-        "required": [
-          "repository"
-        ],
-        "title": "DestinationIn",
-        "type": "object"
-      },
-      "DestinationOut": {
-        "properties": {
-          "bytes": {
-            "title": "Bytes",
-            "type": "integer"
-          },
-          "clips": {
-            "title": "Clips",
+          "held_back": {
+            "title": "Held Back",
             "type": "integer"
           },
           "keep_days": {
             "title": "Keep Days",
             "type": "integer"
           },
-          "repository": {
+          "last_ok": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Repository"
+            "title": "Last Ok"
+          },
+          "max_gb": {
+            "title": "Max Gb",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quota_short": {
+            "title": "Quota Short",
+            "type": "boolean"
+          },
+          "quota_too_small": {
+            "title": "Quota Too Small",
+            "type": "boolean"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "seeding": {
+            "items": {
+              "$ref": "#/components/schemas/SeedingOut"
+            },
+            "title": "Seeding",
+            "type": "array"
+          },
+          "snapshots": {
+            "title": "Snapshots",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
           }
         },
         "required": [
+          "name",
           "repository",
+          "role",
           "keep_days",
-          "clips",
-          "bytes"
+          "max_gb",
+          "used_bytes",
+          "snapshots",
+          "seeding",
+          "error",
+          "last_ok",
+          "quota_short",
+          "quota_too_small",
+          "held_back",
+          "behind"
         ],
         "title": "DestinationOut",
         "type": "object"
@@ -787,6 +961,32 @@
         "title": "DiscoveredOut",
         "type": "object"
       },
+      "DownloadPreviewOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/PickOut"
+            },
+            "title": "Cameras",
+            "type": "array"
+          },
+          "clips": {
+            "title": "Clips",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clips",
+          "bytes",
+          "cameras"
+        ],
+        "title": "DownloadPreviewOut",
+        "type": "object"
+      },
       "EditCameraIn": {
         "properties": {
           "enabled": {
@@ -815,6 +1015,45 @@
           "enabled"
         ],
         "title": "EditCameraIn",
+        "type": "object"
+      },
+      "EditIn": {
+        "properties": {
+          "confirm_password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Password"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "keep_days": {
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Keep Days",
+            "type": "integer"
+          },
+          "max_gb": {
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Max Gb",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep_days",
+          "max_gb"
+        ],
+        "title": "EditIn",
         "type": "object"
       },
       "FieldOut": {
@@ -947,6 +1186,60 @@
         "title": "IssueOut",
         "type": "object"
       },
+      "KindOut": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/RemoteFieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "help": {
+            "title": "Help",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "paste": {
+            "title": "Paste",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "paste",
+          "help",
+          "fields"
+        ],
+        "title": "KindOut",
+        "type": "object"
+      },
+      "LimitPreviewOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "snapshots": {
+            "title": "Snapshots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshots",
+          "bytes"
+        ],
+        "title": "LimitPreviewOut",
+        "type": "object"
+      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -1030,8 +1323,12 @@
             "title": "Cameras",
             "type": "array"
           },
-          "destination": {
-            "$ref": "#/components/schemas/DestinationOut"
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/DestinationOut"
+            },
+            "title": "Destinations",
+            "type": "array"
           },
           "issues": {
             "items": {
@@ -1039,32 +1336,360 @@
             },
             "title": "Issues",
             "type": "array"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/IssueOut"
+            },
+            "title": "Notices",
+            "type": "array"
           }
         },
         "required": [
           "issues",
+          "notices",
           "cameras",
-          "destination"
+          "destinations"
         ],
         "title": "OverviewOut",
         "type": "object"
       },
-      "RetentionPreviewOut": {
+      "PasswordIn": {
+        "properties": {
+          "current": {
+            "maxLength": 1024,
+            "title": "Current",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "required": [
+          "current"
+        ],
+        "title": "PasswordIn",
+        "type": "object"
+      },
+      "PickOut": {
         "properties": {
           "bytes": {
             "title": "Bytes",
             "type": "integer"
           },
+          "camera": {
+            "title": "Camera",
+            "type": "string"
+          },
           "clips": {
             "title": "Clips",
+            "type": "integer"
+          },
+          "on_slow_destination": {
+            "title": "On Slow Destination",
+            "type": "integer"
+          },
+          "on_unconnected_destination": {
+            "title": "On Unconnected Destination",
             "type": "integer"
           }
         },
         "required": [
+          "camera",
           "clips",
-          "bytes"
+          "bytes",
+          "on_slow_destination",
+          "on_unconnected_destination"
         ],
-        "title": "RetentionPreviewOut",
+        "title": "PickOut",
+        "type": "object"
+      },
+      "RecoveryDestinationOut": {
+        "properties": {
+          "config_backed_up_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Backed Up At"
+          },
+          "config_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Error"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "repository",
+          "config_backed_up_at",
+          "config_error"
+        ],
+        "title": "RecoveryDestinationOut",
+        "type": "object"
+      },
+      "RecoveryOut": {
+        "properties": {
+          "cameras": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cameras",
+            "type": "array"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/RecoveryDestinationOut"
+            },
+            "title": "Destinations",
+            "type": "array"
+          },
+          "password_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password File"
+          },
+          "password_file_found": {
+            "title": "Password File Found",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password_file",
+          "password_file_found",
+          "confirmed_at",
+          "destinations",
+          "cameras"
+        ],
+        "title": "RecoveryOut",
+        "type": "object"
+      },
+      "RemoteFieldOut": {
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "string"
+          },
+          "help": {
+            "title": "Help",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "secret",
+          "required",
+          "default",
+          "help"
+        ],
+        "title": "RemoteFieldOut",
+        "type": "object"
+      },
+      "RunClipOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "camera": {
+            "title": "Camera",
+            "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "rec_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rec Type"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "camera",
+          "name",
+          "start",
+          "end",
+          "size",
+          "rec_type",
+          "state",
+          "attempts",
+          "last_error",
+          "outcome"
+        ],
+        "title": "RunClipOut",
+        "type": "object"
+      },
+      "RunDetailOut": {
+        "properties": {
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchOut"
+            },
+            "title": "Batches",
+            "type": "array"
+          },
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/RunClipOut"
+            },
+            "title": "Clips",
+            "type": "array"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunOut"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run",
+          "batches",
+          "clips",
+          "truncated"
+        ],
+        "title": "RunDetailOut",
         "type": "object"
       },
       "RunOut": {
@@ -1172,6 +1797,29 @@
         "title": "SectionOut",
         "type": "object"
       },
+      "SeedingOut": {
+        "properties": {
+          "camera": {
+            "title": "Camera",
+            "type": "string"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "camera",
+          "done",
+          "total"
+        ],
+        "title": "SeedingOut",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "authenticated": {
@@ -1186,6 +1834,33 @@
             "title": "Pinned Cli Version",
             "type": "string"
           },
+          "setup_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Email"
+          },
+          "setup_needed": {
+            "default": false,
+            "title": "Setup Needed",
+            "type": "boolean"
+          },
+          "update_available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Available"
+          },
           "version": {
             "title": "Version",
             "type": "string"
@@ -1198,6 +1873,39 @@
           "pinned_cli_version"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SetupIn": {
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "title": "Code",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "password"
+        ],
+        "title": "SetupIn",
         "type": "object"
       },
       "TestResultOut": {
@@ -1323,6 +2031,52 @@
           }
         },
         "summary": "Activity",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/v1/activity/runs/{run_id}": {
+      "get": {
+        "description": "One backup run: the batches it uploaded, and each clip it backed up,\nfailed on or found lost. Read from the index (no destination contacted).",
+        "operationId": "run_detail_api_v1_activity_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Detail",
         "tags": [
           "clips"
         ]
@@ -1517,6 +2271,70 @@
       }
     },
     "/api/v1/cameras/{alias}": {
+      "delete": {
+        "description": "Stops backing a camera up and drops it from reovault.toml. What is\nalready backed up stays in every destination, and re-adding the same alias\nbrings it all back. With `registry`, a real camera is also removed from\nreolink-cli's registry (its stored password goes with it).",
+        "operationId": "remove_camera_api_v1_cameras__alias__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "title": "Alias",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "registry",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Registry",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraOut"
+                  },
+                  "title": "Response Remove Camera Api V1 Cameras  Alias  Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Remove Camera",
+        "tags": [
+          "cameras"
+        ]
+      },
       "put": {
         "operationId": "edit_camera_api_v1_cameras__alias__put",
         "parameters": [
@@ -1778,56 +2596,6 @@
         ]
       }
     },
-    "/api/v1/clips/day.zip": {
-      "get": {
-        "operationId": "day_zip_api_v1_clips_day_zip_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "camera",
-            "required": true,
-            "schema": {
-              "title": "Camera",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "date_",
-            "required": true,
-            "schema": {
-              "title": "Date ",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Types",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "409": {
-            "description": "Conflict"
-          },
-          "422": {
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "Day Zip",
-        "tags": [
-          "clips"
-        ]
-      }
-    },
     "/api/v1/clips/{clip_id}/download": {
       "get": {
         "operationId": "download_api_v1_clips__clip_id__download_get",
@@ -1884,95 +2652,6 @@
         ]
       }
     },
-    "/api/v1/config/backup/retention-preview": {
-      "get": {
-        "description": "Roughly what `keep_days` would remove at the next daily `forget`:\nclips backed up more than that long before the newest backup.",
-        "operationId": "retention_preview_api_v1_config_backup_retention_preview_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "keep_days",
-            "required": true,
-            "schema": {
-              "title": "Keep Days",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetentionPreviewOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Retention Preview",
-        "tags": [
-          "config"
-        ]
-      }
-    },
-    "/api/v1/config/backup/test": {
-      "post": {
-        "description": "Can every enabled camera's repository be opened at `repository`?\nRead-only: \"missing\" repositories are created by the first backup.",
-        "operationId": "test_destination_api_v1_config_backup_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DestinationIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DestinationCameraOut"
-                  },
-                  "title": "Response Test Destination Api V1 Config Backup Test Post",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Destination",
-        "tags": [
-          "config"
-        ]
-      }
-    },
     "/api/v1/config/{section}": {
       "put": {
         "description": "Generic edit for the sections without a dedicated form. Only fields\nthe view marks editable are accepted: never an env-set or infrastructure\none, and never a nested table.",
@@ -2019,6 +2698,484 @@
         "summary": "Put Config",
         "tags": [
           "config"
+        ]
+      }
+    },
+    "/api/v1/destinations": {
+      "get": {
+        "operationId": "list_destinations_api_v1_destinations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOut"
+                  },
+                  "title": "Response List Destinations Api V1 Destinations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Destinations",
+        "tags": [
+          "destinations"
+        ]
+      },
+      "post": {
+        "description": "Connect a destination. It joins as a copy (or as the primary when it's the\nfirst); `Make primary` is a separate, confirmed step.",
+        "operationId": "connect_api_v1_destinations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOut"
+                  },
+                  "title": "Response Connect Api V1 Destinations Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Connect",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/api/v1/destinations/kinds": {
+      "get": {
+        "description": "What the \"connect\" form offers, so the dashboard doesn't hard-code it.",
+        "operationId": "kinds_api_v1_destinations_kinds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KindOut"
+                  },
+                  "title": "Response Kinds Api V1 Destinations Kinds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Kinds",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/api/v1/destinations/{name}": {
+      "delete": {
+        "description": "Stop using a destination. Its backups are NOT deleted, and ReoVault keeps\nremembering what is on it, so connecting it again picks up where it was.",
+        "operationId": "disconnect_api_v1_destinations__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ConfirmIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOut"
+                  },
+                  "title": "Response Disconnect Api V1 Destinations  Name  Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disconnect",
+        "tags": [
+          "destinations"
+        ]
+      },
+      "put": {
+        "operationId": "edit_api_v1_destinations__name__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOut"
+                  },
+                  "title": "Response Edit Api V1 Destinations  Name  Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/api/v1/destinations/{name}/preview": {
+      "get": {
+        "description": "What the next retention pass would delete under these limits, from what\nthe index knows (no destination is contacted).",
+        "operationId": "preview_api_v1_destinations__name__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keep_days",
+            "required": true,
+            "schema": {
+              "title": "Keep Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_gb",
+            "required": true,
+            "schema": {
+              "title": "Max Gb",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LimitPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/api/v1/destinations/{name}/primary": {
+      "post": {
+        "description": "Backups continue on this destination. It must already hold every\nsnapshot the current primary holds, or footage would have no copy.",
+        "operationId": "make_primary_api_v1_destinations__name__primary_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOut"
+                  },
+                  "title": "Response Make Primary Api V1 Destinations  Name  Primary Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Primary",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/api/v1/download/preview": {
+      "get": {
+        "description": "How much a download would hold, so the dialog can show it first.",
+        "operationId": "preview_api_v1_download_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cameras",
+            "required": true,
+            "schema": {
+              "title": "Cameras",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "download"
+        ]
+      }
+    },
+    "/api/v1/download/zip": {
+      "get": {
+        "operationId": "download_zip_api_v1_download_zip_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cameras",
+            "required": true,
+            "schema": {
+              "title": "Cameras",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Types",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Download Zip",
+        "tags": [
+          "download"
         ]
       }
     },
@@ -2127,6 +3284,114 @@
         ]
       }
     },
+    "/api/v1/password": {
+      "post": {
+        "description": "Change the login password and/or email. Needs the current password even\nthough the caller is signed in: a stolen session mustn't be able to take\nthe account over. Signs every other session out.",
+        "operationId": "change_password_api_v1_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/recovery": {
+      "get": {
+        "operationId": "recovery_api_v1_recovery_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Recovery",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/recovery/confirm": {
+      "post": {
+        "description": "The user says they stored the restic password somewhere other than here.",
+        "operationId": "confirm_api_v1_recovery_confirm_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/recovery/sheet": {
+      "get": {
+        "operationId": "sheet_api_v1_recovery_sheet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sheet",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
     "/api/v1/session": {
       "get": {
         "operationId": "get_session_api_v1_session_get",
@@ -2143,6 +3408,50 @@
           }
         },
         "summary": "Get Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/setup": {
+      "post": {
+        "description": "First run: the one-time code from the server log creates the login.",
+        "operationId": "setup_api_v1_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Setup",
         "tags": [
           "auth"
         ]

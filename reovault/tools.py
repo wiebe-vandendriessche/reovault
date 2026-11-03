@@ -11,10 +11,22 @@ class ToolError(Exception):
     """A tool failed. `message` is a short plain sentence for the dashboard
     and alerts; `detail` is the raw form (exit code, stderr) for logs."""
 
-    def __init__(self, message: str, *, code: int | None = None, detail: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        detail: str | None = None,
+        unreachable: bool = False,
+        timed_out: bool = False,
+    ):
         super().__init__(message)
         self.code = code
         self.detail = detail
+        # The camera (or the network to it) didn't answer: it isn't a problem
+        # with any clip, and the dashboard says "offline", not "failing".
+        self.unreachable = unreachable
+        self.timed_out = timed_out
 
 
 def describe_exit(tool: str, code: int) -> str:
@@ -48,6 +60,7 @@ def run(
         raise ToolError(
             f"{cmd[0]} {cmd[1] if len(cmd) > 1 else ''} timed out after {timeout:.0f}s".strip(),
             detail=" ".join(cmd),
+            timed_out=True,
         ) from exc
 
 

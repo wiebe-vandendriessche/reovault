@@ -33,6 +33,7 @@
 	];
 
 	const isLogin = $derived(page.url.pathname === '/login');
+	const isSetup = $derived(page.url.pathname === '/setup');
 
 	function active(href: string) {
 		const p = page.url.pathname;
@@ -55,9 +56,14 @@
 			navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 	});
 
-	// Gate every page but /login on a session, then open the live stream.
+	// Gate every page but /login and /setup on a session, then open the live
+	// stream. A fresh install has no login yet, so everything goes to /setup.
 	$effect(() => {
 		if (!session.ready || session.blocked) return;
+		if (session.setupNeeded) {
+			if (!isSetup) goto('/setup', { replace: true });
+			return;
+		}
 		if (!session.authenticated) {
 			if (!isLogin) toLogin();
 			return;
@@ -93,15 +99,18 @@
 			<p class="text-muted-foreground mt-2 text-sm">{session.blocked}</p>
 		</div>
 	</main>
-{:else if isLogin || !session.authenticated}
+{:else if (session.setupNeeded && !isSetup) || (!session.setupNeeded && !session.authenticated && !isLogin)}
+	<!-- Redirecting to /setup or /login: don't mount a page that would fetch and fail. -->
+	<div class="grid min-h-dvh place-items-center"><Spinner class="size-6" /></div>
+{:else if isLogin || isSetup}
 	{@render children()}
 {:else}
 	<div class="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
 		<header class="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
 			<div class="mx-auto flex h-16 max-w-[1180px] items-center gap-3 px-4 sm:px-6">
 				<a href="/" class="mr-1 flex shrink-0 items-center" aria-label="ReoVault home">
-					<img src="/icons/wordmark-dark.png" alt="ReoVault" class="hidden h-7 w-auto dark:block" />
-					<img src="/icons/wordmark-light.png" alt="ReoVault" class="block h-7 w-auto dark:hidden" />
+					<img src="/icons/wordmark-dark.svg" alt="ReoVault" class="hidden h-7 w-auto dark:block" />
+					<img src="/icons/wordmark-light.svg" alt="ReoVault" class="block h-7 w-auto dark:hidden" />
 				</a>
 
 				<nav class="hidden items-center gap-1 lg:flex" aria-label="Main">
@@ -150,6 +159,14 @@
 			class="text-subtle flex flex-wrap justify-center gap-x-4 gap-y-1 border-t px-4 py-4 text-xs sm:px-6"
 		>
 			<span>ReoVault {session.version}</span>
+			{#if session.updateAvailable}
+				<a
+					href="https://github.com/wiebe-vandendriessche/reovault/releases/latest"
+					class="text-brand-text underline-offset-4 hover:underline"
+					target="_blank"
+					rel="noreferrer">{session.updateAvailable} is available</a
+				>
+			{/if}
 			<span>reolink-cli {session.pinnedCli}</span>
 			<a href="https://wiebe-vandendriessche.github.io/reovault/" class="hover:text-foreground underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Docs</a>
 		</footer>

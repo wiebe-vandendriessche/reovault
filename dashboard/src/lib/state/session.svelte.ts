@@ -5,6 +5,12 @@ export const session = $state({
 	authenticated: false,
 	version: '',
 	pinnedCli: '',
+	/** No login exists yet: the dashboard shows the setup screen. */
+	setupNeeded: false,
+	/** A login email already set in the config; the setup form then skips it. */
+	setupEmail: null as string | null,
+	/** A newer ReoVault release, when the daily check found one. */
+	updateAvailable: null as string | null,
 	/** Set when the server itself refuses (e.g. no password configured). */
 	blocked: null as string | null
 });
@@ -14,6 +20,9 @@ export function applySession(s: Session) {
 	session.authenticated = s.authenticated;
 	session.version = s.version;
 	session.pinnedCli = s.pinned_cli_version;
+	session.setupNeeded = s.setup_needed;
+	session.setupEmail = s.setup_email ?? null;
+	session.updateAvailable = s.update_available ?? null;
 	session.ready = true;
 }
 

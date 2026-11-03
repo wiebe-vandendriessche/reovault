@@ -9,7 +9,9 @@ from typing import Literal
 from reovault.backup import MAX_ATTEMPTS, CameraState
 from reovault.db import Db, parse_iso
 
-Verdict = Literal["up_to_date", "catching_up", "at_risk", "failing", "not_mounted", "unknown"]
+Verdict = Literal[
+    "up_to_date", "catching_up", "at_risk", "failing", "offline", "not_mounted", "unknown"
+]
 
 # The oldest waiting clip is at risk once it's this far into the card's
 # window: 0.8 leaves a fifth of the window to catch up before the loop
@@ -48,7 +50,10 @@ def camera_status(
     lost = db.lost_since(alias, now - timedelta(days=7))
 
     verdict: Verdict
-    if state and state.card and state.card.mounted is False:
+    if state and state.unreachable_since:
+        since = state.unreachable_since.astimezone(UTC).strftime("%d %b %H:%M UTC")
+        verdict, text = "offline", f"The camera hasn't answered since {since}."
+    elif state and state.card and state.card.mounted is False:
         verdict, text = "not_mounted", "The camera reports no SD card."
     elif last and last.outcome == "error":
         verdict, text = "failing", f"The last backup failed: {last.error}"
@@ -82,6 +87,46 @@ def camera_status(
         failing_clips=failing_clips,
         last_error=last.error if last and last.outcome == "error" else None,
     )
+
+
+BUCKETS = 48
+
+
+@dataclass(frozen=True, slots=True)
+class Bucket:
+    backed_up: int
+    waiting: int
+    failing: int
+    lost: int
+
+
+def timeline(
+    alias: str, db: Db, state: CameraState | None, now: datetime | None = None
+) -> list[Bucket]:
+    """What is on the SD card, in `BUCKETS` equal slices from its oldest clip to
+    now: backed up, waiting, failing (tried `MAX_ATTEMPTS` times) or lost.
+    Empty until a first card scan has told us where the card starts."""
+    now = now or datetime.now(UTC)
+    start = state.oldest_on_card if state else None
+    if start is None or start >= now:
+        return []
+    width = (now - start) / BUCKETS
+    counts = [[0, 0, 0, 0] for _ in range(BUCKETS)]
+    for clip_start, clip_state, attempts in db.timeline_rows(alias, start):
+        i = min(int((parse_iso(clip_start) - start) / width), BUCKETS - 1)
+        if i < 0:
+            continue
+        kind = (
+            0
+            if clip_state == "backed_up"
+            else 3
+            if clip_state == "lost"
+            else 2
+            if attempts >= MAX_ATTEMPTS
+            else 1
+        )
+        counts[i][kind] += 1
+    return [Bucket(*c) for c in counts]
 
 
 def _at_risk(oldest_pending: datetime, oldest_on_card: datetime, now: datetime) -> bool:

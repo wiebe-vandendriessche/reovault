@@ -47,7 +47,7 @@ Success: the user trusts the backups without checking them often, and when somet
 ## Brand Commitments
 
 - Name: ReoVault. Unofficial and independent: never imply affiliation with or endorsement by Reolink, and use Reolink names only to describe compatibility.
-- Existing assets: `dashboard/static/icons/` (icon, maskable icon, `wordmark-dark.png`, `wordmark-light.png`), `img/reovault-bg.png`.
+- Brand sources: only the three SVGs in `img/` (`reovault-bg.svg`, `reovault-dark-bg.svg`, `reovault-icon.svg`). `scripts/build_brand_assets.py` derives everything in `dashboard/static/icons/` from them (SVG wordmarks and icon; PNGs only for home-screen and manifest icons).
 - Montserrat (self-hosted `dashboard/static/fonts/montserrat-latin-var.woff2`) is the brand font, kept from the pre-Svelte dashboard by user request.
 - Dark and light themes, dark as the manifest default (`#000814`), following the stored choice or the OS preference.
 - Voice: plain, factual verdicts in full sentences. Say what is true and what to do, no alarmism and no reassurance that is not backed by verification.

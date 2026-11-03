@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, apiUrl, type Camera, type Day } from '#lib/api/index.js';
+	import { api, type Camera, type Day } from '#lib/api/index.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -14,6 +14,7 @@
 	import NoCamera from '#lib/components/app/NoCamera.svelte';
 	import CameraPicker from '#lib/components/app/CameraPicker.svelte';
 	import MonthCalendar from '#lib/components/footage/MonthCalendar.svelte';
+	import DownloadDialog from '#lib/components/footage/DownloadDialog.svelte';
 	import HourGroup from '#lib/components/footage/HourGroup.svelte';
 	import { addDays, bytes, plural } from '#lib/format.js';
 	import { typeLabel } from '#lib/labels.js';
@@ -42,8 +43,8 @@
 
 	// Without a date in the URL, the camera's own "today" is shown.
 	const shown = $derived(date || day.data?.today || '');
+	let downloading = $state(false);
 	const clips = $derived(day.data?.hours.flatMap((h) => h.clips) ?? []);
-	const backedUp = $derived(clips.filter((c) => c.state === 'backed_up').length);
 
 	function nav(next: { camera?: string; date?: string; types?: string }) {
 		const p = new URLSearchParams(page.url.search);
@@ -88,10 +89,8 @@
 		{#if cameras.data && cameras.data.length > 1}
 			<CameraPicker cameras={cameras.data} value={camera} onchange={(c) => nav({ camera: c, date: '' })} />
 		{/if}
-		{#if backedUp && shown}
-			<Button href={apiUrl('/clips/day.zip', { camera, date_: shown, types })} variant="outline">
-				<Download /> Download day
-			</Button>
+		{#if shown}
+			<Button onclick={() => (downloading = true)} variant="outline"><Download /> Download</Button>
 		{/if}
 	{/snippet}
 </PageHeader>
@@ -173,9 +172,13 @@
 				</Empty.Root>
 			{:else}
 				{#each day.data.hours as h (`${day.data.day}-${h.hour}-${types}`)}
-					<HourGroup hour={h.hour} clips={h.clips} />
+					<HourGroup hour={h.hour} clips={h.clips} {camera} day={day.data.day} />
 				{/each}
 			{/if}
 		</section>
 	</div>
+{/if}
+
+{#if cameras.data && day.data}
+	<DownloadDialog bind:open={downloading} cameras={cameras.data} {camera} date={shown} today={day.data.today} types={day.data.types} />
 {/if}

@@ -5,11 +5,7 @@ log. Downloads stream straight from `restic dump`, no temp files."""
 from __future__ import annotations
 
 import io
-import os
 import re
-import threading
-import weakref
-import zipfile
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -20,19 +16,17 @@ from pydantic import BaseModel
 
 from reovault.backup import MAX_ATTEMPTS
 from reovault.db import Clip, local_day_bounds, parse_iso
+from reovault.destinations import restic_for
 from reovault.logging import get_logger
 from reovault.restic import Restic
 from reovault.web.api.cameras import RunOut, run_out
 from reovault.web.deps import AppState, State, camera_or_404
-from reovault.worker import restic_env
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["clips"])
 
 _CHUNK = 1024 * 1024
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
-# ponytail: one zip at a time, process-wide; each is a full-speed restore.
-_zip_lock = threading.Lock()
 
 
 def safe_filename(name: str) -> str:
@@ -156,19 +150,30 @@ def day(camera: str, st: State, date_: str | None = None, types: str = "") -> Da
     )
 
 
-def _restic_for_clip(st: AppState, clip: Clip) -> Restic:
-    """The repository the clip was backed up to, even after a destination
-    change."""
-    assert clip.repository is not None
-    env = {**os.environ, **restic_env(st.settings)}
-    return Restic(st.settings.tools.restic, clip.repository, env)
+def locate(st: AppState, clip: Clip) -> tuple[Restic, str] | None:
+    """Where to read a clip from: a connected destination that holds its
+    snapshot, preferring the primary, then local ones (no network), then the
+    rest. (Restic for that camera on it, the snapshot's id there.)"""
+    enabled = [d for d in st.settings.destinations if d.enabled]
+    primary = st.settings.primary()
+    order = sorted(enabled, key=lambda d: (d is not primary, d.repository.startswith("rclone:")))
+    found = st.db.clip_location(clip, [d.name for d in order])
+    if found is None:
+        return None
+    dest = st.settings.destination(found[0])
+    assert dest is not None
+    return restic_for(st.settings, clip.camera, dest), found[1]
 
 
 def _dump(st: AppState, clip: Clip) -> Iterator[bytes]:
     """The clip's bytes from restic, or an aborted response: a broken dump
     must never look like a complete download."""
     assert clip.snapshot_id and clip.path
-    proc = _restic_for_clip(st, clip).dump(clip.snapshot_id, clip.path)
+    where = locate(st, clip)
+    if where is None:
+        raise RuntimeError("that clip is not on a connected destination")
+    restic, snapshot_id = where
+    proc = restic.dump(snapshot_id, clip.path)
     assert proc.stdout is not None
     try:
         while data := proc.stdout.read(_CHUNK):
@@ -186,6 +191,8 @@ def _backed_up(st: AppState, clip_id: int) -> Clip:
     clip = st.db.get_clip(clip_id)
     if clip is None or clip.state != "backed_up" or not clip.snapshot_id or not clip.path:
         raise HTTPException(404, "That clip isn't in the backup.")
+    if locate(st, clip) is None:
+        raise HTTPException(404, "That clip is only on a destination that isn't connected now.")
     return clip
 
 
@@ -222,54 +229,59 @@ class _Sink(io.RawIOBase):
         return out
 
 
-@router.get("/clips/day.zip", response_class=StreamingResponse, responses={409: {}, 422: {}})
-def day_zip(camera: str, date_: str, st: State, types: str = "") -> StreamingResponse:
-    d = _parse_date(date_)
-    tz, clips = _day_clips(st, camera, d)
-    wanted = {t for t in types.split(",") if t}
-    chosen = [c for c in clips if c.state == "backed_up" and _types_match(c, wanted)]
-    if not chosen:
-        raise HTTPException(422, "No backed-up clips on that day.")
-    if not _zip_lock.acquire(blocking=False):
-        raise HTTPException(409, "Another download is already being prepared.")
-    released = threading.Event()
+class BatchOut(BaseModel):
+    snapshot: str
+    clips: int
+    bytes: int
+    download_secs: float | None
+    upload_secs: float | None
+    finished_at: datetime
 
-    def release() -> None:
-        if not released.is_set():
-            released.set()
-            _zip_lock.release()
 
-    def body() -> Iterator[bytes]:
-        sink = _Sink()
-        try:
-            with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_STORED) as zf:
-                for c in chosen:
-                    local = parse_iso(c.start_utc).astimezone(tz)
-                    info = zipfile.ZipInfo(
-                        f"{local:%H%M%S}_{safe_filename(c.name)}", date_time=local.timetuple()[:6]
-                    )
-                    with zf.open(info, "w", force_zip64=True) as member:
-                        for data in _dump(st, c):
-                            member.write(data)
-                            yield sink.drain()
-            yield sink.drain()  # the central directory
-        except Exception as exc:
-            logger.error("web.zip_failed", camera=camera, error=str(exc))
-            raise
-        finally:
-            release()
+class RunClipOut(ClipOut):
+    outcome: str  # backed_up | failed | lost
 
-    zip_name = f"reovault_{safe_filename(camera)[:-4]}_{d:%Y%m%d}.zip"
-    stream = body()
-    weakref.finalize(stream, release)  # a never-started generator never runs `finally`
-    return StreamingResponse(
-        stream,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{zip_name}"',
-            "Cache-Control": "private, no-store",
-            "X-Accel-Buffering": "no",
-        },
+
+class RunDetailOut(BaseModel):
+    run: RunOut
+    batches: list[BatchOut]
+    clips: list[RunClipOut]
+    truncated: bool
+
+
+_RUN_CLIP_LIMIT = 500
+
+
+@router.get("/activity/runs/{run_id}", responses={404: {}})
+def run_detail(run_id: int, st: State) -> RunDetailOut:
+    """One backup run: the batches it uploaded, and each clip it backed up,
+    failed on or found lost. Read from the index (no destination contacted)."""
+    run = st.db.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, "Unknown run.")
+    cfg = camera_or_404(st, run.camera)
+    tz = ZoneInfo(cfg.timezone)
+    end = parse_iso(run.finished_at) if run.finished_at else datetime.now(UTC)
+    found = st.db.clips_touched(run.camera, parse_iso(run.started_at), end, _RUN_CLIP_LIMIT + 1)
+    clips = []
+    for c in found[:_RUN_CLIP_LIMIT]:
+        outcome = {"backed_up": "backed_up", "lost": "lost"}.get(c.state, "failed")
+        clips.append(RunClipOut(**clip_out(st, c, tz).model_dump(), outcome=outcome))
+    return RunDetailOut(
+        run=run_out(st, run),
+        batches=[
+            BatchOut(
+                snapshot=b["snapshot_id"][:8],
+                clips=b["clips"],
+                bytes=b["bytes"],
+                download_secs=b["download_secs"],
+                upload_secs=b["upload_secs"],
+                finished_at=parse_iso(b["finished_at"]),
+            )
+            for b in st.db.batches(run.id)
+        ],
+        clips=clips,
+        truncated=len(found) > _RUN_CLIP_LIMIT,
     )
 
 

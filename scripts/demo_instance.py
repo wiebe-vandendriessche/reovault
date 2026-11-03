@@ -41,6 +41,13 @@ class Instance:
     password: str
     folder: Path
 
+    def setup_code(self) -> str:
+        """The one-time code a fresh instance printed in its log."""
+        for line in (self.folder / "daemon.log").read_text().splitlines():
+            if line.startswith("{") and '"setup.code"' in line:
+                return str(json.loads(line)["code"])
+        raise RuntimeError("no setup code in the daemon log")
+
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -102,7 +109,9 @@ def _wait(predicate: object, what: str, timeout: float = 180) -> None:
 
 
 @contextmanager
-def demo_instance(restic: str = "restic", rclone: str = "rclone") -> Iterator[Instance]:
+def demo_instance(
+    restic: str = "restic", rclone: str = "rclone", *, fresh: bool = False
+) -> Iterator[Instance]:
     sink = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Sink)
     threading.Thread(target=sink.serve_forever, daemon=True).start()
     with tempfile.TemporaryDirectory(prefix="reovault-demo-") as tmp:
@@ -129,10 +138,13 @@ name = "Driveway"
 timezone = "Europe/Brussels"
 demo = true
 
-[backup]
+[[destinations]]
+name = "nextcloud"
 repository = "rclone:nextcloud:reovault"
-password_file = "{folder / "restic_password"}"
 keep_days = 14
+
+[backup]
+password_file = "{folder / "restic_password"}"
 
 [alerts]
 ntfy_url = "http://127.0.0.1:{sink.server_address[1]}/reovault"
@@ -140,7 +152,7 @@ ntfy_url = "http://127.0.0.1:{sink.server_address[1]}/reovault"
 [web]
 host = "127.0.0.1"
 port = {port}
-email = "{EMAIL}"
+{"" if fresh else f'email = "{EMAIL}"'}
 cookie_secure = false
 password_file = "{folder / "web_password"}"
 session_key_path = "{folder / "web_session.key"}"
@@ -159,7 +171,8 @@ gateway_addr = "127.0.0.1:{_free_port()}"
         from reovault.web import security
         from reovault.web.auth import write_password_file
 
-        write_password_file(folder / "web_password", security.hash_password(PASSWORD.encode()))
+        if not fresh:  # a fresh instance starts without a login: the setup screen makes it
+            write_password_file(folder / "web_password", security.hash_password(PASSWORD.encode()))
         env = {k: v for k, v in os.environ.items() if not k.startswith(("REOVAULT_", "RESTIC_"))}
         env["REOVAULT_CONFIG_FILE"] = str(config)
         env["RCLONE_CONFIG"] = str(folder / "rclone.conf")
@@ -174,6 +187,9 @@ gateway_addr = "127.0.0.1:{_free_port()}"
             _wait(
                 lambda: urllib.request.urlopen(f"{url}/healthz", timeout=2).status == 200, "start"
             )
+            if fresh:
+                yield Instance(url, EMAIL, PASSWORD, folder)
+                return
             api = Session(url).login()
 
             def backed_up() -> bool:
@@ -182,6 +198,7 @@ gateway_addr = "127.0.0.1:{_free_port()}"
 
             _wait(backed_up, "both demo cameras backed up")
             # Alerts are evaluated once a minute; healthy means none open.
+            api.call("POST", "/recovery/confirm")  # the screenshots show no reminder
             issues = api.call("GET", "/overview")["issues"]  # type: ignore[index]
             if issues:
                 raise RuntimeError(f"demo instance is not healthy: {issues}")

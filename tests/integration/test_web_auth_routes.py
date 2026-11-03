@@ -26,6 +26,7 @@ _PUBLIC_ROUTES = {
     ("GET", "/healthz"),
     ("GET", "/api/v1/session"),
     ("POST", "/api/v1/login"),
+    ("POST", "/api/v1/setup"),  # open until the first login exists, then 409
     ("GET", "/{path:path}"),
 }
 
@@ -265,10 +266,11 @@ def test_logout_revokes_a_copied_cookie(env, web_settings, web_device, web_passw
 def test_no_password_configured_returns_503_but_healthz_still_ok(env, web_settings, web_device):
     client = TestClient(make_web_app(env, web_settings, web_device))  # no web_password_hash
 
-    for path in ("/api/v1/session", "/api/v1/activity"):
-        response = client.get(path)
-        assert response.status_code == 503, path
-        assert "set-password" in response.json()["detail"], path
+    response = client.get("/api/v1/activity")
+    assert response.status_code == 503
+    assert "setup code" in response.json()["detail"]
+    # Only the session (it says setup is needed) and the setup form are open.
+    assert client.get("/api/v1/session").json()["setup_needed"] is True
     assert client.get("/healthz").status_code == 200
 
 

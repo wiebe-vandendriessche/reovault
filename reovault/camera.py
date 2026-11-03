@@ -40,6 +40,8 @@ _TYPE_KEYS = ("recordType", "type", "recType")
 # reolink-cli exit codes that mean "the camera or the network is the problem":
 # the whole invocation failed, so no single clip is to blame.
 _TRANSIENT_CODES = {2, 3}  # network, auth
+_NETWORK_EXIT = 2
+_SHORT_CALL_SECS = 60
 _HARDWARE_SCOPE_RE = re.compile(r"^onvif://[^/]+/hardware/(?P<model>.+)$")
 _NAME_SCOPE_RE = re.compile(r"^reolink-lan://name/(?P<name>.+)$")
 # The card scan walks back one local day at a time and stops after this many
@@ -96,7 +98,13 @@ def call(
 ) -> Any:
     """`reolink-cli --output json <args>`; the parsed `data` on success."""
     cmd = [binary, *(["--gateway-addr", gateway] if gateway else []), "--output", "json", *args]
-    proc = run(cmd, timeout=timeout, stdin=stdin)
+    try:
+        proc = run(cmd, timeout=timeout, stdin=stdin)
+    except ToolError as exc:
+        # A short call (search, storage) that times out means nobody answered;
+        # a long download timing out may just be slow.
+        exc.unreachable = timeout <= _SHORT_CALL_SECS and exc.timed_out
+        raise
     try:
         envelope = json.loads(proc.stdout) if proc.stdout.strip() else {}
     except json.JSONDecodeError:
@@ -113,6 +121,7 @@ def call(
         message,
         code=proc.returncode,
         detail=f"exit {proc.returncode}, code {error.get('code')}: {proc.stderr.strip()}",
+        unreachable=proc.returncode == _NETWORK_EXIT or error.get("code") == "NETWORK_ERROR",
     )
 
 
@@ -399,6 +408,11 @@ def discover(binary: str, timeout_secs: int = 2) -> list[Discovered]:
         host = entry.get("host") if isinstance(entry.get("host"), str) else ""
         out.append(Discovered(host, entry.get("uid"), model, name, host in hosts))
     return out
+
+
+def remove(binary: str, alias: str) -> None:
+    """Takes a camera (and its stored password) out of reolink-cli's registry."""
+    call(binary, ["device", "remove", alias], timeout=30)
 
 
 def add(binary: str, *, alias: str, host: str, user: str, password: SecretStr) -> None:

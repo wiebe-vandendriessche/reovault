@@ -36,15 +36,15 @@ Playback stays in the Reolink app, for whatever is still on the card.
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and the backup destination" /></td>
-<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and where the backups go" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup, or a whole time range as one zip" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-activity.png" alt="Activity: every backup run, plus clips that keep failing or that the card overwrote" /></td>
 <td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera with its status and backup totals, add from LAN discovery, turn backups on or off" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-settings-backup.png" alt="Settings, Backups: the destination with a test, how often to back up, how long to keep backups" /></td>
+<td width="50%"><img src="img/screenshot-settings-destinations.png" alt="Settings, Destinations: the primary destination and its copies, with keep days and a size limit each" /></td>
 <td width="50%"><img src="img/screenshot-settings-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and what alerts" /></td>
 </tr>
 </table>

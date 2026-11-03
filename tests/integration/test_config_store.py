@@ -23,9 +23,9 @@ COMMENTED = """# My ReoVault config. Keep this comment.
 alias = "doorbell"  # the front door
 timezone = "Europe/Brussels"
 
-# Keep footage for three months.
+# Back up every 90 minutes.
 [backup]
-keep_days = 90
+interval_minutes = 90
 """
 
 
@@ -42,7 +42,7 @@ def store(toml_path):
 
 
 def _keep(days):
-    return lambda doc: set_fields(table_at(doc, "backup"), {"keep_days": days})
+    return lambda doc: set_fields(table_at(doc, "backup"), {"interval_minutes": days})
 
 
 def test_update_keeps_comments_and_layout(store, toml_path):
@@ -50,17 +50,17 @@ def test_update_keeps_comments_and_layout(store, toml_path):
     text = toml_path.read_text()
     assert "# My ReoVault config. Keep this comment." in text
     assert 'alias = "doorbell"  # the front door' in text
-    assert "# Keep footage for three months." in text
-    assert "keep_days = 30" in text
-    assert store.current.backup.keep_days == 30
+    assert "# Back up every 90 minutes." in text
+    assert "interval_minutes = 30" in text
+    assert store.current.backup.interval_minutes == 30
     assert (toml_path.parent / "reovault.toml.bak").read_text() == COMMENTED
 
 
 def test_an_invalid_update_never_touches_the_file(store, toml_path):
-    with pytest.raises(ConfigInvalidError, match="keep_days"):
+    with pytest.raises(ConfigInvalidError, match="interval_minutes"):
         store.update(_keep(-1))
     assert toml_path.read_text() == COMMENTED
-    assert store.current.backup.keep_days == 90
+    assert store.current.backup.interval_minutes == 90
 
 
 def test_a_stale_version_is_refused(store, toml_path):
@@ -72,10 +72,10 @@ def test_a_stale_version_is_refused(store, toml_path):
 
 def test_a_hand_edit_is_applied_and_announced(store, toml_path):
     seen = []
-    store.subscribe(lambda old, new: seen.append(new.backup.keep_days))
-    toml_path.write_text(COMMENTED.replace("keep_days = 90", "keep_days = 14"))
+    store.subscribe(lambda old, new: seen.append(new.backup.interval_minutes))
+    toml_path.write_text(COMMENTED.replace("interval_minutes = 90", "interval_minutes = 14"))
     assert store.reload() is True
-    assert store.current.backup.keep_days == 14
+    assert store.current.backup.interval_minutes == 14
     assert seen == [14]
     assert store.last_origin == "file"
     store.update(_keep(21))
@@ -92,10 +92,10 @@ def test_our_own_write_is_not_applied_twice(store):
 
 def test_a_broken_hand_edit_keeps_the_last_valid_settings(store, toml_path):
     store.update(_keep(30))
-    toml_path.write_text("[backup\nkeep_days = 5\n")
+    toml_path.write_text("[backup\ninterval_minutes = 5\n")
     assert store.reload() is False
     assert "Not valid TOML" in store.error
-    assert store.current.backup.keep_days == 30
+    assert store.current.backup.interval_minutes == 30
     toml_path.write_text(COMMENTED)
     assert store.reload() is True
     assert store.error is None
@@ -130,9 +130,9 @@ def test_the_watcher_picks_up_an_edit(store, toml_path):
     store.watch(stop)
     try:
         time.sleep(0.3)
-        toml_path.write_text(COMMENTED.replace("keep_days = 90", "keep_days = 7"))
+        toml_path.write_text(COMMENTED.replace("interval_minutes = 90", "interval_minutes = 7"))
         deadline = time.monotonic() + 10
-        while store.current.backup.keep_days != 7:
+        while store.current.backup.interval_minutes != 7:
             assert time.monotonic() < deadline, "watcher did not reload"
             time.sleep(0.1)
     finally:

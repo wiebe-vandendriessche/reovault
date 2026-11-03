@@ -98,7 +98,7 @@
 						{#each a.runs as run (run.id)}
 							<li class="flex flex-col gap-1.5 rounded-lg border px-3 py-2.5">
 								<div class="flex items-center justify-between gap-3">
-									<span class="text-sm font-medium">{localTime(run.started_at, tz)}</span>
+									<a href="/activity/runs/{run.id}" class="text-sm font-medium underline-offset-4 hover:underline">{localTime(run.started_at, tz)}</a>
 									<RunOutcome {run} />
 								</div>
 								<p class="text-muted-foreground flex flex-wrap gap-x-3 text-sm tabular-nums">
@@ -128,7 +128,7 @@
 							{#each a.runs as run (run.id)}
 								<Table.Row>
 									<Table.Cell class="whitespace-nowrap">
-										{localTime(run.started_at, tz)}
+										<a href="/activity/runs/{run.id}" class="underline-offset-4 hover:underline">{localTime(run.started_at, tz)}</a>
 										<span class="text-subtle block text-xs">{triggerLabel(run.trigger)}</span>
 									</Table.Cell>
 									{#if !camera}<Table.Cell>{names.get(run.camera) ?? run.camera}</Table.Cell>{/if}

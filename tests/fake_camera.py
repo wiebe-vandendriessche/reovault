@@ -35,12 +35,12 @@ class FakeCamera:
 
     def search(self, from_utc: datetime, to_utc: datetime) -> list[Found]:
         if self.offline:
-            raise ToolError("camera unreachable", code=2)
+            raise ToolError("camera unreachable", code=2, unreachable=True)
         return [c for c, _ in self.card.values() if from_utc <= c.start_utc < to_utc]
 
     def download(self, names: list[str], dest: Path, timeout: float) -> Downloaded:
         if self.offline:
-            raise ToolError("camera unreachable", code=2)
+            raise ToolError("camera unreachable", code=2, unreachable=True)
         self.downloads.append(list(names))
         if self.breaks_batch & set(names):
             raise ToolError("unexpected EOF while reading HTTP chunk header", code=4)

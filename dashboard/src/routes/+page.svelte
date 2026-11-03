@@ -2,6 +2,7 @@
 	import { api, type Camera, type Overview } from '#lib/api/index.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
@@ -9,6 +10,7 @@
 	import NoCamera from '#lib/components/app/NoCamera.svelte';
 	import CameraTile from '#lib/components/overview/CameraTile.svelte';
 	import DestinationCard from '#lib/components/overview/DestinationCard.svelte';
+	import Info from '@lucide/svelte/icons/info';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 
@@ -21,12 +23,13 @@
 
 	// Worst first, so the camera that needs you is at the top.
 	const rank: Record<Camera['verdict'], number> = {
-		not_mounted: 0,
-		failing: 1,
-		at_risk: 2,
-		catching_up: 3,
-		unknown: 4,
-		up_to_date: 5
+		offline: 0,
+		not_mounted: 1,
+		failing: 2,
+		at_risk: 3,
+		catching_up: 4,
+		unknown: 5,
+		up_to_date: 6
 	};
 	const cameras = $derived(
 		[...(overview.data?.cameras ?? [])].sort((a, b) => rank[a.verdict] - rank[b.verdict])
@@ -93,6 +96,20 @@
 			{/if}
 		</section>
 
+		{#if o.notices.length}
+			<ul class="flex flex-col gap-2">
+				{#each o.notices as n, i (i)}
+					<li class="bg-muted/50 flex items-start gap-3 rounded-lg border px-4 py-3">
+						<Info class="text-subtle mt-0.5 size-4 shrink-0" aria-hidden="true" />
+						<div class="min-w-0 text-sm">
+							<p class="font-medium">{n.title}</p>
+							<p class="text-muted-foreground">{n.message}</p>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
 		<section class="flex flex-col gap-3" aria-labelledby="cameras-heading">
 			<h2 id="cameras-heading" class="text-base font-semibold">Cameras</h2>
 			<div class="grid gap-4 md:grid-cols-2">
@@ -102,6 +119,19 @@
 			</div>
 		</section>
 
-		<DestinationCard destination={o.destination} />
+		<section class="flex flex-col gap-3" aria-labelledby="dest-heading">
+			<div class="flex items-center justify-between">
+				<h2 id="dest-heading" class="text-base font-semibold">Destinations</h2>
+				<Button size="sm" variant="ghost" href="/settings?tab=destinations">Manage</Button>
+			</div>
+			<div class="grid gap-4 md:grid-cols-2">
+				{#each o.destinations as d (d.name)}<DestinationCard destination={d} />{/each}
+			</div>
+			{#if o.destinations.length === 0}
+				<p class="text-muted-foreground text-sm">
+					No destination yet. <a class="underline" href="/settings?tab=destinations">Connect one</a>.
+				</p>
+			{/if}
+		</section>
 	</div>
 {/if}

@@ -103,9 +103,12 @@ timezone = "Europe/Brussels"
 demo = true
 
 [backup]
-repository = "./data/backups"
 password_file = "./data/restic_password"
 interval_minutes = 15
+
+[[destinations]]
+name = "local"
+repository = "./data/backups"
 
 [web]
 email = "dev@example.com"
@@ -116,9 +119,9 @@ restic = "./.tools/restic"
 rclone = "./.tools/rclone"
 TOML
 mkdir -p data && openssl rand -base64 32 > data/restic_password && chmod 600 data/restic_password
-uv run reovault web set-password
 uv run reovault doctor
 uv run reovault daemon                   # backups + API + dashboard on :8080
+# open :8080 and finish setup with the setup.code printed in the log
 ```
 
 For a real camera, install [`reolink-cli`](https://github.com/reolink/reolink-cli),

@@ -94,3 +94,65 @@ def test_a_first_run_in_progress_does_not_claim_everything_is_backed_up(tmp_path
     db.start_run("cam", "schedule")  # running, card not read yet: no clips known
     status = camera_status("cam", db, CameraState())
     assert status.verdict == "unknown"
+
+
+def _runtime(tmp_path):
+    from reovault.camera import Gateway
+    from reovault.config_store import ConfigStore
+    from reovault.runtime import Runtime
+
+    (tmp_path / "c.toml").write_text(
+        f"""
+[[destinations]]
+name = "local"
+repository = "{tmp_path / "a"}"
+primary = true
+max_gb = 10
+
+[[destinations]]
+name = "cloud"
+repository = "{tmp_path / "b"}"
+max_gb = 10
+"""
+    )
+    from reovault.config import load_settings
+
+    return Runtime(
+        config=ConfigStore(tmp_path / "c.toml", load_settings(tmp_path / "c.toml")),
+        db=_db(tmp_path),
+        gateway=Gateway("x", "127.0.0.1:1"),
+    )
+
+
+def test_destination_alerts_say_what_is_wrong(tmp_path):
+    from reovault.destinations import update_status
+
+    rt = _runtime(tmp_path)
+    assert rt._destination_conditions(rt.settings()) == []  # healthy: nothing to say
+    update_status(rt.db, "cloud", failures=2, error="connection refused", too_small=True)
+    update_status(rt.db, "local", blocked=3)
+    kinds = {c.condition for c in rt._destination_conditions(rt.settings())}
+    assert kinds == {"destination_failing", "quota_too_small", "quota_blocked"}
+
+
+def test_a_single_failure_is_not_yet_an_alert(tmp_path):
+    from reovault.destinations import update_status
+
+    rt = _runtime(tmp_path)
+    update_status(rt.db, "cloud", failures=1, error="timeout")
+    assert rt._destination_conditions(rt.settings()) == []
+
+
+def test_a_copy_that_stays_behind_alerts_but_not_while_it_is_seeding(tmp_path):
+    from reovault.destinations import update_status
+
+    rt = _runtime(tmp_path)
+    old = NOW - timedelta(days=2)
+    rt.db.upsert_clips("cam", [("c1", old, None, 100, "md")])
+    (clip,) = rt.db.clips_by_name("cam", ["c1"]).values()
+    rt.db.mark_backed_up("cam", "local", "s1", old, {clip.id: "/b/c1.mp4"})
+    rt.db.add_location("cam", "s1", "local", "s1", old)
+    kinds = [c.condition for c in rt._destination_conditions(rt.settings())]
+    assert kinds == ["copy_behind"]
+    update_status(rt.db, "cloud", seeding={"cam": [1, 5]})  # progress: copying right now
+    assert rt._destination_conditions(rt.settings()) == []

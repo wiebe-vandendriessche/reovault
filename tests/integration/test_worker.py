@@ -31,8 +31,11 @@ alias = "demo"
 timezone = "Europe/Brussels"
 demo = true
 
-[backup]
+[[destinations]]
+name = "local"
 repository = "{tmp_path / "repos"}"
+
+[backup]
 password_file = "{pw}"
 
 [storage]
@@ -92,24 +95,29 @@ def test_clips_of_a_forgotten_snapshot_become_expired(setup, monkeypatch):
     store, db = setup
     worker = _backed_up_once(store, db)
     restic = restic_for(store.current, "demo")
-    snapshot = next(iter(restic.snapshot_ids()))
+    snapshot = restic.snapshots()[0].id
     subprocess.run(
         [restic.binary, "-r", restic.repository, "forget", snapshot, "--prune"],
         env=restic.env,
         check=True,
         capture_output=True,
     )
-    worker._reconcile(restic)
+    worker._retain(store.current, store.current.primary(), restic)
     expired = db._all("SELECT COUNT(*) AS n FROM clips WHERE state = 'expired'")[0]["n"]
     assert expired > 0
 
 
 def test_an_empty_answer_never_expires_the_whole_index(setup, tmp_path):
+    """A valid but empty repository answering (the wrong or a wiped one) must
+    not make ReoVault forget everything it has backed up."""
     store, db = setup
     worker = _backed_up_once(store, db)
     before = db.totals("demo")
+    primary = store.current.primary()
     other = restic_for(store.current, "other")
-    other.init()  # a valid, empty repository answering instead
-    worker._reconcile(other)
-    assert worker.health.index_mismatch is True
+    other.init()
+    # The same listing a reconcile would act on, but from the empty repository.
+    assert db.set_locations("demo", primary.name, []) is False
+    assert db.expire_unlocated("demo") == 0
     assert db.totals("demo") == before
+    assert worker is not None

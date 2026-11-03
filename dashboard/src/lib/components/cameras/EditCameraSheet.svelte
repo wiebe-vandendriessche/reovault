@@ -64,6 +64,25 @@
 		}
 	}
 
+	let removing = $state(false);
+	let removeFromRegistry = $state(true);
+	async function remove() {
+		if (!camera) return;
+		busy = true;
+		error = null;
+		try {
+			const path = `/cameras/${camera.alias}`;
+			onsaved(await api<Camera[]>(path, { method: 'DELETE', query: { registry: removeFromRegistry } }));
+			toast.success(`${camera.name || camera.alias} removed. Its backups are untouched.`);
+			removing = false;
+			onclose();
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			busy = false;
+		}
+	}
+
 	function close(open: boolean) {
 		if (open) return;
 		if (!dirty || confirm('You have unsaved changes to this camera. Discard them?')) onclose();
@@ -96,6 +115,32 @@
 				</Field.Field>
 				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 			</form>
+
+			<div class="mx-4 mb-4 mt-2 border-t pt-4">
+				{#if !removing}
+					<Button variant="outline" size="sm" disabled={!writable} onclick={() => (removing = true)}>
+						Remove this camera
+					</Button>
+				{:else}
+					<p class="text-sm">
+						Stops backing up {camera.name || camera.alias} and removes it from reovault.toml.
+						Everything already backed up stays in every destination; adding the same alias again
+						brings it back.
+					</p>
+					{#if !camera.demo}
+						<label class="mt-3 flex items-start gap-2 text-sm">
+							<input type="checkbox" class="mt-1" bind:checked={removeFromRegistry} />
+							<span>Also remove it, and its stored password, from reolink-cli's registry.</span>
+						</label>
+					{/if}
+					<div class="mt-3 flex gap-2">
+						<Button variant="destructive" size="sm" disabled={busy} onclick={remove}>
+							{#if busy}<Spinner />{/if} Remove
+						</Button>
+						<Button variant="ghost" size="sm" onclick={() => (removing = false)}>Keep it</Button>
+					</div>
+				{/if}
+			</div>
 
 			<Sheet.Footer class="bg-background sticky bottom-0 flex-row items-center gap-3 border-t">
 				<Button type="submit" form="edit-camera-form" disabled={!writable || busy || !dirty}>

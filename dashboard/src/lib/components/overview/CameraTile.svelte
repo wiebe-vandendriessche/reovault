@@ -73,6 +73,27 @@
 			</div>
 		{/if}
 
+		{#if cam.timeline?.length}
+			{@const n = cam.timeline.length}
+			<div class="flex flex-col gap-1.5">
+				<div class="text-subtle flex justify-between text-xs">
+					<span>Oldest on card</span>
+					<span>Now</span>
+				</div>
+				<svg class="h-6 w-full overflow-hidden rounded" role="img" aria-label="SD card timeline, oldest to newest" preserveAspectRatio="none">
+					{#each cam.timeline as b, i (i)}
+						{@const total = b.backed_up + b.waiting + b.failing + b.lost}
+						<rect
+							x="{(i / n) * 100}%"
+							width="{100 / n - 0.4}%"
+							height="100%"
+							class={total === 0 ? 'fill-muted' : b.failing ? 'fill-bad' : b.lost ? 'fill-warn' : b.waiting ? 'fill-idle' : 'fill-ok'}
+						/>
+					{/each}
+				</svg>
+			</div>
+		{/if}
+
 		{#if card}
 			<div class="flex flex-col gap-1.5">
 				<div class="text-subtle flex justify-between text-xs">

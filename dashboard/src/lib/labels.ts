@@ -42,6 +42,7 @@ export const VERDICTS: Record<Verdict, { level: Level; label: string }> = {
 	catching_up: { level: 'idle', label: 'Catching up' },
 	at_risk: { level: 'warn', label: 'At risk' },
 	failing: { level: 'bad', label: 'Failing' },
+	offline: { level: 'bad', label: 'Offline' },
 	not_mounted: { level: 'bad', label: 'No SD card' },
 	unknown: { level: 'idle', label: 'No backup yet' }
 };

@@ -3,9 +3,7 @@ backed up to a temp restic repository."""
 
 from __future__ import annotations
 
-import io
 import tomllib
-import zipfile
 from datetime import datetime
 
 import pytest
@@ -42,7 +40,6 @@ def test_overview_after_a_backup(backed_up):
     assert cam["backed_up_clips"] > 600
     assert cam["lost_7d"] >= 1
     assert cam["last_run"]["outcome"] == "ok"
-    assert ov["destination"]["clips"] == cam["backed_up_clips"]
     assert {i["title"] for i in ov["issues"]} == {"Alerts have nowhere to go"}
 
 
@@ -66,16 +63,6 @@ def test_a_type_filter_narrows_the_day(backed_up):
     count = lambda d: sum(len(h["clips"]) for h in d["hours"])  # noqa: E731
     assert 0 < count(people) < count(everything)
     assert all("people" in c["rec_type"] for h in people["hours"] for c in h["clips"])
-
-
-def test_a_day_downloads_as_one_zip(backed_up):
-    _rt, client = backed_up
-    day = client.get("/api/v1/clips/day?camera=demo").json()
-    backed = [c for h in day["hours"] for c in h["clips"] if c["state"] == "backed_up"]
-    r = client.get(f"/api/v1/clips/day.zip?camera=demo&date_={day['day']}")
-    z = zipfile.ZipFile(io.BytesIO(r.content))
-    assert len(z.namelist()) == len(backed)
-    assert z.testzip() is None
 
 
 def test_lost_clips_show_in_activity_and_cant_be_downloaded(backed_up):
@@ -103,14 +90,6 @@ def test_adding_cameras(backed_up, env):
     bad_tz = {"alias": "x", "timezone": "Mars/Base", "demo": True}
     assert client.post("/api/v1/cameras", json=bad_tz).status_code == 422
     assert client.post("/api/v1/cameras", json={**bad_tz, "alias": "../etc"}).status_code == 422
-
-
-def test_destination_test_reports_each_camera(backed_up, env):
-    _rt, client = backed_up
-    ok = client.post("/api/v1/config/backup/test", json={"repository": str(env.tmp_path / "repos")})
-    assert ok.json() == [{"camera": "demo", "state": "ok", "error": None}]
-    new = client.post("/api/v1/config/backup/test", json={"repository": str(env.tmp_path / "new")})
-    assert new.json()[0]["state"] == "missing"
 
 
 def test_run_now_and_stop_need_a_running_worker(backed_up):
@@ -141,3 +120,28 @@ def test_alert_channels_cant_be_changed_from_the_dashboard(backed_up):
         },
     )
     assert r.status_code == 404
+
+
+def test_the_overview_lists_destinations_a_timeline_and_the_password_notice(backed_up):
+    _rt, client = backed_up
+    ov = client.get("/api/v1/overview").json()
+    (dest,) = ov["destinations"]
+    assert (dest["name"], dest["role"]) == ("local", "primary")
+    assert dest["used_bytes"] > 0 and dest["snapshots"] >= 1
+    (cam,) = ov["cameras"]
+    assert len(cam["timeline"]) == 48
+    assert sum(b["backed_up"] for b in cam["timeline"]) == cam["backed_up_clips"]
+    assert [n["title"] for n in ov["notices"]] == ["Keep your restic password safe"]
+    assert client.get("/api/v1/cameras").json()[0]["timeline"] is None  # only on the overview
+
+
+def test_a_run_shows_its_batches_and_clips(backed_up):
+    rt, client = backed_up
+    (run,) = rt.db.runs("demo")
+    detail = client.get(f"/api/v1/activity/runs/{run.id}").json()
+    assert detail["run"]["outcome"] == "ok"
+    assert detail["batches"] and detail["batches"][0]["clips"] > 0
+    assert detail["batches"][0]["upload_secs"] is not None
+    assert {c["outcome"] for c in detail["clips"]} == {"backed_up"}
+    assert detail["truncated"] is (detail["run"]["clips"] > 500)
+    assert client.get("/api/v1/activity/runs/99999").status_code == 404

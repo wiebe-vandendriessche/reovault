@@ -16,10 +16,11 @@ from reovault.camera import Gateway
 from reovault.config import Settings, load_settings
 from reovault.config_store import ConfigStore
 from reovault.db import Db
+from reovault.destinations import restic_for
 from reovault.logging import configure_logging
 from reovault.runtime import Runtime
 from reovault.tools import ToolError, assert_version
-from reovault.worker import camera_for, restic_for
+from reovault.worker import camera_for
 
 app = typer.Typer(add_completion=False, help="ReoVault: back up Reolink SD cards with restic.")
 
@@ -67,7 +68,7 @@ def _preflight(settings: Settings) -> list[str]:
     checks = [([tools.restic, "version"], tools.restic_version)]
     if any(not c.demo for c in settings.cameras):
         checks.append(([tools.reolink_cli, "--version"], tools.reolink_cli_version))
-    if (settings.backup.repository or "").startswith("rclone:"):
+    if any(d.repository.startswith("rclone:") for d in settings.destinations if d.enabled):
         checks.append(([tools.rclone, "version"], tools.rclone_version))
     problems = []
     for cmd, wanted in checks:
@@ -87,20 +88,30 @@ def doctor() -> None:
     """Check tools, folders and every camera's repository. Changes nothing."""
     settings = load_settings()
     problems = _preflight(settings)
-    for cam in settings.cameras:
-        if not cam.enabled:
-            continue
-        try:
-            state = restic_for(settings, cam.alias).state()
-        except ToolError as exc:
-            problems.append(f"{cam.alias}: {exc}")
-            continue
-        typer.echo(f"[{'OK' if state == 'ok' else 'INFO'}] {cam.alias}: repository {state}")
-        if state == "wrong_password":
-            problems.append(f"{cam.alias}: the restic password doesn't open its repository")
-    repo = settings.backup.repository or ""
-    if repo.startswith("/") and not _on_mount(Path(repo)):
-        typer.echo(f"[WARN] {repo} is not on a mounted volume; in Docker it would be lost.")
+    if settings.primary() is None:
+        problems.append("no backup destination is set up ([[destinations]])")
+    for dest in (d for d in settings.destinations if d.enabled):
+        role = "primary" if dest is settings.primary() else "copy"
+        for cam in settings.cameras:
+            if not cam.enabled:
+                continue
+            try:
+                state = restic_for(settings, cam.alias, dest).state()
+            except ToolError as exc:
+                problems.append(f"{dest.name}/{cam.alias}: {exc}")
+                continue
+            typer.echo(
+                f"[{'OK' if state == 'ok' else 'INFO'}] {dest.name} ({role}) {cam.alias}: "
+                f"repository {state}"
+            )
+            if state == "wrong_password":
+                problems.append(
+                    f"{dest.name}/{cam.alias}: the restic password doesn't open its repository"
+                )
+        if dest.repository.startswith("/") and not _on_mount(Path(dest.repository)):
+            typer.echo(
+                f"[WARN] {dest.repository} is not on a mounted volume; in Docker it would be lost."
+            )
     for p in problems:
         typer.echo(f"[FAIL] {p}", err=True)
     if problems:

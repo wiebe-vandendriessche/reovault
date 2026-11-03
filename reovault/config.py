@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -38,15 +38,30 @@ class CameraConfig(BaseModel):
     ReoVault without hardware. Needs no reolink-cli registry entry."""
 
 
-class BackupConfig(BaseModel):
-    repository: str | None = None
-    """restic repository base: a local path or e.g. `rclone:nextcloud:reovault`.
-    Each camera gets its own repository at `<repository>/<alias>`."""
-    password_file: Path | None = None
-    """The restic password file; unset means `$RESTIC_PASSWORD_FILE`."""
-    interval_minutes: int = Field(default=60, ge=1, le=1440)
+class DestinationConfig(BaseModel):
+    """Where backups go. Each camera gets its own restic repository at
+    `<repository>/<alias>`. One enabled destination is the *primary*: clips are
+    backed up there first. The others receive copies of its snapshots."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
+    """Unique and never renamed: the index remembers snapshots by it."""
+    repository: str
+    """A local path, or `rclone:<remote>:<path>`."""
+    primary: bool = False
+    """With exactly one enabled destination, that one is the primary anyway."""
     keep_days: int = Field(default=0, ge=0)
-    """0 keeps backups forever."""
+    """Keep backups this long, counted from the newest one. 0 keeps everything."""
+    max_gb: int = Field(default=0, ge=0)
+    """The most this destination may hold. 0 means no limit."""
+    enabled: bool = True
+
+
+class BackupConfig(BaseModel):
+    interval_minutes: int = Field(default=60, ge=1, le=1440)
+    password_file: Path | None = None
+    """The restic password, the same for every destination (copying needs two
+    repositories open at once). A file such as a Docker secret, never in this
+    config; unset means `$RESTIC_PASSWORD_FILE`."""
 
 
 class AlertRules(BaseModel):
@@ -88,6 +103,9 @@ class WebConfig(BaseModel):
     login_max_attempts: int = 5
     login_window_secs: int = 900
     login_lockout_secs: int = 300
+    # A daily look at GitHub's releases for a newer ReoVault; only the version
+    # number comes back, nothing about this server goes out.
+    update_check: bool = True
     # uvicorn trusts X-Forwarded-* only from these addresses: the reverse
     # proxy's own IP/subnet, never "*".
     forwarded_allow_ips: str = "127.0.0.1"
@@ -115,6 +133,7 @@ class Settings(BaseSettings):
     )
 
     cameras: list[CameraConfig] = Field(default_factory=list)
+    destinations: list[DestinationConfig] = Field(default_factory=list)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
@@ -123,6 +142,32 @@ class Settings(BaseSettings):
 
     def camera(self, alias: str) -> CameraConfig | None:
         return next((c for c in self.cameras if c.alias == alias), None)
+
+    @model_validator(mode="after")
+    def _destinations_make_sense(self) -> Settings:
+        names = [d.name for d in self.destinations]
+        if len(set(names)) != len(names):
+            raise ValueError("destination names must be unique")
+        enabled = [d for d in self.destinations if d.enabled]
+        marked = [d for d in enabled if d.primary]
+        if len(marked) > 1:
+            raise ValueError("only one enabled destination can be the primary")
+        if len(enabled) > 1 and not marked:
+            raise ValueError("with several enabled destinations, one must have primary = true")
+        return self
+
+    def primary(self) -> DestinationConfig | None:
+        """Where clips are backed up first, or None before any is connected."""
+        enabled = [d for d in self.destinations if d.enabled]
+        return next((d for d in enabled if d.primary), enabled[0] if len(enabled) == 1 else None)
+
+    def copies(self) -> list[DestinationConfig]:
+        """Enabled destinations that receive copies of the primary's snapshots."""
+        primary = self.primary()
+        return [d for d in self.destinations if d.enabled and d is not primary]
+
+    def destination(self, name: str) -> DestinationConfig | None:
+        return next((d for d in self.destinations if d.name == name), None)
 
     @classmethod
     def settings_customise_sources(

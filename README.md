@@ -1,5 +1,8 @@
 <p align="center">
-    <img src="img/reovault-bg.png" alt="reovault" width="400" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/reovault-bg.svg" />
+    <img src="img/reovault-dark-bg.svg" alt="ReoVault" width="400" />
+  </picture>
 </p>
 
 # ReoVault
@@ -19,15 +22,15 @@ Full docs (installation, dashboard guide, configuration reference, architecture)
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and the backup destination" /></td>
-<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and where the backups go" /></td>
+<td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup, or a whole time range as one zip" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-activity.png" alt="Activity: every backup run, plus clips that keep failing or that the card overwrote" /></td>
 <td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera with its status and backup totals, add from LAN discovery, turn backups on or off" /></td>
 </tr>
 <tr>
-<td width="50%"><img src="img/screenshot-settings-backup.png" alt="Settings, Backups: the destination with a test, how often to back up, how long to keep backups" /></td>
+<td width="50%"><img src="img/screenshot-settings-destinations.png" alt="Settings, Destinations: the primary destination and its copies, with keep days and a size limit each" /></td>
 <td width="50%"><img src="img/screenshot-settings-alerts.png" alt="Settings, Alerts: configured channels, alerts open right now, and what alerts" /></td>
 </tr>
 </table>
@@ -53,17 +56,14 @@ mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
 mkdir -p config/rclone data reolink-cli secrets
 curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
-# edit config/reovault.toml: [backup] repository and [web] email
-# for a cloud destination: put your rclone.conf in config/rclone/
 
 openssl rand -base64 32 | tr -d '\n' > secrets/restic_password.txt   # keep a copy: it unlocks every backup
 
-docker compose run --rm reovault web set-password
 docker compose up -d
-docker compose exec reovault reovault doctor
+docker compose logs reovault | grep setup.code      # the one-time code for the first-run screen
 ```
 
-Then add cameras on the dashboard (port 8080). Create the folders before the first `docker compose` command: otherwise Docker creates them as root and the container (uid 1000) can't write to them. [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/) covers destinations, the first run on a full card, deployment behind a reverse proxy, and verifying the image signature.
+Then open the dashboard (port 8080), finish setup with that code, connect a destination (a local disk, Nextcloud, OneDrive, SFTP, S3 ...; add a second one for 3-2-1 copies) and add your cameras. Create the folders before the first `docker compose` command: otherwise Docker creates them as root and the container (uid 1000) can't write to them. [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/) covers destinations, the first run on a full card, deployment behind a reverse proxy, and verifying the image signature.
 
 ## Dashboard
 

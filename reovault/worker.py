@@ -7,19 +7,21 @@ by two ReoVault operations at once, and no restic lock is ever waited on.
 from __future__ import annotations
 
 import contextlib
-import os
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from reovault import retention
 from reovault.backup import BackupRun, CameraState, RunResult
 from reovault.camera import Camera, DemoCamera, Gateway, ReolinkCamera
-from reovault.config import CameraConfig, Settings
+from reovault.config import CameraConfig, DestinationConfig, Settings
 from reovault.db import Db, now_iso, parse_iso
+from reovault.destinations import copy_view, record_cut, restic_for, snaps_of, usage
 from reovault.logging import get_logger
 from reovault.restic import Restic
+from reovault.retention import GiB
 from reovault.tools import ToolError
 
 logger = get_logger(__name__)
@@ -27,25 +29,6 @@ logger = get_logger(__name__)
 FORGET_EVERY = timedelta(days=1)
 CHECK_EVERY = timedelta(days=7)
 CHECK_SUBSET = "500M"  # read back this much data a week: catches bit rot cheaply
-
-
-def restic_env(settings: Settings) -> dict[str, str]:
-    env = {
-        "RESTIC_CACHE_DIR": os.environ.get(
-            "RESTIC_CACHE_DIR", str(settings.storage.data_dir / "restic-cache")
-        )
-    }
-    if settings.backup.password_file is not None:
-        env["RESTIC_PASSWORD_FILE"] = str(settings.backup.password_file)
-    return env
-
-
-def restic_for(settings: Settings, alias: str) -> Restic:
-    if not settings.backup.repository:
-        raise ToolError("No backup destination is configured ([backup] repository)")
-    return Restic.for_camera(
-        settings.tools.restic, settings.backup.repository, alias, restic_env(settings)
-    )
 
 
 def camera_for(settings: Settings, cfg: CameraConfig, gateway: Gateway) -> Camera:
@@ -61,7 +44,6 @@ class Health:
     """What the maintenance steps found, for status and alerts."""
 
     check_errors: int = 0
-    index_mismatch: bool = False
     maintenance_error: str | None = None
 
 
@@ -83,6 +65,8 @@ class Worker:
     _last_end: datetime | None = None
     _thread: threading.Thread | None = None
     _camera: Any = None  # kept across runs: a demo camera remembers its overwritten clips
+    # Told after every run, so copy destinations look for new snapshots at once.
+    on_backed_up: Callable[[], None] = field(default=lambda: None)
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._loop, name=f"camera-{self.alias}", daemon=True)
@@ -119,13 +103,11 @@ class Worker:
             try:
                 if first:
                     first = False
-                    self.health.check_errors = int(
-                        self.db.get_setting(f"check_errors:{self.alias}") or 0
-                    )
                     with contextlib.suppress(ToolError):
                         restic_for(settings, self.alias).unlock()  # locks a crash left behind
                 self._backup(settings, cfg)
                 self._maintain(settings)
+                self.on_backed_up()
             except Exception:  # noqa: BLE001 - the camera's thread must outlive any bug
                 logger.exception("worker.loop_failed", camera=self.alias)
             self._last_end = datetime.now(UTC)
@@ -156,14 +138,18 @@ class Worker:
         self.running = True
         self.publish("activity", camera=self.alias)
         try:
+            primary = settings.primary()
             return BackupRun(
                 camera=self._camera,
-                restic=restic_for(settings, self.alias),
+                restic=restic_for(settings, self.alias, primary),
+                destination=primary.name if primary else "",
                 db=self.db,
                 staging=settings.storage.staging_dir / self.alias,
                 state=self.state,
                 interval=timedelta(minutes=settings.backup.interval_minutes),
                 on_progress=lambda: self.publish("activity", camera=self.alias),
+                on_commit=lambda: self._after_commit(settings),
+                hold=lambda: self._hold(settings),
             ).run(trigger)
         except ToolError as exc:  # no destination configured
             logger.error("worker.run_not_started", camera=self.alias, error=str(exc))
@@ -172,47 +158,97 @@ class Worker:
             self.running = False
 
     def _due(self, key: str, every: timedelta) -> bool:
-        last = self.db.get_setting(f"{key}:{self.alias}")
+        last = self.db.get_setting(key)
         return last is None or datetime.now(UTC) - parse_iso(last) >= every
 
+    def _over_limit(self, primary: DestinationConfig, fraction: float) -> bool:
+        used = sum(s.bytes for s in usage(self.db, primary.name))
+        return used >= primary.max_gb * GiB * fraction
+
+    def _hold(self, settings: Settings) -> str | None:
+        """A primary at its size limit that can't trim (its copies don't have the
+        old snapshots yet) must not keep growing: wait for the copies instead of
+        filling the disk."""
+        primary = settings.primary()
+        if primary is None or not primary.max_gb:
+            return None
+        if not self._over_limit(primary, 1.0):
+            return None
+        return (
+            f"{primary.name} is at its {primary.max_gb} GB limit and its copies haven't "
+            "caught up, so backups wait for them."
+        )
+
+    def _after_commit(self, settings: Settings) -> None:
+        self.on_backed_up()
+        primary = settings.primary()
+        if primary is not None and primary.max_gb:
+            self._maintain(settings)  # a size limit can't wait for the run to end
+
     def _maintain(self, settings: Settings) -> None:
-        """Retention, the index's view of it, and the weekly read-back."""
+        """The primary's share of upkeep, in this camera's thread: where each
+        snapshot is, retention and quota, and the weekly read-back."""
+        primary = settings.primary()
+        if primary is None:
+            return
         try:
-            restic = restic_for(settings, self.alias)
+            restic = restic_for(settings, self.alias, primary)
+            # Keyed by destination too: after a primary switch, the old
+            # repository's check results say nothing about the new one.
+            tag = f"{primary.name}:{self.alias}"
+            self.health.check_errors = int(self.db.get_setting(f"check_errors:{tag}") or 0)
             if restic.state() != "ok":
                 return
             # Stamped before running: a forget or check that fails or times
             # out (up to 6 h) waits for its next due time instead of being
             # retried after every backup run.
-            if self._due("forget", FORGET_EVERY):
-                self.db.set_setting(f"forget:{self.alias}", now_iso())
-                if settings.backup.keep_days:
-                    restic.forget(settings.backup.keep_days)
-                self._reconcile(restic)
-            if self.db.get_setting(f"check:{self.alias}") is None:
+            # A size limit is checked hourly: a first run on a full card can fill
+            # the disk long before a daily pass.
+            every = timedelta(hours=1) if primary.max_gb else FORGET_EVERY
+            over = bool(primary.max_gb) and self._over_limit(primary, retention.QUOTA_HIGH)
+            if over or self._due(f"forget:{tag}", every):
+                self.db.set_setting(f"forget:{tag}", now_iso())
+                self._retain(settings, primary, restic)
+            if self.db.get_setting(f"check:{tag}") is None:
                 # First check a week after the first backup, not right away.
-                self.db.set_setting(f"check:{self.alias}", now_iso())
-            elif self._due("check", CHECK_EVERY):
-                self.db.set_setting(f"check:{self.alias}", now_iso())
+                self.db.set_setting(f"check:{tag}", now_iso())
+            elif self._due(f"check:{tag}", CHECK_EVERY):
+                self.db.set_setting(f"check:{tag}", now_iso())
                 self.health.check_errors = restic.check(CHECK_SUBSET)
                 # Persisted: a restart must not "resolve" a corruption alert.
-                self.db.set_setting(f"check_errors:{self.alias}", str(self.health.check_errors))
+                self.db.set_setting(f"check_errors:{tag}", str(self.health.check_errors))
             self.health.maintenance_error = None
         except ToolError as exc:
             self.health.maintenance_error = str(exc)
             logger.error("worker.maintenance_failed", camera=self.alias, error=str(exc))
 
-    def _reconcile(self, restic: Restic) -> None:
-        """Clips whose snapshot retention removed become `expired`. Never
-        acts on an answer that would expire everything: an empty snapshot
-        list against a non-empty index means the wrong repository answered."""
-        ids = restic.snapshot_ids()
-        backed_up, _ = self.db.totals(self.alias)
-        if not ids and backed_up:
-            self.health.index_mismatch = True
+    def _retain(self, settings: Settings, primary: DestinationConfig, restic: Restic) -> None:
+        """Record where the primary's snapshots are, forget what retention and
+        the quota allow (never what a copy still needs), and record it again.
+        Reconciling here, in the thread that also commits, can't race a backup."""
+        snapshots = restic.snapshots()
+        if not snapshots:
             return
-        self.health.index_mismatch = False
-        expired = self.db.expire_missing(self.alias, restic.repository, ids)
+        self.db.set_locations(self.alias, primary.name, [(s.root, s.id, s.time) for s in snapshots])
+        used = usage(self.db, primary.name)
+        cameras = [c.alias for c in settings.cameras]
+        cut = retention.decide(
+            camera=self.alias,
+            snaps=snaps_of(self.alias, snapshots, used),
+            usage=used,
+            keep_days=primary.keep_days,
+            max_gb=primary.max_gb,
+            copies=[copy_view(self.db, d, cameras) for d in settings.copies()],
+        )
+        record_cut(self.db, primary.name, used, cut, self.alias)
+        if cut.ids:
+            logger.info(
+                "worker.forgetting", camera=self.alias, destination=primary.name, n=len(cut.ids)
+            )
+            restic.forget_ids(cut.ids)
+            after = restic.snapshots()
+            self.db.set_locations(self.alias, primary.name, [(s.root, s.id, s.time) for s in after])
+        expired = self.db.expire_unlocated(self.alias)
         if expired:
             logger.info("worker.clips_expired", camera=self.alias, count=expired)
 
@@ -226,8 +262,10 @@ class Workers:
         db: Db,
         gateway: Gateway,
         publish: Callable[..., None],
+        on_backed_up: Callable[[], None] = lambda: None,
     ) -> None:
         self.settings, self.db, self.gateway, self.publish = settings, db, gateway, publish
+        self.on_backed_up = on_backed_up
         self._lock = threading.Lock()
         self.by_alias: dict[str, Worker] = {}
 
@@ -239,7 +277,14 @@ class Workers:
             for alias in set(self.by_alias) - wanted:
                 self.by_alias.pop(alias).shutdown()
             for alias in wanted - set(self.by_alias):
-                worker = Worker(alias, self.settings, self.db, self.gateway, self.publish)
+                worker = Worker(
+                    alias,
+                    self.settings,
+                    self.db,
+                    self.gateway,
+                    self.publish,
+                    on_backed_up=self.on_backed_up,
+                )
                 self.by_alias[alias] = worker
                 worker.start()
             for worker in self.by_alias.values():

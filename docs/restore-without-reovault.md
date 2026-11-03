@@ -62,6 +62,31 @@ restic -r "$REPO" dump latest "$(restic -r "$REPO" snapshots latest --json \
 You can ignore these files otherwise; restoring everything (above) just puts
 one copy next to the clips.
 
+## Rebuild ReoVault on a new server
+
+The server died but a destination survived? Nothing is lost, as long as you
+have the restic password. ReoVault backs up its own config daily into each
+destination, as the repository `<destination>/reovault-config`: `reovault.toml`,
+`rclone.conf` and reolink-cli's camera registry. It is encrypted by restic like
+everything else: the rclone tokens and camera passwords in it are why the
+restic password matters twice.
+
+1. Install ReoVault on the new server and put the restic password back as
+   `secrets/restic_password.txt`.
+2. Restore the config from any destination:
+
+   ```bash
+   restic -r <destination>/reovault-config restore latest --target ./restored-config
+   ```
+
+   Put `reovault.toml` and `rclone.conf` in `config/` (and `config/rclone/`),
+   and the `reolink-cli/` files in `reolink-cli/`. For a cloud destination you
+   need an `rclone.conf` that reaches it first: Settings, Recovery on the old
+   server's recovery sheet says which destinations there were.
+3. Start ReoVault. It sees snapshots it has no record of, rebuilds its clip
+   index from the newest snapshot of each camera, and carries on without
+   downloading anything twice.
+
 ## Browse
 
 On a Linux or macOS machine with FUSE:

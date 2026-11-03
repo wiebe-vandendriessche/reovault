@@ -9,16 +9,19 @@
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
+	import DestinationsForm from '#lib/components/settings/DestinationsForm.svelte';
+	import RecoveryForm from '#lib/components/settings/RecoveryForm.svelte';
 	import BackupForm from '#lib/components/settings/BackupForm.svelte';
 	import AlertsForm from '#lib/components/settings/AlertsForm.svelte';
 	import ConfigSection from '#lib/components/settings/ConfigSection.svelte';
+	import PasswordForm from '#lib/components/settings/PasswordForm.svelte';
 	import { toast } from 'svelte-sonner';
 	import FileWarning from '@lucide/svelte/icons/file-warning';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Lock from '@lucide/svelte/icons/lock';
 
-	const tabs = ['backup', 'alerts', 'web', 'system'] as const;
-	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'backup');
+	const tabs = ['destinations', 'backup', 'recovery', 'alerts', 'web', 'system'] as const;
+	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'destinations');
 
 	// The whole of reovault.toml; refetched when the file changes, whoever
 	// changed it. Edits made to the file itself are announced.
@@ -92,13 +95,17 @@
 
 	<Tabs.Root value={tab} onValueChange={(v) => goto(`?tab=${v}`, { replace: true, reset: false })}>
 		<Tabs.List class="mb-4 flex-wrap">
-			<Tabs.Trigger value="backup">Backups</Tabs.Trigger>
+			<Tabs.Trigger value="destinations">Destinations</Tabs.Trigger>
+			<Tabs.Trigger value="backup">Schedule</Tabs.Trigger>
+			<Tabs.Trigger value="recovery">Recovery</Tabs.Trigger>
 			<Tabs.Trigger value="alerts">Alerts</Tabs.Trigger>
 			<Tabs.Trigger value="web">Web</Tabs.Trigger>
 			<Tabs.Trigger value="system">System</Tabs.Trigger>
 		</Tabs.List>
 
+		<Tabs.Content value="destinations"><DestinationsForm writable={c.writable} /></Tabs.Content>
 		<Tabs.Content value="backup"><BackupForm config={c} {onsaved} /></Tabs.Content>
+		<Tabs.Content value="recovery"><RecoveryForm /></Tabs.Content>
 
 		<Tabs.Content value="alerts" class="flex flex-col gap-4">
 			<AlertsForm />
@@ -112,13 +119,14 @@
 			/>
 		</Tabs.Content>
 
-		<Tabs.Content value="web">
+		<Tabs.Content value="web" class="flex flex-col gap-4">
+			<PasswordForm />
 			<ConfigSection
 				config={c}
 				path={['web']}
 				section="web"
 				title="Web"
-				description="Session length and login limits apply right away. Locked fields can lock you out, so they change in reovault.toml only."
+				description="Session length, login limits and the daily update check apply right away. Locked fields can lock you out, so they change in reovault.toml only."
 				{onsaved}
 			/>
 		</Tabs.Content>

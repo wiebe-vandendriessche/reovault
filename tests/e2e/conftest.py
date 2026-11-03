@@ -42,6 +42,16 @@ def demo() -> Iterator[Instance]:
         yield instance
 
 
+@pytest.fixture
+def fresh() -> Iterator[Instance]:
+    """An instance with no login yet: the first-run setup screen."""
+    restic, rclone = shutil.which("restic"), shutil.which("rclone")
+    if restic is None or rclone is None:
+        pytest.fail("restic and rclone must be on PATH (python3 scripts/fetch_tools.py .tools)")
+    with demo_instance(restic, rclone, fresh=True) as instance:
+        yield instance
+
+
 @pytest.fixture(scope="session")
 def browser() -> Iterator[Browser]:
     with sync_playwright() as p:

@@ -6,9 +6,12 @@ overwrites them. Everything that makes a backup trustworthy (encryption,
 deduplication, integrity checks, retention) is restic's job, not ReoVault's.
 
 ```
-camera SD card --reolink-cli vod download--> local batch --restic backup--> destination
-                                             (at most two batches)          (local disk, Nextcloud,
-                                                                             OneDrive, S3, ... via rclone)
+camera SD card --reolink-cli vod download--> local batch --restic backup--> primary destination
+                                             (at most two batches)          (a local disk, ideally)
+                                                                                  |
+                                                            restic copy (own threads, never block a backup)
+                                                                                  v
+                                                              copy destinations (Nextcloud, OneDrive, S3, ... via rclone)
 ```
 
 ## Modules
@@ -19,7 +22,11 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> dest
 | `restic.py` | A thin wrapper around the pinned `restic` binary: open/init a repository, back up, list snapshots, `forget`, `check`, `dump`. |
 | `backup.py` | One camera's backup run, below. The core. |
 | `worker.py` | One thread per enabled camera: runs on its interval, plus that camera's daily retention and weekly check. |
-| `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, no SD card. |
+| `destinations.py`, `retention.py` | The 3-2-1 side: one thread per copy destination (`restic copy`, its own retention and size limit, weekly check), and the pure functions that choose which snapshots to forget. |
+| `rclone.py` | Connects rclone remotes from the dashboard through `rclone config create`; ReoVault never parses `rclone.conf`. |
+| `configbackup.py` | Backs up ReoVault's own config (`reovault.toml`, `rclone.conf`, the camera registry) into each destination. |
+| `updates.py` | The optional daily "is there a newer release" check. |
+| `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, offline, no SD card, and the SD-card timeline. |
 | `alerts.py` | ntfy, webhook and email, driven by what's wrong right now. |
 | `db.py` | SQLite: the clip index and the run history. |
 | `config.py`, `config_store.py` | `reovault.toml`, written back by the dashboard with comments kept. |
@@ -88,16 +95,44 @@ wait until the card reports one: without it a download can't be verified.
 
 Every batch becomes one restic snapshot of the same folder,
 `<staging>/<alias>/batch`, with the host name fixed to `reovault`. Because the
-path and host never change, all of a camera's snapshots form one group, and
-`restic forget --keep-within <N>d` keeps "the last N days" of them.
+path and host never change, all of a camera's snapshots form one group.
 
-`--keep-within` counts back from the newest snapshot, not from today. If
+Retention counts back from the camera's newest snapshot, not from today. If
 backups stop for two weeks, nothing old is deleted in the meantime. After
-`forget`, clips whose snapshot is gone are marked expired in the index, so
+a snapshot is forgotten, clips whose snapshot is gone are marked expired in the index, so
 they are never downloaded again even if they're still on the card.
 
 Weekly, each repository is checked with `restic check --read-data-subset 500M`,
 which reads a slice of the stored data back to catch bit rot early.
+
+## Destinations, copies and quotas
+
+Cameras back up into the **primary** only. Every other destination is a
+**copy**: after each commit its thread wakes and copies the new snapshots with
+`restic copy`, one snapshot per call, so progress is recorded and retention can
+run in between. A copy repository is created with `init --copy-chunker-params`
+(so deduplication works across both), and never where the camera already has
+history, for the same dropped-mount reason as the primary. Seeding a new
+destination with a whole history runs in its own thread for as long as it takes.
+
+`locations(camera, source_snapshot, destination, snapshot_id)` records where
+each snapshot lives. restic gives a copied snapshot a new id but keeps the
+original in its `original` field, which is how the copy is matched back to the
+clip's snapshot. A clip is **expired** only when no destination holds its
+snapshot, and a download reads from the primary, then any local destination,
+then the rest.
+
+**Retention is chosen by ReoVault**, which runs `forget <ids> --prune` (not
+`--keep-within`), because a destination's `keep_days` and `max_gb` differ:
+
+* the primary may forget a snapshot only when every copy that wants it has it;
+* a camera's newest snapshot is never forgotten (it carries the clip list);
+* a copy only takes snapshots inside its own `keep_days`, and above a floor that
+  rises whenever its quota forgets there, so copying and retention never loop;
+* a size limit estimates use as the sum of the clip sizes in the snapshots,
+  trims the oldest at 90% down to 85% (headroom for manifests and prune), and
+  alerts when it had to cut younger than `keep_days`, when even the newest
+  backups don't fit, or when copies it is waiting for block it.
 
 ## The index
 
@@ -125,17 +160,21 @@ own clips are only trusted if they really are in that snapshot, because a
 ## Downloads
 
 A clip is downloaded with `restic dump`, streamed straight to the browser. A
-day downloads as one zip, built while streaming. Neither uses temporary
-files. `dump` runs without a repository lock: the weekly `check` holds an
+range (an hour to several days, one or more cameras, all clips or only some
+detection types) downloads as one zip with a folder per camera, built while
+streaming. Neither uses temporary files. `dump` runs without a repository lock: the weekly `check` holds an
 exclusive one for as long as it reads, and a download must not wait hours for
 it.
 
 ## Concurrency
 
 Each camera has one thread, and everything that touches that camera's
-repository (backups, `forget`, `check`) happens in it, one step after
+*primary* repository (backups, `forget`, `check`) happens in it, one step after
 another; the only helper is the upload thread of the run in progress, joined
-before the run ends. Cameras run in parallel; a camera never does. `reovault run` shares
+before the run ends. Each copy destination has its own thread and only writes
+to its own repositories, reading the primary with `restic copy`. Lock-taking
+restic commands pass `--retry-lock 10m`, so the two sides wait for each other
+instead of failing. Cameras run in parallel; a camera never does. `reovault run` shares
 the same per-camera lock file as the daemon.
 
 ## Why these tools

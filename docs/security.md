@@ -36,8 +36,17 @@ on stdin, on its way into that registry. It's never placed on a command
 line, persisted, or echoed.
 
 The dashboard's own login is separate: a single-user password (Argon2id
-hashed) plus an optional email field used only as a password-manager
-autofill hint, not an authorization boundary.
+hashed) plus the email you sign in with. It is chosen on the **first-run
+screen**, which is protected by a one-time **setup code** printed in the
+container log (`setup.code`) on every start until setup is done: until then
+every other API answers 503, the code is compared in constant time and shares
+the login rate limit, and only one setup can win. Whoever can read the log
+already owns the host. Changing the password or email needs the current
+password and signs every other browser out.
+
+Changes that could delete backups (a tighter `keep_days` or size limit,
+turning a destination off, making another one primary, disconnecting one) ask
+for the password again, so a stolen session can't wipe your footage.
 
 Alert channel secrets (an ntfy token, a webhook URL, an SMTP password) are
 read from files at send time and never stored in the database. A failed
@@ -45,7 +54,15 @@ send logs only the error, never the URL, since a Slack or Discord webhook
 URL is itself the credential.
 
 `rclone.conf` holds your cloud logins (OAuth tokens, WebDAV passwords). It
-lives in `config/rclone/`, readable only inside the container. Error text
+lives in `config/rclone/`, readable only inside the container. Connecting a
+destination from the dashboard passes its secret to a short-lived
+`rclone config create` process on the command line, visible only to processes
+inside the container, and rclone obscures it in the file; the dashboard never
+sends it back. That file, `reovault.toml` and the camera registry are backed
+up into each destination (`reovault-config`) encrypted with the restic
+password. The recovery sheet and recovery API never contain the restic password
+or repository credentials. The daily update check sends a plain request to
+`api.github.com` and nothing else; turn it off with `[web] update_check`. Error text
 from restic or rclone is scrubbed of `user:password@` in URLs before it
 reaches the dashboard or an alert.
 

@@ -22,9 +22,18 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from reovault.logging import get_logger
 from reovault.runtime import Runtime
 from reovault.web import security
-from reovault.web.api import alerts, auth, cameras, clips, events
+from reovault.web.api import (
+    alerts,
+    auth,
+    cameras,
+    clips,
+    destinations,
+    download,
+    events,
+    recovery,
+)
 from reovault.web.api import config as config_api
-from reovault.web.api.auth import SESSION_COOKIE
+from reovault.web.api.auth import SESSION_COOKIE, new_setup_code
 from reovault.web.auth import load_or_create_session_key, load_password_hash
 from reovault.web.deps import AppState
 from reovault.web.ratelimit import LoginLimiter
@@ -34,7 +43,10 @@ logger = get_logger(__name__)
 API_PREFIX = "/api/v1"
 DEFAULT_DASHBOARD_DIR = Path(__file__).parent / "dist"  # built by the Dockerfile
 
-_PUBLIC_API = frozenset({f"{API_PREFIX}/session", f"{API_PREFIX}/login"})
+_PUBLIC_API = frozenset({f"{API_PREFIX}/session", f"{API_PREFIX}/login", f"{API_PREFIX}/setup"})
+# The only API open while no login exists yet: the dashboard asks the session
+# whether setup is needed, then posts the setup form.
+_OPEN_BEFORE_SETUP = frozenset({f"{API_PREFIX}/session", f"{API_PREFIX}/setup"})
 _MAX_BODY_BYTES = 64 * 1024
 _INLINE_SCRIPT = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S)
 
@@ -97,6 +109,13 @@ def create_app(rt: Runtime, *, dashboard_dir: Path | None = None) -> FastAPI:
         ),
     )
     app.state.rv = st
+    if load_password_hash(web) is None:
+        st.setup_code = new_setup_code()
+        logger.warning(
+            "setup.code",
+            code=st.setup_code,
+            detail="Open the dashboard and enter this one-time code to create the login.",
+        )
 
     def refresh_limiter(old: Any, new: Any) -> None:
         keys = ("login_max_attempts", "login_window_secs", "login_lockout_secs")
@@ -129,11 +148,11 @@ def create_app(rt: Runtime, *, dashboard_dir: Path | None = None) -> FastAPI:
         path = request.url.path
         request.state.session_jti = None
         if path.startswith(f"{API_PREFIX}/"):
-            if load_password_hash(web) is None:
+            if load_password_hash(web) is None and path not in _OPEN_BEFORE_SETUP:
                 return JSONResponse(
                     {
-                        "detail": "ReoVault has no web password configured yet. "
-                        "Run `reovault web set-password` on the server."
+                        "detail": "ReoVault isn't set up yet. Open the dashboard and enter the "
+                        "setup code from the server log (or run `reovault web set-password`)."
                     },
                     status_code=503,
                 )
@@ -185,7 +204,17 @@ def create_app(rt: Runtime, *, dashboard_dir: Path | None = None) -> FastAPI:
             return JSONResponse({"status": "error"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
-    for module in (auth, cameras, clips, config_api, alerts, events):
+    for module in (
+        auth,
+        cameras,
+        clips,
+        config_api,
+        alerts,
+        events,
+        destinations,
+        download,
+        recovery,
+    ):
         app.include_router(module.router, prefix=API_PREFIX)
 
     @app.api_route(

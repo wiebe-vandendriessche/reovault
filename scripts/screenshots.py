@@ -24,13 +24,23 @@ PAGES = {
     "footage": "/footage",
     "activity": "/activity",
     "cameras": "/cameras",
+    "footage-download": "/footage",
+    "settings-destinations": "/settings?tab=destinations",
     "settings-backup": "/settings?tab=backup",
+    "settings-recovery": "/settings?tab=recovery",
     "settings-alerts": "/settings?tab=alerts",
     "settings-web": "/settings?tab=web",
     "settings-system": "/settings?tab=system",
     "login": "/login",
 }
-README = ["overview", "footage", "activity", "cameras", "settings-backup", "settings-alerts"]
+README = [
+    "overview",
+    "footage",
+    "activity",
+    "cameras",
+    "settings-destinations",
+    "settings-alerts",
+]
 
 
 def _login(page: Page, demo: Instance) -> None:
@@ -44,7 +54,11 @@ def _login(page: Page, demo: Instance) -> None:
 def _shoot(page: Page, demo: Instance, name: str, out: Path, full: bool) -> None:
     page.goto(f"{demo.url}{PAGES[name]}")
     page.wait_for_load_state("networkidle")
-    if name == "footage":  # the interesting part is a day's clips
+    if name == "footage-download":
+        page.get_by_role("button", name="Download", exact=True).click()
+        page.get_by_role("button", name="Last 7 days").click()
+        page.get_by_text("clips,").wait_for()
+    elif name == "footage":  # the interesting part is a day's clips
         # The newest hour may hold a single clip yet; the one before is full.
         page.locator("[data-slot=collapsible-trigger]").nth(1).click()
     page.wait_for_timeout(300)  # let transitions settle

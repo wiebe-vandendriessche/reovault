@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,14 +10,21 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, SecretStr
 
 from reovault import camera as cam_cli
-from reovault.config_store import upsert_camera_entry
+from reovault.config_store import remove_camera_entry, upsert_camera_entry
 from reovault.db import Run, parse_iso
-from reovault.status import Verdict, camera_status
+from reovault.status import Verdict, camera_status, timeline
 from reovault.tools import ToolError
 from reovault.web.api.config import write
+from reovault.web.api.destinations import DestinationOut, destination_out
 from reovault.web.deps import AppState, State, camera_or_404
 
 router = APIRouter(tags=["cameras"])
+
+# kv key: when the user confirmed they stored the restic password elsewhere.
+PASSWORD_CONFIRMED = "restic_password_confirmed"
+
+# Alias of the repository that holds ReoVault's own config backup.
+RESERVED_ALIAS = "reovault-config"
 
 
 class RunOut(BaseModel):
@@ -53,6 +61,13 @@ class CardOut(BaseModel):
     mounted: bool | None
 
 
+class BucketOut(BaseModel):
+    backed_up: int
+    waiting: int
+    failing: int
+    lost: int
+
+
 class CameraOut(BaseModel):
     alias: str
     name: str | None
@@ -74,9 +89,11 @@ class CameraOut(BaseModel):
     running: bool
     next_run_at: datetime | None
     last_run: RunOut | None
+    # The SD card in 48 slices, oldest to now; only on the overview.
+    timeline: list[BucketOut] | None = None
 
 
-def camera_out(st: AppState, alias: str) -> CameraOut:
+def camera_out(st: AppState, alias: str, *, with_timeline: bool = False) -> CameraOut:
     cfg = camera_or_404(st, alias)
     worker = st.rt.workers.get(alias)
     state = worker.state if worker else None
@@ -107,6 +124,9 @@ def camera_out(st: AppState, alias: str) -> CameraOut:
         running=bool(worker and worker.running),
         next_run_at=worker.next_run_at if worker else None,
         last_run=run_out(st, runs[0]) if runs else None,
+        timeline=[BucketOut(**asdict(b)) for b in timeline(alias, st.db, state)]
+        if with_timeline
+        else None,
     )
 
 
@@ -116,35 +136,36 @@ class IssueOut(BaseModel):
     message: str
 
 
-class DestinationOut(BaseModel):
-    repository: str | None
-    keep_days: int
-    clips: int
-    bytes: int
-
-
 class OverviewOut(BaseModel):
     issues: list[IssueOut]
+    # Worth doing, but nothing is wrong: not alerted on.
+    notices: list[IssueOut]
     cameras: list[CameraOut]
-    destination: DestinationOut
+    destinations: list[DestinationOut]
 
 
 @router.get("/overview")
 def overview(st: State) -> OverviewOut:
     """Read from the index and memory only: loading it never calls a camera
     or the destination."""
-    cams = [camera_out(st, c.alias) for c in st.settings.cameras if c.enabled]
+    cams = [camera_out(st, c.alias, with_timeline=True) for c in st.settings.cameras if c.enabled]
+    notices = []
+    if any(c.backed_up_clips for c in cams) and st.db.get_setting(PASSWORD_CONFIRMED) is None:
+        notices.append(
+            IssueOut(
+                camera=None,
+                title="Keep your restic password safe",
+                message="Every backup is unreadable without it. Store it somewhere other than this "
+                "server, then confirm on the Recovery tab in Settings.",
+            )
+        )
     return OverviewOut(
         issues=[
             IssueOut(camera=c.camera, title=c.title, message=c.message) for c in st.rt.conditions()
         ],
+        notices=notices,
         cameras=cams,
-        destination=DestinationOut(
-            repository=st.rt.scrub_credentials(st.settings.backup.repository),
-            keep_days=st.settings.backup.keep_days,
-            clips=sum(c.backed_up_clips for c in cams),
-            bytes=sum(c.backed_up_bytes for c in cams),
-        ),
+        destinations=[destination_out(st, d) for d in st.settings.destinations],
     )
 
 
@@ -210,6 +231,10 @@ def _valid_tz(tz: str) -> None:
 @router.post("/cameras", status_code=201, responses={409: {}, 422: {}, 502: {}})
 def add_camera(body: AddCameraIn, st: State) -> list[CameraOut]:
     _valid_tz(body.timezone)
+    if body.alias == RESERVED_ALIAS:
+        raise HTTPException(
+            422, f"{RESERVED_ALIAS!r} is reserved for ReoVault's own config backup."
+        )
     if not st.rt.config.writable:
         # Checked before reolink-cli is touched, so a refusal never leaves a
         # camera registered there but missing here.
@@ -241,6 +266,26 @@ def add_camera(body: AddCameraIn, st: State) -> list[CameraOut]:
             demo=True if body.demo else None,
         ),
     )
+    return list_cameras(st)
+
+
+@router.delete("/cameras/{alias}", responses={404: {}, 409: {}, 502: {}})
+def remove_camera(alias: str, st: State, registry: bool = False) -> list[CameraOut]:
+    """Stops backing a camera up and drops it from reovault.toml. What is
+    already backed up stays in every destination, and re-adding the same alias
+    brings it all back. With `registry`, a real camera is also removed from
+    reolink-cli's registry (its stored password goes with it)."""
+    cfg = camera_or_404(st, alias)
+    if not st.rt.config.writable:
+        raise HTTPException(409, "The config file is read-only, so cameras can't be removed here.")
+    if registry and not cfg.demo:
+        try:
+            cam_cli.remove(st.settings.tools.reolink_cli, alias)
+        except ToolError as exc:
+            raise HTTPException(
+                502, f"Could not remove it from reolink-cli: {st.redact(str(exc))}"
+            ) from None
+    write(st, lambda doc: remove_camera_entry(doc, alias))
     return list_cameras(st)
 
 

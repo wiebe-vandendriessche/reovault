@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -20,6 +21,10 @@ class AppState:
     rt: Runtime
     session_key: bytes
     limiter: LoginLimiter
+    # First-run only: the one-time code printed in the server log, and the lock
+    # that lets exactly one browser finish setup.
+    setup_code: str | None = None
+    setup_lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
     def settings(self) -> Settings:

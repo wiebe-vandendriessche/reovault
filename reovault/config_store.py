@@ -54,8 +54,13 @@ WEB_EDITABLE = frozenset(
         "login_max_attempts",
         "login_window_secs",
         "login_lockout_secs",
+        "update_check",
     }
 )
+# What a running app follows live. The login email is also live, but only the
+# setup screen and change-password may write it (both need the password), so
+# it is not in WEB_EDITABLE, which gates the generic settings endpoint.
+WEB_LIVE = WEB_EDITABLE | {"email"}
 
 Listener = Callable[[Settings, Settings], None]
 
@@ -170,7 +175,7 @@ class ConfigStore:
     def _effective(self, loaded: Settings) -> Settings:
         """`loaded`, with the infrastructure fields pinned to the startup
         values: those take effect only after a restart."""
-        web_live = {k: getattr(loaded.web, k) for k in WEB_EDITABLE}
+        web_live = {k: getattr(loaded.web, k) for k in WEB_LIVE}
         return loaded.model_copy(
             update={
                 "storage": self.startup.storage,
@@ -189,7 +194,7 @@ class ConfigStore:
         changed += [
             f"web.{k}"
             for k in type(loaded.web).model_fields
-            if k not in WEB_EDITABLE and getattr(loaded.web, k) != getattr(base.web, k)
+            if k not in WEB_LIVE and getattr(loaded.web, k) != getattr(base.web, k)
         ]
         self.restart_required = sorted(changed)
         self._notify(old, self._current)
@@ -357,3 +362,53 @@ def upsert_camera_entry(doc: TOMLDocument, alias: str, **values: Any) -> Table:
     # Defaults (enabled) aren't written unless already present.
     set_fields(entry, values, CameraConfig.model_construct())
     return entry
+
+
+def remove_camera_entry(doc: TOMLDocument, alias: str) -> bool:
+    """Drops a camera's `[[cameras]]` entry. False when there was none."""
+    entries = camera_entries(doc)
+    for i, entry in enumerate(entries):
+        if entry.get("alias") == alias:
+            del entries[i]
+            return True
+    return False
+
+
+def destination_entries(doc: TOMLDocument) -> AoT:
+    if "destinations" not in doc:
+        doc["destinations"] = tomlkit.aot()
+    entries: AoT = doc["destinations"]
+    return entries
+
+
+def destination_entry(doc: TOMLDocument, name: str) -> Table | None:
+    for entry in destination_entries(doc):
+        if entry.get("name") == name:
+            found: Table = entry
+            return found
+    return None
+
+
+def upsert_destination_entry(doc: TOMLDocument, name: str, **values: Any) -> Table:
+    """Adds or updates a `[[destinations]]` entry; a value of None removes the
+    key, and defaults (not primary, enabled, no limits) aren't written."""
+    entry = destination_entry(doc, name)
+    if entry is None:
+        entry = tomlkit.table()
+        entry["name"] = name
+        destination_entries(doc).append(entry)
+        entry = destination_entry(doc, name)
+        assert entry is not None
+    from reovault.config import DestinationConfig
+
+    set_fields(entry, values, DestinationConfig.model_construct())
+    return entry
+
+
+def remove_destination_entry(doc: TOMLDocument, name: str) -> bool:
+    entries = destination_entries(doc)
+    for i, entry in enumerate(entries):
+        if entry.get("name") == name:
+            del entries[i]
+            return True
+    return False

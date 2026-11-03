@@ -3,8 +3,8 @@
 # (comments kept), and edits made here are picked up live.
 #
 # No secrets in this file. Camera passwords live in reolink-cli's own
-# encrypted registry; the restic password is a Docker secret; alert tokens are
-# file paths.
+# encrypted registry; the restic password is a Docker secret (it is one file
+# for all destinations); alert tokens are file paths.
 
 # The cameras to back up. `alias` is the `reolink-cli device add <alias>` name
 # and also names the camera's restic repository, so it never changes. The
@@ -23,15 +23,25 @@ timezone = "Europe/Brussels"  # the camera's own clock
 # demo = true
 
 [backup]
-# Where backups go. Each camera gets its own restic repository inside it:
-#   a local path, mounted into the container:  "/backups"
-#   an rclone remote from config/rclone/rclone.conf:  "rclone:nextcloud:reovault"
-#   any other restic backend:  "sftp:user@host:/reovault", "s3:...", "rest:..."
-repository = "rclone:nextcloud:reovault"
 interval_minutes = 60
-# Delete backups older than this many days, counted from the newest backup
-# (so an outage never deletes history). 0 keeps everything.
-keep_days = 0
+
+# Where backups go. Each camera gets its own restic repository inside each
+# destination. The primary is backed up to first (ideally a local disk); every
+# other destination receives copies (3-2-1). The dashboard's Settings,
+# Destinations tab edits these for you, and can connect Nextcloud, OneDrive,
+# Google Drive, SFTP, S3 and B2 without touching rclone.conf.
+[[destinations]]
+name = "local"
+repository = "/backups"       # a path mounted into the container
+primary = true                # with more than one destination, exactly one
+keep_days = 30                # 0 keeps everything; counted from the newest backup
+# max_gb = 500                # size limit, the oldest backups go first; 0 = none
+
+# [[destinations]]
+# name = "cloud"
+# repository = "rclone:nextcloud:reovault"   # an rclone remote from rclone.conf
+# keep_days = 14
+# max_gb = 200
 
 # Where alerts go (see docs/configuration.md#alerts). Secrets live in files,
 # mounted as Docker secrets.
@@ -48,6 +58,7 @@ keep_days = 0
 # renotify_hours = 24
 
 [web]
-# email = "you@example.com"  # required before `reovault web set-password`
+# email = "you@example.com"  # set by the first-run screen
+# update_check = false        # stop the daily check for a new release
 cookie_secure = true          # false for a plain-http direct port (compose Mode A)
 session_max_age_days = 30

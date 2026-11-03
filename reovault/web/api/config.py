@@ -25,10 +25,7 @@ from reovault.config_store import (
     set_fields,
     table_at,
 )
-from reovault.restic import Restic
-from reovault.tools import ToolError
 from reovault.web.deps import AppState, State
-from reovault.worker import restic_env
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -212,46 +209,3 @@ def put_config(section: str, body: ConfigUpdateIn, st: State) -> ConfigOut:
         version=body.version,
     )
     return config_out(st)
-
-
-class DestinationIn(BaseModel):
-    repository: str
-
-
-class DestinationCameraOut(BaseModel):
-    camera: str
-    state: Literal["ok", "missing", "wrong_password", "error"]
-    error: str | None = None
-
-
-@router.post("/backup/test")
-def test_destination(body: DestinationIn, st: State) -> list[DestinationCameraOut]:
-    """Can every enabled camera's repository be opened at `repository`?
-    Read-only: "missing" repositories are created by the first backup."""
-    out = []
-    for cam in st.settings.cameras:
-        if not cam.enabled:
-            continue
-        restic = Restic.for_camera(
-            st.settings.tools.restic, body.repository, cam.alias, restic_env(st.settings)
-        )
-        try:
-            out.append(DestinationCameraOut(camera=cam.alias, state=restic.state()))
-        except ToolError as exc:
-            out.append(
-                DestinationCameraOut(camera=cam.alias, state="error", error=st.redact(str(exc)))
-            )
-    return out
-
-
-class RetentionPreviewOut(BaseModel):
-    clips: int
-    bytes: int
-
-
-@router.get("/backup/retention-preview")
-def retention_preview(keep_days: int, st: State) -> RetentionPreviewOut:
-    """Roughly what `keep_days` would remove at the next daily `forget`:
-    clips backed up more than that long before the newest backup."""
-    clips, size = st.db.retention_preview(keep_days) if keep_days > 0 else (0, 0)
-    return RetentionPreviewOut(clips=clips, bytes=size)
