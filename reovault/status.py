@@ -34,20 +34,20 @@ class CameraStatus:
 
 
 def camera_status(
-    alias: str, db: Db, state: CameraState | None, now: datetime | None = None
+    cam_id: str, db: Db, state: CameraState | None, now: datetime | None = None
 ) -> CameraStatus:
     now = now or datetime.now(UTC)
-    pending, pending_bytes, oldest = db.backlog(alias)
+    pending, pending_bytes, oldest = db.backlog(cam_id)
     oldest_pending = parse_iso(oldest) if oldest else None
     oldest_on_card = state.oldest_on_card if state else None
     # The last *finished* run: one in progress hasn't proven anything yet
     # (on a first run the card may not even be read).
-    runs = db.runs(alias, limit=1, finished=True)
+    runs = db.runs(cam_id, limit=1, finished=True)
     last = runs[0] if runs else None
-    rate = db.throughput(alias)
+    rate = db.throughput(cam_id)
     eta = pending_bytes / rate if rate and pending_bytes else None
-    failing_clips = len(db.failing(alias, MAX_ATTEMPTS))
-    lost = db.lost_since(alias, now - timedelta(days=7))
+    failing_clips = len(db.failing(cam_id, MAX_ATTEMPTS))
+    lost = db.lost_since(cam_id, now - timedelta(days=7))
 
     verdict: Verdict
     if state and state.unreachable_since:
@@ -101,7 +101,7 @@ class Bucket:
 
 
 def timeline(
-    alias: str, db: Db, state: CameraState | None, now: datetime | None = None
+    cam_id: str, db: Db, state: CameraState | None, now: datetime | None = None
 ) -> list[Bucket]:
     """What is on the SD card, in `BUCKETS` equal slices from its oldest clip to
     now: backed up, waiting, failing (tried `MAX_ATTEMPTS` times) or lost.
@@ -112,7 +112,7 @@ def timeline(
         return []
     width = (now - start) / BUCKETS
     counts = [[0, 0, 0, 0] for _ in range(BUCKETS)]
-    for clip_start, clip_state, attempts in db.timeline_rows(alias, start):
+    for clip_start, clip_state, attempts in db.timeline_rows(cam_id, start):
         i = min(int((parse_iso(clip_start) - start) / width), BUCKETS - 1)
         if i < 0:
             continue

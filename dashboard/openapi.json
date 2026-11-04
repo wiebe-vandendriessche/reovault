@@ -35,13 +35,6 @@
       },
       "AddCameraIn": {
         "properties": {
-          "alias": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
-            "title": "Alias",
-            "type": "string"
-          },
           "demo": {
             "default": false,
             "title": "Demo",
@@ -51,6 +44,7 @@
             "anyOf": [
               {
                 "maxLength": 255,
+                "pattern": "^[A-Za-z0-9.:\\[\\]-]+$",
                 "type": "string"
               },
               {
@@ -58,6 +52,13 @@
               }
             ],
             "title": "Host"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+            "title": "Id",
+            "type": "string"
           },
           "name": {
             "anyOf": [
@@ -90,20 +91,15 @@
             "type": "string"
           },
           "user": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User"
+            "default": "admin",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User",
+            "type": "string"
           }
         },
         "required": [
-          "alias",
+          "id",
           "timezone"
         ],
         "title": "AddCameraIn",
@@ -304,10 +300,6 @@
       },
       "CameraOut": {
         "properties": {
-          "alias": {
-            "title": "Alias",
-            "type": "string"
-          },
           "backed_up_bytes": {
             "title": "Backed Up Bytes",
             "type": "integer"
@@ -348,6 +340,21 @@
           "failing_clips": {
             "title": "Failing Clips",
             "type": "integer"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
           },
           "last_run": {
             "anyOf": [
@@ -444,6 +451,10 @@
             "title": "Timezone",
             "type": "string"
           },
+          "user": {
+            "title": "User",
+            "type": "string"
+          },
           "verdict": {
             "enum": [
               "up_to_date",
@@ -459,9 +470,11 @@
           }
         },
         "required": [
-          "alias",
+          "id",
           "name",
           "timezone",
+          "host",
+          "user",
           "enabled",
           "demo",
           "verdict",
@@ -909,8 +922,8 @@
       },
       "DiscoveredOut": {
         "properties": {
-          "already_registered": {
-            "title": "Already Registered",
+          "added": {
+            "title": "Added",
             "type": "boolean"
           },
           "host": {
@@ -956,7 +969,7 @@
           "uid",
           "model",
           "name",
-          "already_registered"
+          "added"
         ],
         "title": "DiscoveredOut",
         "type": "object"
@@ -993,6 +1006,19 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9.:\\[\\]-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
           "name": {
             "anyOf": [
               {
@@ -1005,9 +1031,36 @@
             ],
             "title": "Name"
           },
+          "password": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 256,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
           "timezone": {
             "title": "Timezone",
             "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
           }
         },
         "required": [
@@ -1986,102 +2039,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/v1/activity": {
-      "get": {
-        "description": "Recent runs, clips that keep failing, and clips lost in the last week.",
-        "operationId": "activity_api_v1_activity_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "camera",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Camera"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActivityOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Activity",
-        "tags": [
-          "clips"
-        ]
-      }
-    },
-    "/api/v1/activity/runs/{run_id}": {
-      "get": {
-        "description": "One backup run: the batches it uploaded, and each clip it backed up,\nfailed on or found lost. Read from the index (no destination contacted).",
-        "operationId": "run_detail_api_v1_activity_runs__run_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "run_id",
-            "required": true,
-            "schema": {
-              "title": "Run Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunDetailOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Run Detail",
-        "tags": [
-          "clips"
-        ]
-      }
-    },
     "/api/v1/alerts": {
       "get": {
         "operationId": "get_alerts_api_v1_alerts_get",
@@ -2270,28 +2227,18 @@
         ]
       }
     },
-    "/api/v1/cameras/{alias}": {
+    "/api/v1/cameras/{cam_id}": {
       "delete": {
-        "description": "Stops backing a camera up and drops it from reovault.toml. What is\nalready backed up stays in every destination, and re-adding the same alias\nbrings it all back. With `registry`, a real camera is also removed from\nreolink-cli's registry (its stored password goes with it).",
-        "operationId": "remove_camera_api_v1_cameras__alias__delete",
+        "description": "Stops backing a camera up and drops it (with its password) from\nreovault.toml. What is already backed up stays in every destination, and\nadding a camera with the same id again brings it all back.",
+        "operationId": "remove_camera_api_v1_cameras__cam_id__delete",
         "parameters": [
           {
             "in": "path",
-            "name": "alias",
+            "name": "cam_id",
             "required": true,
             "schema": {
-              "title": "Alias",
+              "title": "Cam Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "registry",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Registry",
-              "type": "boolean"
             }
           }
         ],
@@ -2303,7 +2250,7 @@
                   "items": {
                     "$ref": "#/components/schemas/CameraOut"
                   },
-                  "title": "Response Remove Camera Api V1 Cameras  Alias  Delete",
+                  "title": "Response Remove Camera Api V1 Cameras  Cam Id  Delete",
                   "type": "array"
                 }
               }
@@ -2325,9 +2272,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "502": {
-            "description": "Bad Gateway"
           }
         },
         "summary": "Remove Camera",
@@ -2336,14 +2280,14 @@
         ]
       },
       "put": {
-        "operationId": "edit_camera_api_v1_cameras__alias__put",
+        "operationId": "edit_camera_api_v1_cameras__cam_id__put",
         "parameters": [
           {
             "in": "path",
-            "name": "alias",
+            "name": "cam_id",
             "required": true,
             "schema": {
-              "title": "Alias",
+              "title": "Cam Id",
               "type": "string"
             }
           }
@@ -2366,7 +2310,7 @@
                   "items": {
                     "$ref": "#/components/schemas/CameraOut"
                   },
-                  "title": "Response Edit Camera Api V1 Cameras  Alias  Put",
+                  "title": "Response Edit Camera Api V1 Cameras  Cam Id  Put",
                   "type": "array"
                 }
               }
@@ -2378,6 +2322,9 @@
           },
           "422": {
             "description": "Unprocessable Content"
+          },
+          "502": {
+            "description": "Bad Gateway"
           }
         },
         "summary": "Edit Camera",
@@ -2386,16 +2333,16 @@
         ]
       }
     },
-    "/api/v1/cameras/{alias}/run": {
+    "/api/v1/cameras/{cam_id}/run": {
       "post": {
-        "operationId": "run_now_api_v1_cameras__alias__run_post",
+        "operationId": "run_now_api_v1_cameras__cam_id__run_post",
         "parameters": [
           {
             "in": "path",
-            "name": "alias",
+            "name": "cam_id",
             "required": true,
             "schema": {
-              "title": "Alias",
+              "title": "Cam Id",
               "type": "string"
             }
           }
@@ -2431,17 +2378,17 @@
         ]
       }
     },
-    "/api/v1/cameras/{alias}/stop": {
+    "/api/v1/cameras/{cam_id}/stop": {
       "post": {
         "description": "Stops after the batch in flight; nothing finished is undone.",
-        "operationId": "stop_api_v1_cameras__alias__stop_post",
+        "operationId": "stop_api_v1_cameras__cam_id__stop_post",
         "parameters": [
           {
             "in": "path",
-            "name": "alias",
+            "name": "cam_id",
             "required": true,
             "schema": {
-              "title": "Alias",
+              "title": "Cam Id",
               "type": "string"
             }
           }
@@ -3065,19 +3012,19 @@
           },
           {
             "in": "query",
-            "name": "from",
+            "name": "start",
             "required": true,
             "schema": {
-              "title": "From",
+              "title": "Start",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "to",
+            "name": "end",
             "required": true,
             "schema": {
-              "title": "To",
+              "title": "End",
               "type": "string"
             }
           },
@@ -3135,19 +3082,19 @@
           },
           {
             "in": "query",
-            "name": "from",
+            "name": "start",
             "required": true,
             "schema": {
-              "title": "From",
+              "title": "Start",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "to",
+            "name": "end",
             "required": true,
             "schema": {
-              "title": "To",
+              "title": "End",
               "type": "string"
             }
           },
@@ -3389,6 +3336,102 @@
         "summary": "Sheet",
         "tags": [
           "recovery"
+        ]
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "description": "Recent runs, clips that keep failing, and clips lost in the last week.",
+        "operationId": "activity_api_v1_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "camera",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Camera"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activity",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "description": "One backup run: the batches it uploaded, and each clip it backed up,\nfailed on or found lost. Read from the index (no destination contacted).",
+        "operationId": "run_detail_api_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Detail",
+        "tags": [
+          "clips"
         ]
       }
     },

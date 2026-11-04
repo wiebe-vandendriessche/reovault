@@ -48,9 +48,8 @@ Nothing else was using the cameras during these runs.
   download path is about 0.8 MB/s (see
   [reolink-downloader](https://github.com/deviantintegral/reolink-downloader)).
 
-A camera that changes IP address (DHCP) can no longer be reached under its
-old registry entry. Give it a DHCP reservation, or update the entry with
-`reolink-cli device update <alias> --host <ip>`.
+A camera that changes IP address (DHCP) can no longer be reached at its old
+`host`. Give it a DHCP reservation, or change its address under Cameras, Edit.
 
 If you run ReoVault against a device that isn't listed here, please open an
 issue with the model and what worked. That's how this table grows.

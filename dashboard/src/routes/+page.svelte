@@ -37,7 +37,7 @@
 
 	function replace(c: Camera) {
 		if (!overview.data) return;
-		overview.data.cameras = overview.data.cameras.map((x) => (x.alias === c.alias ? c : x));
+		overview.data.cameras = overview.data.cameras.map((x) => (x.id === c.id ? c : x));
 	}
 </script>
 
@@ -113,7 +113,7 @@
 		<section class="flex flex-col gap-3" aria-labelledby="cameras-heading">
 			<h2 id="cameras-heading" class="text-base font-semibold">Cameras</h2>
 			<div class="grid gap-4 md:grid-cols-2">
-				{#each cameras as cam (cam.alias)}
+				{#each cameras as cam (cam.id)}
 					<CameraTile {cam} onchange={replace} />
 				{/each}
 			</div>

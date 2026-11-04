@@ -54,10 +54,11 @@ Signed images for `linux/amd64` and `linux/arm64` are published at `ghcr.io/wieb
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-mkdir -p config/rclone data reolink-cli secrets
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+mkdir -p data
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
+touch rclone.conf && chmod 600 reovault.toml rclone.conf
 
-openssl rand -base64 32 | tr -d '\n' > secrets/restic_password.txt   # keep a copy: it unlocks every backup
+openssl rand -base64 32 | tr -d '\n' > restic-password && chmod 600 restic-password   # keep a copy: it unlocks every backup
 
 docker compose up -d
 docker compose logs reovault | grep setup.code      # the one-time code for the first-run screen
@@ -72,7 +73,7 @@ A Svelte single-page app on a typed JSON API, updated live over Server-Sent Even
 * **Overview**: is every SD card backed up; per camera what's waiting, how long until it catches up, and the card's fill; the destination and retention.
 * **Footage**: a month calendar and the day's clips by hour, filterable by detection type; download a clip or a whole day as a zip, straight out of restic.
 * **Activity**: every backup run, clips that keep failing, and clips the card overwrote before they could be backed up.
-* **Cameras**: add from LAN discovery (the camera password goes straight into reolink-cli's encrypted registry), turn backups on or off, rename.
+* **Cameras**: add from LAN discovery (ReoVault logs in once to check, then saves the camera in `reovault.toml`), turn backups on or off, edit the name, timezone and login.
 * **Settings**: the backup destination (with a test), interval, retention, alerts; written back into `reovault.toml` with your comments kept.
 
 ## Development

@@ -53,8 +53,8 @@ ENV REOVAULT_VERSION=${REOVAULT_VERSION} \
     REOVAULT_TOOLS__RESTIC_VERSION=${RESTIC_RELEASE} \
     REOVAULT_TOOLS__RCLONE_VERSION=${RCLONE_RELEASE} \
     RESTIC_CACHE_DIR=/data/restic-cache \
-    RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
-    RCLONE_CONFIG=/config/rclone/rclone.conf
+    RESTIC_PASSWORD_FILE=/config/restic-password \
+    RCLONE_CONFIG=/config/rclone.conf
 
 RUN groupadd -g 1000 reovault && useradd -u 1000 -g reovault -m -d /home/reovault reovault
 
@@ -71,7 +71,7 @@ RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:${PATH}"
 
-RUN mkdir -p /config/rclone /data /home/reovault/.config/reolink-cli \
+RUN mkdir -p /config /data \
     && chown -R reovault:reovault /app /config /data /home/reovault
 
 USER reovault

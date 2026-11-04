@@ -33,9 +33,16 @@ CHECK_SUBSET = "500M"  # read back this much data a week: catches bit rot cheapl
 
 def camera_for(settings: Settings, cfg: CameraConfig, gateway: Gateway) -> Camera:
     if cfg.demo:
-        return DemoCamera(alias=cfg.alias, timezone=cfg.timezone)
+        return DemoCamera(id=cfg.id, timezone=cfg.timezone)
+    assert cfg.host is not None  # the config requires one unless demo
     return ReolinkCamera(
-        alias=cfg.alias, timezone=cfg.timezone, binary=settings.tools.reolink_cli, gateway=gateway
+        id=cfg.id,
+        timezone=cfg.timezone,
+        host=cfg.host,
+        user=cfg.user,
+        password=cfg.password,
+        binary=settings.tools.reolink_cli,
+        gateway=gateway,
     )
 
 
@@ -49,7 +56,7 @@ class Health:
 
 @dataclass
 class Worker:
-    alias: str
+    id: str
     settings: Callable[[], Settings]
     db: Db
     gateway: Gateway
@@ -69,7 +76,7 @@ class Worker:
     on_backed_up: Callable[[], None] = field(default=lambda: None)
 
     def start(self) -> None:
-        self._thread = threading.Thread(target=self._loop, name=f"camera-{self.alias}", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name=f"camera-{self.id}", daemon=True)
         self._thread.start()
 
     def run_now(self) -> None:
@@ -97,19 +104,19 @@ class Worker:
         first = True
         while not self._quit.is_set():
             settings = self.settings()
-            cfg = settings.camera(self.alias)
+            cfg = settings.camera(self.id)
             if cfg is None or not cfg.enabled:
                 return
             try:
                 if first:
                     first = False
                     with contextlib.suppress(ToolError):
-                        restic_for(settings, self.alias).unlock()  # locks a crash left behind
+                        restic_for(settings, self.id).unlock()  # locks a crash left behind
                 self._backup(settings, cfg)
                 self._maintain(settings)
                 self.on_backed_up()
             except Exception:  # noqa: BLE001 - the camera's thread must outlive any bug
-                logger.exception("worker.loop_failed", camera=self.alias)
+                logger.exception("worker.loop_failed", camera=self.id)
             self._last_end = datetime.now(UTC)
             self._wait()
 
@@ -120,7 +127,7 @@ class Worker:
             interval = timedelta(minutes=self.settings().backup.interval_minutes)
             assert self._last_end is not None
             self.next_run_at = self._last_end + interval
-            self.publish("activity", camera=self.alias)
+            self.publish("activity", camera=self.id)
             left = (self.next_run_at - datetime.now(UTC)).total_seconds()
             woke = self._wake.wait(max(left, 0))
             self._wake.clear()
@@ -136,23 +143,23 @@ class Worker:
         if self._camera is None or getattr(self._camera, "timezone", None) != cfg.timezone:
             self._camera = camera_for(settings, cfg, self.gateway)
         self.running = True
-        self.publish("activity", camera=self.alias)
+        self.publish("activity", camera=self.id)
         try:
             primary = settings.primary()
             return BackupRun(
                 camera=self._camera,
-                restic=restic_for(settings, self.alias, primary),
+                restic=restic_for(settings, self.id, primary),
                 destination=primary.name if primary else "",
                 db=self.db,
-                staging=settings.storage.staging_dir / self.alias,
+                staging=settings.storage.staging_dir / self.id,
                 state=self.state,
                 interval=timedelta(minutes=settings.backup.interval_minutes),
-                on_progress=lambda: self.publish("activity", camera=self.alias),
+                on_progress=lambda: self.publish("activity", camera=self.id),
                 on_commit=lambda: self._after_commit(settings),
                 hold=lambda: self._hold(settings),
             ).run(trigger)
         except ToolError as exc:  # no destination configured
-            logger.error("worker.run_not_started", camera=self.alias, error=str(exc))
+            logger.error("worker.run_not_started", camera=self.id, error=str(exc))
             return None
         finally:
             self.running = False
@@ -192,10 +199,10 @@ class Worker:
         if primary is None:
             return
         try:
-            restic = restic_for(settings, self.alias, primary)
+            restic = restic_for(settings, self.id, primary)
             # Keyed by destination too: after a primary switch, the old
             # repository's check results say nothing about the new one.
-            tag = f"{primary.name}:{self.alias}"
+            tag = f"{primary.name}:{self.id}"
             self.health.check_errors = int(self.db.get_setting(f"check_errors:{tag}") or 0)
             if restic.state() != "ok":
                 return
@@ -220,7 +227,7 @@ class Worker:
             self.health.maintenance_error = None
         except ToolError as exc:
             self.health.maintenance_error = str(exc)
-            logger.error("worker.maintenance_failed", camera=self.alias, error=str(exc))
+            logger.error("worker.maintenance_failed", camera=self.id, error=str(exc))
 
     def _retain(self, settings: Settings, primary: DestinationConfig, restic: Restic) -> None:
         """Record where the primary's snapshots are, forget what retention and
@@ -229,28 +236,28 @@ class Worker:
         snapshots = restic.snapshots()
         if not snapshots:
             return
-        self.db.set_locations(self.alias, primary.name, [(s.root, s.id, s.time) for s in snapshots])
+        self.db.set_locations(self.id, primary.name, [(s.root, s.id, s.time) for s in snapshots])
         used = usage(self.db, primary.name)
-        cameras = [c.alias for c in settings.cameras]
+        cameras = [c.id for c in settings.cameras]
         cut = retention.decide(
-            camera=self.alias,
-            snaps=snaps_of(self.alias, snapshots, used),
+            camera=self.id,
+            snaps=snaps_of(self.id, snapshots, used),
             usage=used,
             keep_days=primary.keep_days,
             max_gb=primary.max_gb,
             copies=[copy_view(self.db, d, cameras) for d in settings.copies()],
         )
-        record_cut(self.db, primary.name, used, cut, self.alias)
+        record_cut(self.db, primary.name, used, cut, self.id)
         if cut.ids:
             logger.info(
-                "worker.forgetting", camera=self.alias, destination=primary.name, n=len(cut.ids)
+                "worker.forgetting", camera=self.id, destination=primary.name, n=len(cut.ids)
             )
             restic.forget_ids(cut.ids)
             after = restic.snapshots()
-            self.db.set_locations(self.alias, primary.name, [(s.root, s.id, s.time) for s in after])
-        expired = self.db.expire_unlocated(self.alias)
+            self.db.set_locations(self.id, primary.name, [(s.root, s.id, s.time) for s in after])
+        expired = self.db.expire_unlocated(self.id)
         if expired:
-            logger.info("worker.clips_expired", camera=self.alias, count=expired)
+            logger.info("worker.clips_expired", camera=self.id, count=expired)
 
 
 class Workers:
@@ -267,36 +274,36 @@ class Workers:
         self.settings, self.db, self.gateway, self.publish = settings, db, gateway, publish
         self.on_backed_up = on_backed_up
         self._lock = threading.Lock()
-        self.by_alias: dict[str, Worker] = {}
+        self.by_id: dict[str, Worker] = {}
 
     def sync(self) -> None:
         """Start workers for newly enabled cameras, stop removed or disabled
         ones, and wake the rest so a changed interval applies at once."""
-        wanted = {c.alias for c in self.settings().cameras if c.enabled}
+        wanted = {c.id for c in self.settings().cameras if c.enabled}
         with self._lock:
-            for alias in set(self.by_alias) - wanted:
-                self.by_alias.pop(alias).shutdown()
-            for alias in wanted - set(self.by_alias):
+            for cam_id in set(self.by_id) - wanted:
+                self.by_id.pop(cam_id).shutdown()
+            for cam_id in wanted - set(self.by_id):
                 worker = Worker(
-                    alias,
+                    cam_id,
                     self.settings,
                     self.db,
                     self.gateway,
                     self.publish,
                     on_backed_up=self.on_backed_up,
                 )
-                self.by_alias[alias] = worker
+                self.by_id[cam_id] = worker
                 worker.start()
-            for worker in self.by_alias.values():
+            for worker in self.by_id.values():
                 worker.reschedule()
 
-    def get(self, alias: str) -> Worker | None:
+    def get(self, cam_id: str) -> Worker | None:
         with self._lock:
-            return self.by_alias.get(alias)
+            return self.by_id.get(cam_id)
 
     def shutdown(self) -> None:
         with self._lock:
-            workers = list(self.by_alias.values())
+            workers = list(self.by_id.values())
         for w in workers:
             w.shutdown()
         for w in workers:

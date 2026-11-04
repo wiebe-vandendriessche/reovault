@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 SCHEMA = """
 CREATE TABLE clips (
   id              INTEGER PRIMARY KEY,
-  camera          TEXT NOT NULL,          -- the camera's alias
+  camera          TEXT NOT NULL,          -- the camera's cam_id
   name            TEXT NOT NULL,          -- the name on the card, e.g. 0120261027221944
   start_utc       TEXT NOT NULL,
   end_utc         TEXT,

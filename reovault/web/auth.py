@@ -20,8 +20,7 @@ class InsecureKeyFilePermissionsError(Exception):
 
 def check_permissions(path: Path) -> None:
     """Refuse anything group- or world-readable/writable, before the file's
-    contents are touched at all (mirrors `reolink-cli`'s own guard on
-    `credentials.key`)."""
+    contents are touched at all."""
     mode = path.stat().st_mode
     if mode & 0o077:
         raise InsecureKeyFilePermissionsError(

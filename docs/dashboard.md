@@ -50,10 +50,11 @@ be backed up).
 ## Cameras
 
 Every camera with its status and totals. **Add camera** finds cameras on your
-network; the password goes straight into reolink-cli's own encrypted registry
-and is never stored by ReoVault. A demo camera needs no hardware. The switch
-turns backups off or on (backups already made stay). **Edit** changes the
-name and timezone.
+network; ReoVault logs in once to check, then saves the camera, password
+included, in `reovault.toml` (it is never shown again). A demo camera needs no
+hardware. The switch turns backups off or on (backups already made stay).
+**Edit** changes the name, timezone, address and login; a new address or login
+is checked with the camera before it's saved.
 
 ## Settings
 

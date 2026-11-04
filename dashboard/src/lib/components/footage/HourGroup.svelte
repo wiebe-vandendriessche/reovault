@@ -13,8 +13,8 @@
 	const zip = $derived(
 		apiUrl('/download/zip', {
 			cameras: camera,
-			from: `${day}T${hh(hour)}:00`,
-			to: hour === 23 ? `${addDays(day, 1)}T00:00` : `${day}T${hh(hour + 1)}:00`
+			start: `${day}T${hh(hour)}:00`,
+			end: hour === 23 ? `${addDays(day, 1)}T00:00` : `${day}T${hh(hour + 1)}:00`
 		})
 	);
 	const size = $derived(clips.reduce((n, c) => n + (c.size ?? 0), 0));

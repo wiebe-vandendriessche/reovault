@@ -32,7 +32,7 @@ def env(tmp_path: Path) -> SimpleNamespace:
     toml.write_text(
         f"""
 [[cameras]]
-alias = "demo"
+id = "demo"
 timezone = "Europe/Brussels"
 demo = true
 

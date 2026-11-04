@@ -27,7 +27,7 @@ def setup(tmp_path: Path):
     toml.write_text(
         f"""
 [[cameras]]
-alias = "demo"
+id = "demo"
 timezone = "Europe/Brussels"
 demo = true
 

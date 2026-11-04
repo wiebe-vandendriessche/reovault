@@ -327,8 +327,8 @@ def preview(name: str, keep_days: int, max_gb: int, st: State) -> LimitPreviewOu
     return LimitPreviewOut(snapshots=len(gone), bytes=sum(s.bytes for s in gone.values()))
 
 
-def check_state(st: AppState, d: DestinationConfig, alias: str) -> str:
+def check_state(st: AppState, d: DestinationConfig, cam_id: str) -> str:
     try:
-        return restic_for(st.settings, alias, d).state()
+        return restic_for(st.settings, cam_id, d).state()
     except ToolError as exc:
         return f"error: {st.redact(str(exc))}"

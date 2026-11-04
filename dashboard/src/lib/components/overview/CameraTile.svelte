@@ -30,7 +30,7 @@
 	async function act(action: 'run' | 'stop') {
 		busy = true;
 		try {
-			onchange(await api<Camera>(`/cameras/${cam.alias}/${action}`, { method: 'POST' }));
+			onchange(await api<Camera>(`/cameras/${cam.id}/${action}`, { method: 'POST' }));
 			toast.success(action === 'run' ? 'Backup started.' : 'Stopping after the current batch.');
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
@@ -43,11 +43,11 @@
 <Card.Root>
 	<Card.Header>
 		<Card.Description>{cam.demo ? 'Demo camera' : 'Camera'}</Card.Description>
-		<Card.Title class="min-w-0 truncate text-lg">{cam.name || cam.alias}</Card.Title>
+		<Card.Title class="min-w-0 truncate text-lg">{cam.name || cam.id}</Card.Title>
 		<Card.Action class="flex flex-col items-end gap-1">
 			<StatusBadge level={verdict.level}>{verdict.label}</StatusBadge>
 			{#if cam.lost_7d}
-				<Badge href="/activity?camera={cam.alias}" variant="destructive">
+				<Badge href="/activity?camera={cam.id}" variant="destructive">
 					{plural(cam.lost_7d, 'clip')} lost this week
 				</Badge>
 			{/if}

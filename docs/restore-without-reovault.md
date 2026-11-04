@@ -8,13 +8,13 @@ You need:
 
 * `restic` (any recent version) and, for a cloud destination, `rclone` with
   the same `rclone.conf`;
-* the restic password (the `restic_password` secret);
-* the destination, e.g. `rclone:nextcloud:reovault`, plus the camera's alias.
+* the restic password (the `restic-password` file);
+* the destination, e.g. `rclone:nextcloud:reovault`, plus the camera's id.
 
 ```bash
-export RESTIC_PASSWORD_FILE=./secrets/restic_password.txt
-export RCLONE_CONFIG=./config/rclone/rclone.conf   # only for rclone: destinations
-REPO=rclone:nextcloud:reovault/front-door          # <destination>/<alias>
+export RESTIC_PASSWORD_FILE=./restic-password
+export RCLONE_CONFIG=./rclone.conf                 # only for rclone: destinations
+REPO=rclone:nextcloud:reovault/front-door          # <destination>/<id>
 ```
 
 ## Find a clip
@@ -44,7 +44,7 @@ restic -r "$REPO" snapshots --json | python3 -c 'import json,sys; [print(s["id"]
   while read -r id; do restic -r "$REPO" restore "$id" --target restored; done
 ```
 
-The clips end up under `restored/data/staging/<alias>/batch/<date>/`.
+The clips end up under `restored/data/staging/<id>/batch/<date>/`.
 
 ## The clip list
 
@@ -66,22 +66,21 @@ one copy next to the clips.
 
 The server died but a destination survived? Nothing is lost, as long as you
 have the restic password. ReoVault backs up its own config daily into each
-destination, as the repository `<destination>/reovault-config`: `reovault.toml`,
-`rclone.conf` and reolink-cli's camera registry. It is encrypted by restic like
-everything else: the rclone tokens and camera passwords in it are why the
+destination, as the repository `<destination>/reovault-config`: `reovault.toml`
+(the cameras with their passwords) and `rclone.conf`. It is encrypted by restic
+like everything else: the rclone tokens and camera passwords in it are why the
 restic password matters twice.
 
-1. Install ReoVault on the new server and put the restic password back as
-   `secrets/restic_password.txt`.
+1. Install ReoVault on the new server and put the restic password back in
+   `restic-password` next to `compose.yaml`.
 2. Restore the config from any destination:
 
    ```bash
    restic -r <destination>/reovault-config restore latest --target ./restored-config
    ```
 
-   Put `reovault.toml` and `rclone.conf` in `config/` (and `config/rclone/`),
-   and the `reolink-cli/` files in `reolink-cli/`. For a cloud destination you
-   need an `rclone.conf` that reaches it first: Settings, Recovery on the old
+   Put `reovault.toml` and `rclone.conf` next to `compose.yaml`. For a cloud
+   destination you need an `rclone.conf` that reaches it first: the old
    server's recovery sheet says which destinations there were.
 3. Start ReoVault. It sees snapshots it has no record of, rebuilds its clip
    index from the newest snapshot of each camera, and carries on without

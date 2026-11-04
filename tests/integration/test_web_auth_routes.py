@@ -30,7 +30,7 @@ _PUBLIC_ROUTES = {
     ("GET", "/{path:path}"),
 }
 
-_PATH_PARAM_FILLS = {"clip_id": "1", "alias": "demo", "section": "web", "rest": "x"}
+_PATH_PARAM_FILLS = {"clip_id": "1", "cam_id": "demo", "section": "web", "rest": "x"}
 
 _MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 
@@ -218,7 +218,7 @@ def test_tampered_cookie_is_unauthenticated(app_and_client):
     client.cookies.delete("rv_session")
     client.cookies.set("rv_session", tampered)
 
-    assert client.get("/api/v1/activity").status_code == 401
+    assert client.get("/api/v1/runs").status_code == 401
     assert client.get("/api/v1/session").json()["authenticated"] is False
 
 
@@ -228,20 +228,20 @@ def test_expired_cookie_is_unauthenticated(env, web_settings, web_device, web_pa
     expired_token = security.sign_session(key, jti=security.new_jti(), max_age_secs=10, now=1000)
     client.cookies.set("rv_session", expired_token)
 
-    assert client.get("/api/v1/activity").status_code == 401
+    assert client.get("/api/v1/runs").status_code == 401
 
 
 def test_logout_clears_cookie_and_next_request_is_unauthorized(app_and_client):
     _app, client = app_and_client
     login(client)
-    assert client.get("/api/v1/activity").status_code == 200
+    assert client.get("/api/v1/runs").status_code == 200
 
     logout = client.post("/api/v1/logout")
 
     assert logout.status_code == 200
     assert logout.json()["authenticated"] is False
     assert 'rv_session=""' in logout.headers["set-cookie"]
-    assert client.get("/api/v1/activity").status_code == 401
+    assert client.get("/api/v1/runs").status_code == 401
 
 
 def test_logout_revokes_a_copied_cookie(env, web_settings, web_device, web_password_hash):
@@ -253,20 +253,20 @@ def test_logout_revokes_a_copied_cookie(env, web_settings, web_device, web_passw
     other_browser = login(TestClient(app))
     stolen = TestClient(app)
     stolen.cookies.set("rv_session", browser.cookies["rv_session"])
-    assert stolen.get("/api/v1/activity").status_code == 200
+    assert stolen.get("/api/v1/runs").status_code == 200
 
     assert browser.post("/api/v1/logout").status_code == 200
 
-    assert stolen.get("/api/v1/activity").status_code == 401
-    assert other_browser.get("/api/v1/activity").status_code == 401
+    assert stolen.get("/api/v1/runs").status_code == 401
+    assert other_browser.get("/api/v1/runs").status_code == 401
     # A fresh login after the logout gets the new epoch and works again.
-    assert login(TestClient(app)).get("/api/v1/activity").status_code == 200
+    assert login(TestClient(app)).get("/api/v1/runs").status_code == 200
 
 
 def test_no_password_configured_returns_503_but_healthz_still_ok(env, web_settings, web_device):
     client = TestClient(make_web_app(env, web_settings, web_device))  # no web_password_hash
 
-    response = client.get("/api/v1/activity")
+    response = client.get("/api/v1/runs")
     assert response.status_code == 503
     assert "setup code" in response.json()["detail"]
     # Only the session (it says setup is needed) and the setup form are open.

@@ -33,22 +33,17 @@ services:
       # Mode A: uncomment these two instead, comment out the line above:
       # REOVAULT_WEB__FORWARDED_ALLOW_IPS: "127.0.0.1"
       # REOVAULT_WEB__COOKIE_SECURE: "false"
-    secrets:
-      - restic_password
-      # Alert channel secrets (see docs/installation.md#alerts), e.g.:
-      # - ntfy_token
     volumes:
-      # reovault.toml and rclone/rclone.conf. Read-write folders, not single
-      # files: the dashboard writes settings back atomically, and rclone
-      # rewrites the config whenever it refreshes an OAuth token.
-      - ./config:/config
-      # Database, restic cache, and the one batch of clips waiting for upload.
+      # This folder: reovault.toml, rclone.conf and restic-password (plus any
+      # alert secret files) next to this compose.yaml. The whole folder, not
+      # single files: the dashboard rewrites reovault.toml atomically, and
+      # rclone rewrites rclone.conf whenever it refreshes a login token.
+      - .:/config
+      # Everything ReoVault writes: database, restic cache, the clips waiting
+      # for upload.
       - ./data:/data
-      # reolink-cli's own encrypted camera registry (passwords live here, not
-      # in ReoVault).
-      - ./reolink-cli:/home/reovault/.config/reolink-cli
-      # Only when the backup destination is a local path, e.g.
-      # a destination with repository = "/backups" (Settings, Destinations):
+      # Only when a backup destination is a local path, e.g. one with
+      # repository = "/backups" (Settings, Destinations):
       # - /mnt/backup-disk/reovault:/backups
     healthcheck:
       test:
@@ -65,14 +60,6 @@ services:
     # Mode B: join the reverse proxy's network:
     # networks:
     #   - proxy_network
-
-secrets:
-  # The restic repository password. Losing it makes every backup
-  # unreadable: keep a copy in your password manager.
-  restic_password:
-    file: ./secrets/restic_password.txt
-  # ntfy_token:
-  #   file: ./secrets/ntfy_token.txt
 
 # networks:
 #   proxy_network:

@@ -252,7 +252,7 @@ class RunDetailOut(BaseModel):
 _RUN_CLIP_LIMIT = 500
 
 
-@router.get("/activity/runs/{run_id}", responses={404: {}})
+@router.get("/runs/{run_id}", responses={404: {}})
 def run_detail(run_id: int, st: State) -> RunDetailOut:
     """One backup run: the batches it uploaded, and each clip it backed up,
     failed on or found lost. Read from the index (no destination contacted)."""
@@ -291,7 +291,9 @@ class ActivityOut(BaseModel):
     lost: list[ClipOut]
 
 
-@router.get("/activity")
+# Not "/activity": privacy filter lists block URLs ending in /v1/activity as a
+# tracking endpoint, and the dashboard then can't reach it.
+@router.get("/runs")
 def activity(st: State, camera: str | None = None) -> ActivityOut:
     """Recent runs, clips that keep failing, and clips lost in the last week."""
     cams = [camera_or_404(st, camera)] if camera else st.settings.cameras
@@ -300,8 +302,8 @@ def activity(st: State, camera: str | None = None) -> ActivityOut:
     lost: list[ClipOut] = []
     for cfg in cams:
         tz = ZoneInfo(cfg.timezone)
-        failing += [clip_out(st, c, tz) for c in st.db.failing(cfg.alias, MAX_ATTEMPTS)]
-        lost += [clip_out(st, c, tz) for c in st.db.lost_clips(cfg.alias, since)]
+        failing += [clip_out(st, c, tz) for c in st.db.failing(cfg.id, MAX_ATTEMPTS)]
+        lost += [clip_out(st, c, tz) for c in st.db.lost_clips(cfg.id, since)]
     return ActivityOut(
         runs=[run_out(st, r) for r in st.db.runs(camera, limit=100)],
         failing=failing,

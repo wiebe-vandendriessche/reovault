@@ -29,17 +29,15 @@ def site(tmp_path, monkeypatch):
     (tmp_path / "pw").write_text("test-password")
     conf = tmp_path / "config"
     conf.mkdir()
-    registry = tmp_path / "registry"
-    registry.mkdir()
     (conf / "rclone.conf").write_text("[nextcloud]\ntype = webdav\npass = OBSCURED\n")
-    (registry / "aliases.toml").write_text('[doorbell]\nhost = "10.0.0.5"\n')
-    (registry / "credentials.key").write_text("KEYBYTES")
     toml = conf / "reovault.toml"
     toml.write_text(
         f"""
 [[cameras]]
-alias = "cam"
+id = "cam"
 timezone = "Europe/Brussels"
+host = "192.0.2.10"
+password = "camera-secret"
 
 [[destinations]]
 name = "local"
@@ -64,8 +62,6 @@ restic = "{restic}"
     files = {
         "reovault.toml": toml,
         "rclone.conf": conf / "rclone.conf",
-        "reolink-cli/aliases.toml": registry / "aliases.toml",
-        "reolink-cli/credentials.key": registry / "credentials.key",
     }
     return tmp_path, load_settings(toml), files
 
@@ -79,7 +75,7 @@ def test_the_config_is_backed_up_to_every_destination_and_only_when_it_changes(s
         repo = restic_for(settings, REPO, dest)
         (snap,) = repo.snapshots()
         listed = repo.files(snap.id)
-        assert any(p.endswith("/reolink-cli/credentials.key") for p in listed)
+        assert any(p.endswith("/reovault.toml") for p in listed)
         assert any(p.endswith("/rclone.conf") for p in listed)
         assert (
             status_of(db, dest.name)["config_ok"]
@@ -117,7 +113,7 @@ def test_a_dropped_destination_is_never_recreated_for_the_config_either(site):
 
 def test_a_missing_file_is_skipped_not_an_error(site):
     tmp, settings, files = site
-    files["reolink-cli/credentials.key"].unlink()  # e.g. only demo cameras
+    files["rclone.conf"].unlink()  # e.g. only local destinations
     db = Db(tmp / "db.sqlite")
     ConfigBackup(lambda: settings, db, lambda: files).run_once()
     assert status_of(db, "local")["config_ok"]
@@ -172,7 +168,7 @@ def test_a_lost_server_is_recovered_from_a_copy_destination(site):
         for p in restored.rglob("*")
         if p.is_file()
     }
-    assert found == original  # the config, the rclone remotes and the camera registry, intact
+    assert found == original  # the config (cameras included) and the rclone remotes, intact
 
     # --- the new server starts from the restored config: promote the surviving copy ---
     new_toml = Path(tmp / "config" / "reovault.toml")

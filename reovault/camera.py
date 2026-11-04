@@ -76,7 +76,7 @@ class Downloaded:
 
 
 class Camera(Protocol):
-    alias: str
+    id: str
     timezone: str
 
     def search(self, from_utc: datetime, to_utc: datetime) -> list[Found]: ...
@@ -86,6 +86,15 @@ class Camera(Protocol):
 
 def _first(d: dict[str, Any], keys: tuple[str, ...]) -> Any:
     return next((d[k] for k in keys if k in d), None)
+
+
+def _target(host: str, user: str) -> list[str]:
+    # The password goes over stdin, never argv (visible in `ps`).
+    return ["--host", host, "--user", user, "--password-stdin"]
+
+
+def _secret(password: SecretStr | None) -> str:
+    return (password.get_secret_value() if password else "") + "\n"
 
 
 def call(
@@ -105,12 +114,16 @@ def call(
         # a long download timing out may just be slow.
         exc.unreachable = timeout <= _SHORT_CALL_SECS and exc.timed_out
         raise
+    # Errors can come as the JSON envelope on stderr instead of stdout.
+    out = proc.stdout.strip() or (proc.stderr.strip() if proc.returncode else "")
     try:
-        envelope = json.loads(proc.stdout) if proc.stdout.strip() else {}
+        envelope = json.loads(out) if out else {}
     except json.JSONDecodeError:
-        raise ToolError(
-            "reolink-cli printed something that isn't JSON", detail=proc.stdout[:2000]
-        ) from None
+        if proc.returncode == 0:
+            raise ToolError(
+                "reolink-cli printed something that isn't JSON", detail=proc.stdout[:2000]
+            ) from None
+        envelope = {}
     if proc.returncode == 0 and envelope.get("ok", True):
         return envelope.get("data") or {}
     error = envelope.get("error") or {}
@@ -126,19 +139,34 @@ def call(
 
 
 class ReolinkCamera:
-    def __init__(self, *, alias: str, timezone: str, binary: str, gateway: Gateway):
-        self.alias = alias
+    """A camera reached by address, user and password from reovault.toml;
+    reolink-cli keeps no registry of its own."""
+
+    def __init__(
+        self,
+        *,
+        id: str,
+        timezone: str,
+        host: str,
+        user: str,
+        password: SecretStr | None,
+        binary: str,
+        gateway: Gateway,
+    ):
+        self.id = id
         self.timezone = timezone
         self.tz = ZoneInfo(timezone)
+        self.host, self.user, self.password = host, user, password
         self.binary = binary
         self.gateway = gateway
 
     def _call(self, args: list[str], timeout: float) -> Any:
         return call(
             self.binary,
-            ["--camera", self.alias, *args],
+            [*_target(self.host, self.user), *args],
             timeout=timeout,
             gateway=self.gateway.ensure(),
+            stdin=_secret(self.password),
         )
 
     def search(self, from_utc: datetime, to_utc: datetime) -> list[Found]:
@@ -171,7 +199,7 @@ class ReolinkCamera:
             timeout=60,
         )
         if data.get("truncated"):
-            logger.error("camera.search_truncated", camera=self.alias, scanned=data.get("scanned"))
+            logger.error("camera.search_truncated", camera=self.id, scanned=data.get("scanned"))
         items = next(
             (
                 data[k]
@@ -251,7 +279,7 @@ class DemoCamera:
     `every` for the last `window`, sliding with the wall clock so old clips
     roll off the old end like a real looping card."""
 
-    alias: str
+    id: str
     timezone: str
     every: timedelta = timedelta(minutes=15)
     window: timedelta = timedelta(days=7)
@@ -372,7 +400,7 @@ class Gateway:
             self._proc = None
 
 
-# -- adding cameras: reolink-cli's own registry holds the credentials -------
+# -- adding cameras ----------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,18 +409,10 @@ class Discovered:
     uid: str | None
     model: str | None
     name: str | None
-    already_registered: bool
+    added: bool  # a configured camera already has this address
 
 
-def registered_aliases(binary: str) -> dict[str, str | None]:
-    """alias -> host, from reolink-cli's registry (never a password)."""
-    rows = call(binary, ["device", "list"], timeout=30)
-    entries: list[Any] = rows if isinstance(rows, list) else []
-    return {str(r.get("camera")): r.get("host") for r in entries if isinstance(r, dict)}
-
-
-def discover(binary: str, timeout_secs: int = 2) -> list[Discovered]:
-    hosts = {h for h in registered_aliases(binary).values() if h}
+def discover(binary: str, known_hosts: set[str], timeout_secs: int = 2) -> list[Discovered]:
     data = call(
         binary, ["discover", "--timeout-secs", str(timeout_secs)], timeout=timeout_secs + 30
     )
@@ -406,21 +426,17 @@ def discover(binary: str, timeout_secs: int = 2) -> list[Discovered]:
                 if (m := _NAME_SCOPE_RE.match(scope)) and name is None:
                     name = m.group("name")
         host = entry.get("host") if isinstance(entry.get("host"), str) else ""
-        out.append(Discovered(host, entry.get("uid"), model, name, host in hosts))
+        out.append(Discovered(host, entry.get("uid"), model, name, host in known_hosts))
     return out
 
 
-def remove(binary: str, alias: str) -> None:
-    """Takes a camera (and its stored password) out of reolink-cli's registry."""
-    call(binary, ["device", "remove", alias], timeout=30)
-
-
-def add(binary: str, *, alias: str, host: str, user: str, password: SecretStr) -> None:
-    """Registers a camera in reolink-cli's encrypted registry. The password
-    goes over stdin only, never argv (visible in `ps`)."""
+def check(binary: str, gateway: Gateway, *, host: str, user: str, password: SecretStr) -> None:
+    """Can ReoVault log in and read the card? Raises `ToolError` with the
+    camera's own reason (wrong password, unreachable) before anything is saved."""
     call(
         binary,
-        ["device", "add", alias, "--host", host, "--user", user, "--password-stdin"],
-        timeout=30,
-        stdin=password.get_secret_value() + "\n",
+        [*_target(host, user), "storage", "status"],
+        timeout=_SHORT_CALL_SECS,
+        gateway=gateway.ensure(),
+        stdin=_secret(password),
     )

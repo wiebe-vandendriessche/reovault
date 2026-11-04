@@ -33,7 +33,7 @@
 		void live.settings;
 		return api<Camera[]>('/cameras');
 	});
-	const camera = $derived(params.get('camera') ?? cameras.data?.[0]?.alias ?? '');
+	const camera = $derived(params.get('camera') ?? cameras.data?.[0]?.id ?? '');
 
 	const day = query(() => {
 		void live.activity;

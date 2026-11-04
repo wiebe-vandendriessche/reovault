@@ -2,7 +2,7 @@
 test, the README screenshots and trying the dashboard without hardware.
 
 Everything lives in one temp folder: config, database, restic repository and
-password. It never touches a real camera, reolink-cli's registry or a real
+password. It never touches a real camera or a real
 alert channel (alerts go to a local sink). After the first backups it checks
 the Overview reports nothing wrong, since the screenshots must show a
 healthy instance.
@@ -119,21 +119,23 @@ def demo_instance(
         port = _free_port()
         (folder / "restic_password").write_text("demo-only-password")
         # Looks like a real cloud destination on screen, stays in this folder.
+        # rclone's `combine` maps the remote's reovault/ folder onto a local one.
+        (folder / "remote").mkdir()
         (folder / "rclone.conf").write_text(
-            f"[nextcloud]\ntype = alias\nremote = {folder / 'remote'}\n"
+            f"[nextcloud]\ntype = combine\nupstreams = reovault={folder / 'remote'}\n"
         )
         os.chmod(folder / "restic_password", 0o600)
         config = folder / "reovault.toml"
         config.write_text(
             f"""
 [[cameras]]
-alias = "front-door"
+id = "front-door"
 name = "Front door"
 timezone = "Europe/Brussels"
 demo = true
 
 [[cameras]]
-alias = "driveway"
+id = "driveway"
 name = "Driveway"
 timezone = "Europe/Brussels"
 demo = true

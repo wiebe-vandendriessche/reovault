@@ -56,7 +56,7 @@ def _out(st: AppState) -> RecoveryOut:
         password_file_found=bool(pw and pw.is_file()),
         confirmed_at=parse_iso(confirmed) if confirmed else None,
         destinations=out,
-        cameras=[c.alias for c in s.cameras],
+        cameras=[c.id for c in s.cameras],
     )
 
 
@@ -92,11 +92,11 @@ GET A CLIP BACK (any computer with restic{rclone_note})
 
 GET REOVAULT RUNNING AGAIN
   1. Install ReoVault (Docker) on the new server.
-  2. Restore the config backup from a destination into /config:
+  2. Restore the config backup from a destination:
        restic -r <destination>/reovault-config restore latest --target /tmp/cfg
-     It holds reovault.toml, rclone.conf and the camera registry
-     (reolink-cli/). Put them back where compose.yaml mounts them.
-  3. Put the restic password back as the restic_password secret.
+     It holds reovault.toml (the cameras and their passwords) and rclone.conf.
+     Put them next to compose.yaml.
+  3. Put the restic password back in restic-password, next to them.
   4. Start ReoVault. It finds the snapshots, rebuilds its index from the newest
      one, and carries on without downloading anything twice.
 
@@ -117,11 +117,11 @@ def sheet(st: State) -> PlainTextResponse:
         or "  (none connected)"
     )
     first = next((d for d in s.destinations if d.enabled), None)
-    cameras = "\n".join(f"  {c.alias}  ({c.timezone})" for c in s.cameras) or "  (none)"
+    cameras = "\n".join(f"  {c.id}  ({c.timezone})" for c in s.cameras) or "  (none)"
     if first is None or not s.cameras:
         commands = "  (connect a destination and a camera first)"
     else:
-        repo = f"{st.rt.scrub_credentials(first.repository)}/{s.cameras[0].alias}"
+        repo = f"{st.rt.scrub_credentials(first.repository)}/{s.cameras[0].id}"
         commands = (
             f"  export RESTIC_PASSWORD_FILE=./restic_password.txt\n"
             f'  restic -r "{repo}" snapshots\n'

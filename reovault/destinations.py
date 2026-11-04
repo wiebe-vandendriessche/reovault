@@ -43,13 +43,13 @@ def restic_env(settings: Settings) -> dict[str, str]:
     return env
 
 
-def restic_for(settings: Settings, alias: str, dest: DestinationConfig | None = None) -> Restic:
+def restic_for(settings: Settings, cam_id: str, dest: DestinationConfig | None = None) -> Restic:
     """The restic repository of one camera on a destination (the primary when
     none is given)."""
     dest = dest or settings.primary()
     if dest is None:
         raise ToolError("No backup destination is set up yet (add one under Settings)")
-    return Restic.for_camera(settings.tools.restic, dest.repository, alias, restic_env(settings))
+    return Restic.for_camera(settings.tools.restic, dest.repository, cam_id, restic_env(settings))
 
 
 def usage(db: Db, destination: str) -> list[Snap]:
@@ -115,7 +115,7 @@ def lag(db: Db, settings: Settings, dest: DestinationConfig) -> tuple[int, datet
     primary = settings.primary()
     if primary is None or primary is dest:
         return 0, None
-    cameras = [c.alias for c in settings.cameras]
+    cameras = [c.id for c in settings.cameras]
     ours = usage(db, primary.name)
     todo = copy_candidates(ours, copy_view(db, dest, cameras))
     return len(todo), (min(s.time for s in todo) if todo else None)
@@ -193,15 +193,15 @@ class DestinationWorker:
             if self._quit.is_set():
                 return
             try:
-                self._camera(settings, dest, primary, cam.alias)
+                self._camera(settings, dest, primary, cam.id)
             except ToolError as exc:
                 logger.error(
                     "destination.camera_failed",
                     destination=dest.name,
-                    camera=cam.alias,
+                    camera=cam.id,
                     error=str(exc),
                 )
-                errors.append(f"{cam.alias}: {exc}")
+                errors.append(f"{cam.id}: {exc}")
         if errors:
             self._fail("; ".join(errors))
         else:
@@ -209,30 +209,30 @@ class DestinationWorker:
             self.publish("destinations")
 
     def _camera(
-        self, settings: Settings, dest: DestinationConfig, primary: DestinationConfig, alias: str
+        self, settings: Settings, dest: DestinationConfig, primary: DestinationConfig, cam_id: str
     ) -> None:
-        src, dst = restic_for(settings, alias, primary), restic_for(settings, alias, dest)
+        src, dst = restic_for(settings, cam_id, primary), restic_for(settings, cam_id, dest)
         if src.state() != "ok":
             return  # nothing backed up yet
         state = dst.state()
         if state == "wrong_password":
             raise ToolError("the restic password doesn't open this destination's repository")
         if state == "missing":
-            if self.db.repo_seen(dest.name, alias):
+            if self.db.repo_seen(dest.name, cam_id):
                 raise ToolError(
                     "the destination has no repository for this camera any more, but there was "
                     "one before. Check that it is reachable and the path is right: nothing "
                     "will be created."
                 )
-            logger.info("destination.repository_init", destination=dest.name, camera=alias)
+            logger.info("destination.repository_init", destination=dest.name, camera=cam_id)
             dst.init(copy_of=src)
-        self.db.mark_repo_seen(dest.name, alias)
+        self.db.mark_repo_seen(dest.name, cam_id)
 
-        cameras = [c.alias for c in settings.cameras]
+        cameras = [c.id for c in settings.cameras]
         theirs = dst.snapshots()
-        self.db.set_locations(alias, dest.name, [(s.root, s.id, s.time) for s in theirs])
+        self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in theirs])
         used = usage(self.db, primary.name)
-        ours = snaps_of(alias, src.snapshots(), used)
+        ours = snaps_of(cam_id, src.snapshots(), used)
         todo = copy_candidates(ours, copy_view(self.db, dest, cameras))
         cap = dest.max_gb * retention.GiB
         held = sum(s.bytes for s in usage(self.db, dest.name))
@@ -246,17 +246,17 @@ class DestinationWorker:
                 update_status(self.db, dest.name, short_until=iso(datetime.now(UTC) + QUOTA_NOTICE))
                 break
             held += snap.bytes
-            self._progress(alias, done, len(todo))
+            self._progress(cam_id, done, len(todo))
             logger.info(
-                "destination.copying", destination=dest.name, camera=alias, snapshot=snap.id[:8]
+                "destination.copying", destination=dest.name, camera=cam_id, snapshot=snap.id[:8]
             )
             dst.copy_from(src, snap.id, timeout=600 + snap.bytes / _MIN_UPLOAD_RATE)
             self.db.set_setting(f"copied_at:{dest.name}", now_iso())
-        self._progress(alias, None, 0)
+        self._progress(cam_id, None, 0)
         theirs = dst.snapshots() if todo else theirs
-        self.db.set_locations(alias, dest.name, [(s.root, s.id, s.time) for s in theirs])
-        self._retain(settings, dest, alias, dst, theirs)
-        self._check(dest, alias, dst)
+        self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in theirs])
+        self._retain(settings, dest, cam_id, dst, theirs)
+        self._check(dest, cam_id, dst)
 
     def _floor(self, dest: DestinationConfig, at: datetime) -> None:
         """Never copy snapshots older than `at` (only ever moves forward)."""
@@ -264,13 +264,13 @@ class DestinationWorker:
         if current is None or parse_iso(current) < at:
             self.db.set_setting(f"copy_floor:{dest.name}", iso(at))
 
-    def _progress(self, alias: str, done: int | None, total: int) -> None:
+    def _progress(self, cam_id: str, done: int | None, total: int) -> None:
         """Seeding progress for the dashboard: snapshots copied of those wanted."""
         seeding = dict(status_of(self.db, self.name).get("seeding", {}))
         if done is None or total <= 1:
-            seeding.pop(alias, None)
+            seeding.pop(cam_id, None)
         else:
-            seeding[alias] = [done, total]
+            seeding[cam_id] = [done, total]
         update_status(self.db, self.name, seeding=seeding)
         self.publish("destinations")
 
@@ -278,41 +278,41 @@ class DestinationWorker:
         self,
         settings: Settings,
         dest: DestinationConfig,
-        alias: str,
+        cam_id: str,
         dst: Restic,
         theirs: list[Snapshot],
     ) -> None:
         used = usage(self.db, dest.name)
         cut = retention.decide(
-            camera=alias,
-            snaps=snaps_of(alias, theirs, used),
+            camera=cam_id,
+            snaps=snaps_of(cam_id, theirs, used),
             usage=used,
             keep_days=dest.keep_days,
             max_gb=dest.max_gb,
         )
-        record_cut(self.db, dest.name, used, cut, alias)
+        record_cut(self.db, dest.name, used, cut, cam_id)
         if cut.floor is not None:
             self._floor(dest, cut.floor + timedelta(seconds=1))  # not copied back tomorrow
         if cut.ids:
             logger.info(
-                "destination.forgetting", destination=dest.name, camera=alias, n=len(cut.ids)
+                "destination.forgetting", destination=dest.name, camera=cam_id, n=len(cut.ids)
             )
             dst.forget_ids(cut.ids)
             after = dst.snapshots()
-            self.db.set_locations(alias, dest.name, [(s.root, s.id, s.time) for s in after])
-        expired = self.db.expire_unlocated(alias)
+            self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in after])
+        expired = self.db.expire_unlocated(cam_id)
         if expired:
-            logger.info("destination.clips_expired", camera=alias, count=expired)
+            logger.info("destination.clips_expired", camera=cam_id, count=expired)
 
-    def _check(self, dest: DestinationConfig, alias: str, dst: Restic) -> None:
-        key = f"check:{dest.name}:{alias}"
+    def _check(self, dest: DestinationConfig, cam_id: str, dst: Restic) -> None:
+        key = f"check:{dest.name}:{cam_id}"
         last = self.db.get_setting(key)
         if last is None:
             self.db.set_setting(key, now_iso())  # first check a week from now
         elif datetime.now(UTC) - parse_iso(last) >= CHECK_EVERY:
             self.db.set_setting(key, now_iso())
             errors = dst.check(CHECK_SUBSET)
-            self.db.set_setting(f"check_errors:{dest.name}:{alias}", str(errors))
+            self.db.set_setting(f"check_errors:{dest.name}:{cam_id}", str(errors))
             self.publish("destinations")
 
 

@@ -7,9 +7,6 @@ fixture-pin the parsing in `reovault/camera.py` so a
   from an `onvif://...hardware/<MODEL>` scope entry, the friendly name from a
   `reolink-lan://name/<NAME>` entry. There's no dedicated `model`/`name`
   field on the discovery record itself.
-- `device_list.json`: `device list --output json` output, no gateway needed.
-  `hasPassword` is a boolean, the password itself never appears; `channel`
-  can be `null`, not just an int.
 - `storage.json`: `storage status` output. Fields are nested under
   `data.items[0]`, not flat under `data`.
 - `vod_search.json`: **not** a verbatim capture. The real response covered

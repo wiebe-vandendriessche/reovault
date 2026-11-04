@@ -24,7 +24,7 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
 | `worker.py` | One thread per enabled camera: runs on its interval, plus that camera's daily retention and weekly check. |
 | `destinations.py`, `retention.py` | The 3-2-1 side: one thread per copy destination (`restic copy`, its own retention and size limit, weekly check), and the pure functions that choose which snapshots to forget. |
 | `rclone.py` | Connects rclone remotes from the dashboard through `rclone config create`; ReoVault never parses `rclone.conf`. |
-| `configbackup.py` | Backs up ReoVault's own config (`reovault.toml`, `rclone.conf`, the camera registry) into each destination. |
+| `configbackup.py` | Backs up ReoVault's own config (`reovault.toml` with the cameras, and `rclone.conf`) into each destination. |
 | `updates.py` | The optional daily "is there a newer release" check. |
 | `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, offline, no SD card, and the SD-card timeline. |
 | `alerts.py` | ntfy, webhook and email, driven by what's wrong right now. |
@@ -37,7 +37,7 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
 `backup.py` runs one camera, in that camera's thread:
 
 1. **Open the repository.** Each camera has its own restic repository at
-   `<destination>/<alias>`. A missing repository is created only if this
+   `<destination>/<id>`. A missing repository is created only if this
    camera never backed anything up there before. If it did, a missing
    repository means a disk isn't mounted or the path is wrong, and the run
    stops with that message instead of starting a fresh, empty backup.
@@ -53,7 +53,7 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
      run), then the oldest, because the oldest is what the card overwrites
      next. A first run on a full card works through the backlog oldest-first
      while new clips still go out within the hour.
-   * **Download** them into `<staging>/<alias>/incoming/` with one
+   * **Download** them into `<staging>/<id>/incoming/` with one
      `reolink-cli vod download` call, which shares one camera connection.
      This happens while the previous batch uploads (see below). If the whole
      call fails while the camera still answers, the batch is downloaded one
@@ -62,7 +62,7 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
      gets one retry after a pause (a D340W quirk); a clip that keeps failing
      moves to the back and is retried once a day.
    * **Wait** for the previous batch's upload, then **stage** the verified
-     files in `<staging>/<alias>/batch/<date>/`.
+     files in `<staging>/<id>/batch/<date>/`.
    * **Upload** with `restic backup` on a background thread, while the next
      batch downloads. Only when restic exits 0 with a snapshot id are the
      clips marked backed up, and only then are the local files deleted.
@@ -94,7 +94,7 @@ wait until the card reports one: without it a download can't be verified.
 ## Snapshots and retention
 
 Every batch becomes one restic snapshot of the same folder,
-`<staging>/<alias>/batch`, with the host name fixed to `reovault`. Because the
+`<staging>/<id>/batch`, with the host name fixed to `reovault`. Because the
 path and host never change, all of a camera's snapshots form one group.
 
 Retention counts back from the camera's newest snapshot, not from today. If

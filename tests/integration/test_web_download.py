@@ -45,12 +45,12 @@ def two_cameras(tmp_path_factory):
     toml.write_text(
         f"""
 [[cameras]]
-alias = "demo"
+id = "demo"
 timezone = "Europe/Brussels"
 demo = true
 
 [[cameras]]
-alias = "yard"
+id = "yard"
 timezone = "Europe/Brussels"
 demo = true
 
@@ -81,10 +81,10 @@ restic = "{restic}"
             mp.delenv(key)
         settings = load_settings(toml)
     rt = make_runtime(SimpleNamespace(toml=toml), settings)
-    for alias in ("demo", "yard"):
-        w = Worker(alias, rt.settings, rt.db, rt.gateway, rt.bus.publish)
-        rt.workers.by_alias[alias] = w
-        w._backup(rt.settings(), rt.settings().camera(alias))
+    for cam_id in ("demo", "yard"):
+        w = Worker(cam_id, rt.settings, rt.db, rt.gateway, rt.bus.publish)
+        rt.workers.by_id[cam_id] = w
+        w._backup(rt.settings(), rt.settings().camera(cam_id))
     client = login(TestClient(create_app(rt, dashboard_dir=tmp / "no-dist")))
     return rt, client
 
@@ -98,7 +98,7 @@ def _zip(client, **params) -> zipfile.ZipFile:
 def test_a_span_is_one_zip_with_a_folder_per_camera_and_day(two_cameras):
     _rt, client = two_cameras
     day = _local(1)
-    p = {"cameras": "demo", "from": f"{day}T10:00", "to": f"{day}T12:00"}
+    p = {"cameras": "demo", "start": f"{day}T10:00", "end": f"{day}T12:00"}
     preview = client.get("/api/v1/download/preview", params=p).json()
     z = _zip(client, **p)
     assert z.testzip() is None
@@ -112,7 +112,7 @@ def test_a_span_is_one_zip_with_a_folder_per_camera_and_day(two_cameras):
 def test_both_cameras_come_in_separate_folders(two_cameras):
     _rt, client = two_cameras
     day = _local(1)
-    p = {"cameras": "demo,yard", "from": f"{day}T10:00", "to": f"{day}T11:00"}
+    p = {"cameras": "demo,yard", "start": f"{day}T10:00", "end": f"{day}T11:00"}
     z = _zip(client, **p)
     assert {n.split("/")[0] for n in z.namelist()} == {"demo", "yard"}
     assert len(z.namelist()) == 8
@@ -121,7 +121,7 @@ def test_both_cameras_come_in_separate_folders(two_cameras):
 
 def test_several_days_are_counted_across_the_midnights(two_cameras):
     _rt, client = two_cameras
-    p = {"cameras": "demo,yard", "from": f"{_local(2)}T00:00", "to": f"{_local(-1)}T00:00"}
+    p = {"cameras": "demo,yard", "start": f"{_local(2)}T00:00", "end": f"{_local(-1)}T00:00"}
     preview = client.get("/api/v1/download/preview", params=p).json()
     per_camera = {c["camera"]: c["clips"] for c in preview["cameras"]}
     assert per_camera["demo"] == per_camera["yard"] > 2 * 96  # at least two full days
@@ -131,7 +131,7 @@ def test_several_days_are_counted_across_the_midnights(two_cameras):
 def test_only_the_chosen_detection_types(two_cameras):
     _rt, client = two_cameras
     day = _local(1)
-    base = {"cameras": "demo", "from": f"{day}T00:00", "to": f"{_local()}T00:00"}
+    base = {"cameras": "demo", "start": f"{day}T00:00", "end": f"{_local()}T00:00"}
     everything = client.get("/api/v1/download/preview", params=base).json()["clips"]
     people = client.get("/api/v1/download/preview", params={**base, "types": "people"}).json()
     vehicles = client.get("/api/v1/download/preview", params={**base, "types": "vehicle"}).json()
@@ -142,7 +142,7 @@ def test_only_the_chosen_detection_types(two_cameras):
 
 def test_a_span_with_nothing_backed_up_is_refused_not_an_empty_zip(two_cameras):
     _rt, client = two_cameras
-    p = {"cameras": "demo", "from": "2020-01-01T00:00", "to": "2020-01-02T00:00"}
+    p = {"cameras": "demo", "start": "2020-01-01T00:00", "end": "2020-01-02T00:00"}
     assert client.get("/api/v1/download/preview", params=p).json()["clips"] == 0
     assert client.get("/api/v1/download/zip", params=p).status_code == 422
 
@@ -150,10 +150,10 @@ def test_a_span_with_nothing_backed_up_is_refused_not_an_empty_zip(two_cameras):
 @pytest.mark.parametrize(
     "params",
     [
-        {"cameras": "", "from": "2026-11-01T00:00", "to": "2026-11-02T00:00"},
-        {"cameras": "nope", "from": "2026-11-01T00:00", "to": "2026-11-02T00:00"},
-        {"cameras": "demo", "from": "2026-11-02T00:00", "to": "2026-11-01T00:00"},
-        {"cameras": "demo", "from": "garbage", "to": "2026-11-01T00:00"},
+        {"cameras": "", "start": "2026-11-01T00:00", "end": "2026-11-02T00:00"},
+        {"cameras": "nope", "start": "2026-11-01T00:00", "end": "2026-11-02T00:00"},
+        {"cameras": "demo", "start": "2026-11-02T00:00", "end": "2026-11-01T00:00"},
+        {"cameras": "demo", "start": "garbage", "end": "2026-11-01T00:00"},
     ],
 )
 def test_bad_spans_are_refused(two_cameras, params):
@@ -164,7 +164,7 @@ def test_bad_spans_are_refused(two_cameras, params):
 def test_too_many_clips_asks_for_a_shorter_span(two_cameras, monkeypatch):
     _rt, client = two_cameras
     monkeypatch.setattr(download, "MAX_CLIPS", 10)
-    p = {"cameras": "demo", "from": f"{_local(2)}T00:00", "to": f"{_local(-1)}T00:00"}
+    p = {"cameras": "demo", "start": f"{_local(2)}T00:00", "end": f"{_local(-1)}T00:00"}
     r = client.get("/api/v1/download/preview", params=p)
     assert r.status_code == 422 and "shorter" in r.json()["detail"]
 
@@ -179,7 +179,7 @@ def test_clock_changes_are_handled_in_camera_time(two_cameras):
     )
     (c,) = rt.db.clips_by_name("demo", ["c-dst"]).values()
     rt.db.mark_backed_up("demo", "local", "s-dst", datetime.now(UTC), {c.id: "/b/c-dst.mp4"})
-    p = {"cameras": "demo", "from": "2026-10-25T00:00", "to": "2026-10-26T00:00"}
+    p = {"cameras": "demo", "start": "2026-10-25T00:00", "end": "2026-10-26T00:00"}
     assert client.get("/api/v1/download/preview", params=p).json()["clips"] == 1
     assert iso(datetime(2026, 10, 25, 0, 30, tzinfo=UTC)) == c.start_utc
 
@@ -202,7 +202,7 @@ def test_a_clip_only_a_copy_still_holds_is_downloaded_from_the_copy(
     settings = load_settings(env.toml)
     rt = make_runtime(env, settings)
     w = Worker("demo", rt.settings, rt.db, rt.gateway, rt.bus.publish)
-    rt.workers.by_alias["demo"] = w
+    rt.workers.by_id["demo"] = w
     w._backup(settings, settings.camera("demo"))
     DestinationWorker("second", rt.settings, rt.db, lambda *a, **k: None).run_round()
     # The primary forgets everything (as if quota trimmed it); the copy keeps it.
@@ -212,11 +212,11 @@ def test_a_clip_only_a_copy_still_holds_is_downloaded_from_the_copy(
     rt.db.set_locations("demo", "local", [(s.root, s.id, s.time) for s in primary.snapshots()])
     client = login(TestClient(create_app(rt, dashboard_dir=tmp_path / "x")))
     day = _local(1)
-    p = {"cameras": "demo", "from": f"{day}T00:00", "to": f"{_local(-1)}T00:00"}
+    p = {"cameras": "demo", "start": f"{day}T00:00", "end": f"{_local(-1)}T00:00"}
     preview = client.get("/api/v1/download/preview", params=p).json()
     assert preview["clips"] > 0
     assert preview["cameras"][0]["on_unconnected_destination"] == 0
-    small = {**p, "from": f"{day}T10:00", "to": f"{day}T11:00"}
+    small = {**p, "start": f"{day}T10:00", "end": f"{day}T11:00"}
     z = _zip(client, **small)
     assert z.testzip() is None and len(z.namelist()) == 4
     assert shutil.which("restic")  # real restic read these out of the copy
@@ -226,7 +226,7 @@ def test_downloads_need_a_login(env, web_settings, web_password_hash):
     client = TestClient(
         create_app(make_runtime(env, web_settings), dashboard_dir=env.tmp_path / "x")
     )
-    p = {"cameras": "demo", "from": "2026-11-01T00:00", "to": "2026-11-02T00:00"}
+    p = {"cameras": "demo", "start": "2026-11-01T00:00", "end": "2026-11-02T00:00"}
     assert client.get("/api/v1/download/preview", params=p).status_code == 401
     assert client.get("/api/v1/download/zip", params=p).status_code == 401
     assert web_app is not None

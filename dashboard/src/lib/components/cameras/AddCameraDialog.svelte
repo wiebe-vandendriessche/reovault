@@ -19,7 +19,7 @@
 	let found = $state<Discovered[] | null>(null);
 	let scanning = $state(false);
 	const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const blank = () => ({ alias: '', host: '', user: 'admin', password: '', timezone: browserTz, name: '', demo: false });
+	const blank = () => ({ id: '', host: '', user: 'admin', password: '', timezone: browserTz, name: '', demo: false });
 	let form = $state(blank());
 
 	$effect(() => {
@@ -45,7 +45,7 @@
 	function use(d: Discovered) {
 		form.host = d.host;
 		form.name = d.name ?? '';
-		if (!form.alias) form.alias = (d.name ?? d.model ?? 'camera').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+		if (!form.id) form.id = (d.name ?? d.model ?? 'camera').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 	}
 
 	async function submit(e: SubmitEvent) {
@@ -54,10 +54,10 @@
 		error = null;
 		try {
 			const body: AddCamera = form.demo
-				? { alias: form.alias, name: form.name || null, timezone: form.timezone, demo: true }
+				? { id: form.id, name: form.name || null, timezone: form.timezone, user: form.user, demo: true }
 				: { ...form, name: form.name || null };
 			onadded(await api<Camera[]>('/cameras', { method: 'POST', body }));
-			toast.success(`${form.name || form.alias} added.`);
+			toast.success(`${form.name || form.id} added.`);
 			open = false;
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
@@ -76,8 +76,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Add a camera</Dialog.Title>
 			<Dialog.Description>
-				The password goes straight to reolink-cli's encrypted credential store; ReoVault never
-				keeps it. A demo camera needs no hardware: it serves a sliding week of tiny clips.
+				ReoVault logs in once to check, then saves the camera with its password in reovault.toml.
+				A demo camera needs no hardware: it serves a sliding week of tiny clips.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -97,14 +97,14 @@
 				<button
 					type="button"
 					onclick={() => use(d)}
-					disabled={d.already_registered}
+					disabled={d.added}
 					class="hover:bg-muted flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm disabled:opacity-50"
 				>
 					<span class="flex flex-wrap gap-x-3">
 						<span class="font-medium">{d.name ?? d.model ?? 'Camera'}</span>
 						<span class="text-muted-foreground">{d.host}</span>
 					</span>
-					<span class="text-subtle text-xs">{d.already_registered ? 'Already added' : 'Use'}</span>
+					<span class="text-subtle text-xs">{d.added ? 'Already added' : 'Use'}</span>
 				</button>
 			{/each}
 		</div>
@@ -112,9 +112,9 @@
 		<form class="flex flex-col gap-4" onsubmit={submit}>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Field.Field>
-					<Field.Label for="cam-alias">Alias</Field.Label>
-					<Input id="cam-alias" required maxlength={64} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" bind:value={form.alias} placeholder="front-door" />
-					<Field.Description>Letters, digits, - and _. Names its backup repository.</Field.Description>
+					<Field.Label for="cam-id">Id</Field.Label>
+					<Input id="cam-id" required maxlength={64} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" bind:value={form.id} placeholder="front-door" />
+					<Field.Description>Letters, digits, - and _. Names its backup repository, so it can't change later.</Field.Description>
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="cam-name">Display name</Field.Label>

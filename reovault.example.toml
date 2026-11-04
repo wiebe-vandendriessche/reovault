@@ -1,24 +1,26 @@
-# Copy to config/reovault.toml and adjust. This file is the source of truth:
+# Copy to reovault.toml next to compose.yaml and adjust. This file is the source of truth:
 # the dashboard's Settings and Cameras pages write their changes back into it
 # (comments kept), and edits made here are picked up live.
 #
-# No secrets in this file. Camera passwords live in reolink-cli's own
-# encrypted registry; the restic password is a Docker secret (it is one file
-# for all destinations); alert tokens are file paths.
+# It holds the camera passwords: keep it private (chmod 600). The restic
+# password is its own file, restic-password (one for all destinations); alert
+# tokens are file paths.
 
-# The cameras to back up. `alias` is the `reolink-cli device add <alias>` name
-# and also names the camera's restic repository, so it never changes. The
-# dashboard's Cameras page adds entries here for you.
+# The cameras to back up. `id` names the camera's restic repository, so it
+# never changes. The dashboard's Cameras page adds entries here for you.
 [[cameras]]
-alias = "front-door"
+id = "front-door"
 name = "Front door"
 timezone = "Europe/Brussels"  # the camera's own clock
+host = "192.168.1.40"         # give the camera a DHCP reservation
+# user = "admin"
+password = "the camera's password"
 # enabled = false             # stop backing it up; its backups stay
 
 # A pretend camera with a sliding week of tiny clips, to try ReoVault
 # without hardware:
 # [[cameras]]
-# alias = "demo"
+# id = "demo"
 # timezone = "Europe/Brussels"
 # demo = true
 
@@ -43,15 +45,15 @@ keep_days = 30                # 0 keeps everything; counted from the newest back
 # keep_days = 14
 # max_gb = 200
 
-# Where alerts go (see docs/configuration.md#alerts). Secrets live in files,
-# mounted as Docker secrets.
+# Where alerts go (see docs/configuration.md#alerts). Secrets live in files
+# next to this one (the folder is /config in the container).
 [alerts]
 # ntfy_url = "https://ntfy.sh/an-unguessable-topic"
-# ntfy_token_file = "/run/secrets/ntfy_token"
-# webhook_url_file = "/run/secrets/alert_webhook"
+# ntfy_token_file = "/config/ntfy-token"
+# webhook_url_file = "/config/alert-webhook"
 # smtp_host = "smtp.example.com"
 # smtp_user = "reovault@example.com"
-# smtp_password_file = "/run/secrets/smtp_password"
+# smtp_password_file = "/config/smtp-password"
 # smtp_to = ["you@example.com"]
 
 [alerts.rules]

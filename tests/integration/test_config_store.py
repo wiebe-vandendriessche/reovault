@@ -20,8 +20,9 @@ from reovault.config_store import (
 COMMENTED = """# My ReoVault config. Keep this comment.
 
 [[cameras]]
-alias = "doorbell"  # the front door
+id = "doorbell"  # the front door
 timezone = "Europe/Brussels"
+host = "192.0.2.10"
 
 # Back up every 90 minutes.
 [backup]
@@ -49,7 +50,7 @@ def test_update_keeps_comments_and_layout(store, toml_path):
     store.update(_keep(30))
     text = toml_path.read_text()
     assert "# My ReoVault config. Keep this comment." in text
-    assert 'alias = "doorbell"  # the front door' in text
+    assert 'id = "doorbell"  # the front door' in text
     assert "# Back up every 90 minutes." in text
     assert "interval_minutes = 30" in text
     assert store.current.backup.interval_minutes == 30
@@ -116,10 +117,21 @@ def test_infrastructure_changes_wait_for_a_restart(store, toml_path):
 
 
 def test_adding_a_camera_appends_an_entry(store, toml_path):
-    store.update(lambda doc: upsert_camera_entry(doc, "driveway", timezone="UTC", name="Drive"))
+    store.update(
+        lambda doc: upsert_camera_entry(
+            doc, "driveway", timezone="UTC", name="Drive", host="192.0.2.11", password="pw"
+        )
+    )
     data = tomllib.loads(toml_path.read_text())
-    assert [c["alias"] for c in data["cameras"]] == ["doorbell", "driveway"]
-    assert data["cameras"][1] == {"alias": "driveway", "timezone": "UTC", "name": "Drive"}
+    assert [c["id"] for c in data["cameras"]] == ["doorbell", "driveway"]
+    assert data["cameras"][1] == {
+        "id": "driveway",
+        "timezone": "UTC",
+        "name": "Drive",
+        "host": "192.0.2.11",
+        "password": "pw",
+    }
+    assert oct(store.path.stat().st_mode & 0o777) == "0o600"  # it holds camera passwords
     assert "enabled" not in data["cameras"][1]  # default left out
     store.update(lambda doc: upsert_camera_entry(doc, "driveway", enabled=False))
     assert store.current.camera("driveway").enabled is False

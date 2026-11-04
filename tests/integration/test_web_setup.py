@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tomllib
 
-import pytest
 from fastapi.testclient import TestClient
 
 from reovault.config import load_settings
@@ -213,11 +212,11 @@ def test_a_development_build_never_asks_for_an_update():
     assert updates.newer("v1.9.0", "v1.10.0") == "v1.10.0"  # numbers, not text
 
 
-@pytest.mark.parametrize("alias", ["reovault-config"])
-def test_the_config_backup_alias_is_reserved(env, web_settings, web_password_hash, alias):
+def test_the_config_backup_id_is_reserved(env, web_settings, web_password_hash):
     client = login(TestClient(make_web_app(env, web_settings)))
     r = client.post(
-        "/api/v1/cameras", json={"alias": alias, "timezone": "Europe/Brussels", "demo": True}
+        "/api/v1/cameras",
+        json={"id": "reovault-config", "timezone": "Europe/Brussels", "demo": True},
     )
     assert r.status_code == 422
 
@@ -225,12 +224,10 @@ def test_the_config_backup_alias_is_reserved(env, web_settings, web_password_has
 def test_a_camera_can_be_removed_and_its_backups_stay(env, web_settings, web_password_hash):
     app = make_web_app(env, web_settings)
     client = login(TestClient(app))
-    client.post(
-        "/api/v1/cameras", json={"alias": "yard", "timezone": "Europe/Brussels", "demo": True}
-    )
-    assert "yard" in {c["alias"] for c in client.get("/api/v1/cameras").json()}
+    client.post("/api/v1/cameras", json={"id": "yard", "timezone": "Europe/Brussels", "demo": True})
+    assert "yard" in {c["id"] for c in client.get("/api/v1/cameras").json()}
     r = client.delete("/api/v1/cameras/yard")
     assert r.status_code == 200, r.text
-    assert "yard" not in {c["alias"] for c in r.json()}
-    assert "yard" not in {c["alias"] for c in tomllib.loads(env.toml.read_text())["cameras"]}
+    assert "yard" not in {c["id"] for c in r.json()}
+    assert "yard" not in {c["id"] for c in tomllib.loads(env.toml.read_text())["cameras"]}
     assert client.delete("/api/v1/cameras/yard").status_code == 404

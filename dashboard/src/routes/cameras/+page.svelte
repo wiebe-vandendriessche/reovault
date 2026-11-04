@@ -33,13 +33,13 @@
 	});
 
 	let confirmOff = $state<Camera | null>(null);
-	let editingAlias = $state<string | null>(null);
-	const editing = $derived(cameras.data?.find((c) => c.alias === editingAlias) ?? null);
-	const label = (c: Camera) => c.name || c.alias;
+	let editingId = $state<string | null>(null);
+	const editing = $derived(cameras.data?.find((c) => c.id === editingId) ?? null);
+	const label = (c: Camera) => c.name || c.id;
 
 	async function setEnabled(c: Camera, enabled: boolean) {
 		try {
-			cameras.data = await api<Camera[]>(`/cameras/${c.alias}`, {
+			cameras.data = await api<Camera[]>(`/cameras/${c.id}`, {
 				method: 'PUT',
 				body: { name: c.name ?? null, timezone: c.timezone, enabled }
 			});
@@ -74,18 +74,18 @@
 	</Empty.Root>
 {:else}
 	<div class="grid gap-4 md:grid-cols-2">
-		{#each cameras.data as c (c.alias)}
+		{#each cameras.data as c (c.id)}
 			{@const verdict = VERDICTS[c.verdict]}
 			<Card.Root class={c.enabled ? '' : 'bg-muted/40'}>
 				<Card.Header>
 					<Card.Title class="truncate">{label(c)}</Card.Title>
 					<Card.Description class="truncate">
-						{[c.demo ? 'Demo camera' : c.alias, c.timezone].join(', ')}
+						{[c.demo ? 'Demo camera' : c.id, c.timezone].join(', ')}
 					</Card.Description>
 					<Card.Action class="flex items-center gap-2">
-						<Label for="cam-{c.alias}" class="text-muted-foreground text-xs">{c.enabled ? 'On' : 'Off'}</Label>
+						<Label for="cam-{c.id}" class="text-muted-foreground text-xs">{c.enabled ? 'On' : 'Off'}</Label>
 						<Switch
-							id="cam-{c.alias}"
+							id="cam-{c.id}"
 							disabled={!config.data?.writable}
 							bind:checked={() => c.enabled, (on) => (on ? setEnabled(c, true) : (confirmOff = c))}
 							aria-label="Back up {label(c)}"
@@ -122,7 +122,7 @@
 					</dl>
 				</Card.Content>
 				<Card.Footer class="justify-end">
-					<Button variant="ghost" size="sm" onclick={() => (editingAlias = c.alias)}>
+					<Button variant="ghost" size="sm" onclick={() => (editingId = c.id)}>
 						<Pencil /> Edit
 					</Button>
 				</Card.Footer>
@@ -157,6 +157,6 @@
 <EditCameraSheet
 	camera={editing}
 	writable={config.data?.writable ?? false}
-	onclose={() => (editingAlias = null)}
+	onclose={() => (editingId = null)}
 	onsaved={(c) => (cameras.data = c)}
 />

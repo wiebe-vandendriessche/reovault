@@ -159,21 +159,21 @@ class BackupRun:
         """One run. Never raises: every failure ends up in the run's row. A
         run that finds another one in progress (`reovault run` next to the
         daemon) leaves no row at all, so it can't look like a failure."""
-        alias = self.camera.alias
+        cam_id = self.camera.id
         result = RunResult()
         try:
             with camera_lock(self.staging):
-                run_id = self.db.start_run(alias, trigger)
+                run_id = self.db.start_run(cam_id, trigger)
                 try:
                     self._run(result, run_id)
                 except (RunError, ToolError, OSError) as exc:
                     result.outcome, result.error = "error", str(exc)
                     if isinstance(exc, ToolError) and exc.unreachable:
                         self.state.unreachable_since = self.state.unreachable_since or self.clock()
-                    logger.error("backup.run_failed", camera=alias, error=str(exc))
+                    logger.error("backup.run_failed", camera=cam_id, error=str(exc))
                 except Exception as exc:  # noqa: BLE001 - a bug must not end the camera's thread
                     result.outcome, result.error = "error", f"unexpected error: {exc}"
-                    logger.exception("backup.run_crashed", camera=alias)
+                    logger.exception("backup.run_crashed", camera=cam_id)
                 self.state.last_failed = result.outcome == "error"
                 self.db.update_run(
                     run_id, clips=result.clips, bytes_=result.bytes, lost=result.lost
@@ -181,12 +181,12 @@ class BackupRun:
                 self.db.finish_run(run_id, result.outcome, result.error)
         except AlreadyRunning as exc:
             result.outcome, result.error = "skipped", str(exc)
-            logger.info("backup.run_skipped", camera=alias, reason=str(exc))
+            logger.info("backup.run_skipped", camera=cam_id, reason=str(exc))
         except OSError as exc:  # the staging folder itself (read-only, unmounted)
             result.outcome, result.error = "error", f"staging folder unusable: {exc}"
-            logger.error("backup.run_failed", camera=alias, error=result.error)
+            logger.error("backup.run_failed", camera=cam_id, error=result.error)
             self.state.last_failed = True
-            self.db.finish_run(self.db.start_run(alias, trigger), "error", result.error)
+            self.db.finish_run(self.db.start_run(cam_id, trigger), "error", result.error)
         self.on_progress()
         return result
 
@@ -210,7 +210,7 @@ class BackupRun:
                 free = shutil.disk_usage(self.staging).free
                 if free < BATCH_BYTES * 1.2:
                     raise RunError(f"Not enough free space for a batch in {self.staging}")
-                pending = [c for c in self.db.pending(self.camera.alias) if c.id not in tried]
+                pending = [c for c in self.db.pending(self.camera.id) if c.id not in tried]
                 self._flag_sizeless(pending, tried)
                 batch = pick(pending, self.clock(), self.interval)
                 if not batch:
@@ -235,7 +235,7 @@ class BackupRun:
                 try:
                     self._join(upload, result, run_id)
                 except Exception as exc:  # noqa: BLE001 - the main error wins
-                    logger.error("backup.upload_failed", camera=self.camera.alias, error=str(exc))
+                    logger.error("backup.upload_failed", camera=self.camera.id, error=str(exc))
             raise
         self._join(upload, result, run_id)  # an upload failure beats "stopped"
 
@@ -270,7 +270,7 @@ class BackupRun:
         files = _files(self.batch_dir)
         if not files:
             return
-        clips = self.db.clips_by_name(self.camera.alias, [f.stem for f in files])
+        clips = self.db.clips_by_name(self.camera.id, [f.stem for f in files])
         keep: dict[int, Path] = {}
         for f in files:
             clip = clips.get(f.stem)
@@ -279,7 +279,7 @@ class BackupRun:
             else:
                 f.unlink()  # already safe, or not ours
         if keep:
-            logger.info("backup.recovering_batch", camera=self.camera.alias, files=len(keep))
+            logger.info("backup.recovering_batch", camera=self.camera.id, files=len(keep))
             clips_n, size = self._commit(keep, run_id)
             result.clips += clips_n
             result.bytes += size
@@ -289,17 +289,17 @@ class BackupRun:
         if state == "wrong_password":
             raise RunError("The restic password does not open this camera's repository")
         if state == "ok":
-            self.db.mark_repo_seen(self.destination, self.camera.alias)
+            self.db.mark_repo_seen(self.destination, self.camera.id)
         if state == "missing":
-            if self.db.repo_seen(self.destination, self.camera.alias):
+            if self.db.repo_seen(self.destination, self.camera.id):
                 raise RunError(
                     "The backup destination has no repository for this camera any more, "
                     "but clips were backed up to it before. Check that the destination is "
                     "mounted and the path is right; nothing will be created."
                 )
-            logger.info("backup.repository_init", camera=self.camera.alias)
+            logger.info("backup.repository_init", camera=self.camera.id)
             self.restic.init()
-            self.db.mark_repo_seen(self.destination, self.camera.alias)
+            self.db.mark_repo_seen(self.destination, self.camera.id)
 
     def _list(self) -> None:
         now = self.clock()
@@ -318,18 +318,18 @@ class BackupRun:
         try:
             self.state.card = self.camera.storage()
         except ToolError as exc:  # only shown, never acted on
-            logger.warning("backup.storage_status_failed", camera=self.camera.alias, error=str(exc))
+            logger.warning("backup.storage_status_failed", camera=self.camera.id, error=str(exc))
 
     def _search_recent(self) -> None:
         now = self.clock()
-        newest = self.db.newest_start(self.camera.alias) or now - 2 * self.interval
+        newest = self.db.newest_start(self.camera.id) or now - 2 * self.interval
         found = self.camera.search(newest - timedelta(hours=2), now + timedelta(hours=2))
         self.state.unreachable_since = None  # it answered
         self._upsert(found)
 
     def _upsert(self, found: list[Found]) -> None:
         self.db.upsert_clips(
-            self.camera.alias, [(f.name, f.start_utc, f.end_utc, f.size, f.rec_type) for f in found]
+            self.camera.id, [(f.name, f.start_utc, f.end_utc, f.size, f.rec_type) for f in found]
         )
 
     def _fetch(self, batch: list[Clip], result: RunResult) -> dict[Clip, Path]:
@@ -384,9 +384,7 @@ class BackupRun:
         except ToolError as exc:
             now = self.clock()
             self.camera.search(now - timedelta(hours=1), now)  # raises when offline
-            logger.warning(
-                "backup.batch_failed_one_by_one", camera=self.camera.alias, error=str(exc)
-            )
+            logger.warning("backup.batch_failed_one_by_one", camera=self.camera.id, error=str(exc))
         # Only these clips' partial files: `incoming/` may also hold a batch
         # already verified (this is how short files are retried).
         for clip in clips:
@@ -435,7 +433,7 @@ class BackupRun:
                 else:
                     self.db.record_failure(clip.id, failed[clip])
         if lost:
-            logger.warning("backup.clips_lost", camera=self.camera.alias, count=lost)
+            logger.warning("backup.clips_lost", camera=self.camera.id, count=lost)
         return lost
 
     def _commit(
@@ -449,7 +447,7 @@ class BackupRun:
         summary = self.restic.backup(self.batch_dir, timeout=600 + size / _MIN_UPLOAD_RATE)
         upload_secs = time.monotonic() - started
         self.db.mark_backed_up(
-            self.camera.alias,
+            self.camera.id,
             self.destination,
             summary["snapshot_id"],
             datetime.now(UTC),
@@ -467,7 +465,7 @@ class BackupRun:
                 leftover.rmdir()
         logger.info(
             "backup.batch_done",
-            camera=self.camera.alias,
+            camera=self.camera.id,
             clips=len(staged),
             bytes=size,
             snapshot=summary["snapshot_id"][:8],
@@ -477,11 +475,11 @@ class BackupRun:
         return len(staged), size
 
     def _write_manifest(self, staged: dict[int, Path]) -> None:
-        rows = self.db.index_rows(self.camera.alias, staged)
+        rows = self.db.index_rows(self.camera.id, staged)
         path = self.batch_dir / MANIFEST_DIR / MANIFEST_NAME
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps({"format": 1, "camera": self.camera.alias, "clips": rows}), encoding="utf-8"
+            json.dumps({"format": 1, "camera": self.camera.id, "clips": rows}), encoding="utf-8"
         )
 
     def _rebuild_index(self) -> None:
@@ -491,9 +489,9 @@ class BackupRun:
         newest snapshot's manifest, then record where every snapshot is. Two
         restic calls on top of the listing; if it fails the run fails, so a
         stale index never causes downloads."""
-        alias, dest = self.camera.alias, self.destination
+        cam_id, dest = self.camera.id, self.destination
         snaps = self.restic.snapshots()
-        known = self.db.location_roots(alias, dest)
+        known = self.db.location_roots(cam_id, dest)
         self.state.index_mismatch = not snaps and bool(known)
         if not (any(s.root not in known for s in snaps)):
             return
@@ -517,10 +515,10 @@ class BackupRun:
             for c in data["clips"]
             if c["state"] != "backed_up" or c["snapshot_id"] or c["path"] in present
         ]
-        imported = self.db.import_index(alias, latest.root, iso(latest.time), rows)
-        self.db.set_locations(alias, dest, [(sn.root, sn.id, sn.time) for sn in snaps])
-        expired = self.db.expire_unlocated(alias)
-        logger.info("backup.index_rebuilt", camera=alias, clips=imported, expired=expired)
+        imported = self.db.import_index(cam_id, latest.root, iso(latest.time), rows)
+        self.db.set_locations(cam_id, dest, [(sn.root, sn.id, sn.time) for sn in snaps])
+        expired = self.db.expire_unlocated(cam_id)
+        logger.info("backup.index_rebuilt", camera=cam_id, clips=imported, expired=expired)
 
 
 def pick(pending: list[Clip], now: datetime, interval: timedelta) -> list[Clip]:

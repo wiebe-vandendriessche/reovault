@@ -4,47 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Activity
-         * @description Recent runs, clips that keep failing, and clips lost in the last week.
-         */
-        get: operations["activity_api_v1_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/activity/runs/{run_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Run Detail
-         * @description One backup run: the batches it uploaded, and each clip it backed up,
-         *     failed on or found lost. Read from the index (no destination contacted).
-         */
-        get: operations["run_detail_api_v1_activity_runs__run_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -131,7 +90,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cameras/{alias}": {
+    "/api/v1/cameras/{cam_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -140,22 +99,21 @@ export interface paths {
         };
         get?: never;
         /** Edit Camera */
-        put: operations["edit_camera_api_v1_cameras__alias__put"];
+        put: operations["edit_camera_api_v1_cameras__cam_id__put"];
         post?: never;
         /**
          * Remove Camera
-         * @description Stops backing a camera up and drops it from reovault.toml. What is
-         *     already backed up stays in every destination, and re-adding the same alias
-         *     brings it all back. With `registry`, a real camera is also removed from
-         *     reolink-cli's registry (its stored password goes with it).
+         * @description Stops backing a camera up and drops it (with its password) from
+         *     reovault.toml. What is already backed up stays in every destination, and
+         *     adding a camera with the same id again brings it all back.
          */
-        delete: operations["remove_camera_api_v1_cameras__alias__delete"];
+        delete: operations["remove_camera_api_v1_cameras__cam_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cameras/{alias}/run": {
+    "/api/v1/cameras/{cam_id}/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -165,14 +123,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Run Now */
-        post: operations["run_now_api_v1_cameras__alias__run_post"];
+        post: operations["run_now_api_v1_cameras__cam_id__run_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cameras/{alias}/stop": {
+    "/api/v1/cameras/{cam_id}/stop": {
         parameters: {
             query?: never;
             header?: never;
@@ -185,7 +143,7 @@ export interface paths {
          * Stop
          * @description Stops after the batch in flight; nothing finished is undone.
          */
-        post: operations["stop_api_v1_cameras__alias__stop_post"];
+        post: operations["stop_api_v1_cameras__cam_id__stop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -577,6 +535,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity
+         * @description Recent runs, clips that keep failing, and clips lost in the last week.
+         */
+        get: operations["activity_api_v1_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Detail
+         * @description One backup run: the batches it uploaded, and each clip it backed up,
+         *     failed on or found lost. Read from the index (no destination contacted).
+         */
+        get: operations["run_detail_api_v1_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -649,8 +648,6 @@ export interface components {
         };
         /** AddCameraIn */
         AddCameraIn: {
-            /** Alias */
-            alias: string;
             /**
              * Demo
              * @default false
@@ -658,14 +655,19 @@ export interface components {
             demo: boolean;
             /** Host */
             host?: string | null;
+            /** Id */
+            id: string;
             /** Name */
             name?: string | null;
             /** Password */
             password?: string | null;
             /** Timezone */
             timezone: string;
-            /** User */
-            user?: string | null;
+            /**
+             * User
+             * @default admin
+             */
+            user: string;
         };
         /** AlertRules */
         AlertRules: {
@@ -752,8 +754,6 @@ export interface components {
         };
         /** CameraOut */
         CameraOut: {
-            /** Alias */
-            alias: string;
             /** Backed Up Bytes */
             backed_up_bytes: number;
             /** Backed Up Clips */
@@ -767,6 +767,10 @@ export interface components {
             eta_seconds: number | null;
             /** Failing Clips */
             failing_clips: number;
+            /** Host */
+            host: string | null;
+            /** Id */
+            id: string;
             last_run: components["schemas"]["RunOut"] | null;
             /** Lost 7D */
             lost_7d: number;
@@ -790,6 +794,8 @@ export interface components {
             timeline?: components["schemas"]["BucketOut"][] | null;
             /** Timezone */
             timezone: string;
+            /** User */
+            user: string;
             /**
              * Verdict
              * @enum {string}
@@ -943,8 +949,8 @@ export interface components {
         };
         /** DiscoveredOut */
         DiscoveredOut: {
-            /** Already Registered */
-            already_registered: boolean;
+            /** Added */
+            added: boolean;
             /** Host */
             host: string;
             /** Model */
@@ -967,10 +973,16 @@ export interface components {
         EditCameraIn: {
             /** Enabled */
             enabled: boolean;
+            /** Host */
+            host?: string | null;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
             /** Timezone */
             timezone: string;
+            /** User */
+            user?: string | null;
         };
         /** EditIn */
         EditIn: {
@@ -1291,75 +1303,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    activity_api_v1_activity_get: {
-        parameters: {
-            query?: {
-                camera?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    run_detail_api_v1_activity_runs__run_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunDetailOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_alerts_api_v1_alerts_get: {
         parameters: {
             query?: never;
@@ -1539,12 +1482,12 @@ export interface operations {
             };
         };
     };
-    edit_camera_api_v1_cameras__alias__put: {
+    edit_camera_api_v1_cameras__cam_id__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                alias: string;
+                cam_id: string;
             };
             cookie?: never;
         };
@@ -1577,16 +1520,21 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
-    remove_camera_api_v1_cameras__alias__delete: {
+    remove_camera_api_v1_cameras__cam_id__delete: {
         parameters: {
-            query?: {
-                registry?: boolean;
-            };
+            query?: never;
             header?: never;
             path: {
-                alias: string;
+                cam_id: string;
             };
             cookie?: never;
         };
@@ -1624,21 +1572,14 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
-    run_now_api_v1_cameras__alias__run_post: {
+    run_now_api_v1_cameras__cam_id__run_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                alias: string;
+                cam_id: string;
             };
             cookie?: never;
         };
@@ -1671,12 +1612,12 @@ export interface operations {
             };
         };
     };
-    stop_api_v1_cameras__alias__stop_post: {
+    stop_api_v1_cameras__cam_id__stop_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                alias: string;
+                cam_id: string;
             };
             cookie?: never;
         };
@@ -2133,8 +2074,8 @@ export interface operations {
         parameters: {
             query: {
                 cameras: string;
-                from: string;
-                to: string;
+                start: string;
+                end: string;
                 types?: string;
             };
             header?: never;
@@ -2167,8 +2108,8 @@ export interface operations {
         parameters: {
             query: {
                 cameras: string;
-                from: string;
-                to: string;
+                start: string;
+                end: string;
                 types?: string;
             };
             header?: never;
@@ -2413,6 +2354,75 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    activity_api_v1_runs_get: {
+        parameters: {
+            query?: {
+                camera?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_detail_api_v1_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetailOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

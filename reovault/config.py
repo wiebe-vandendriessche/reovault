@@ -1,9 +1,9 @@
 """Configuration: `reovault.toml` (or `$REOVAULT_CONFIG_FILE`) merged with
 `REOVAULT_*` environment variables, which always win over the file.
 
-No secrets live here. The restic repository password comes from
-`RESTIC_PASSWORD_FILE` (a Docker secret) and camera passwords live in
-reolink-cli's own encrypted registry; alert channel secrets are file paths.
+Camera passwords live here, next to each camera's address: keep the file
+private (0600). The restic password is its own file (`RESTIC_PASSWORD_FILE`),
+and alert channel secrets are file paths.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -27,20 +27,30 @@ _config_file_override: ContextVar[str | None] = ContextVar("_config_file_overrid
 
 
 class CameraConfig(BaseModel):
-    alias: str
-    """The `reolink-cli device add <alias>` name; also the restic repo name."""
+    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    """Names the camera's restic repository (`<repository>/<id>`): never changes."""
     name: str | None = None
     timezone: str
     """IANA zone the camera's clock runs in; its search times are local."""
+    host: str | None = None
+    """The camera's IP address or host name."""
+    user: str = "admin"
+    password: SecretStr | None = None
     enabled: bool = True
     demo: bool = False
     """A pretend camera with a sliding week of tiny clips, for trying
-    ReoVault without hardware. Needs no reolink-cli registry entry."""
+    ReoVault without hardware. Needs no host or password."""
+
+    @model_validator(mode="after")
+    def _reachable(self) -> CameraConfig:
+        if not self.demo and not self.host:
+            raise ValueError(f"camera {self.id!r} needs a host (or demo = true)")
+        return self
 
 
 class DestinationConfig(BaseModel):
     """Where backups go. Each camera gets its own restic repository at
-    `<repository>/<alias>`. One enabled destination is the *primary*: clips are
+    `<repository>/<cam_id>`. One enabled destination is the *primary*: clips are
     backed up there first. The others receive copies of its snapshots."""
 
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
@@ -140,8 +150,8 @@ class Settings(BaseSettings):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
 
-    def camera(self, alias: str) -> CameraConfig | None:
-        return next((c for c in self.cameras if c.alias == alias), None)
+    def camera(self, cam_id: str) -> CameraConfig | None:
+        return next((c for c in self.cameras if c.id == cam_id), None)
 
     @model_validator(mode="after")
     def _destinations_make_sense(self) -> Settings:

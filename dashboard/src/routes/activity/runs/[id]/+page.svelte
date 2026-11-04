@@ -14,7 +14,7 @@
 	import { stateLabel, triggerLabel } from '#lib/labels.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 
-	const detail = query(() => api<RunDetail>(`/activity/runs/${page.params.id}`));
+	const detail = query(() => api<RunDetail>(`/runs/${page.params.id}`));
 	const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const level = { backed_up: 'ok', failed: 'bad', lost: 'warn' } as const;
 </script>

@@ -52,7 +52,7 @@
 		{ label: 'Last 7 days', run: () => setRange(addDays(today, -6), today) }
 	]);
 
-	const params = $derived({ cameras: picked.join(','), from, to, types: kinds.join(',') });
+	const params = $derived({ cameras: picked.join(','), start: from, end: to, types: kinds.join(',') });
 	const ready = $derived(picked.length > 0 && !!from && !!to && from < to);
 	$effect(() => {
 		const p = params;
@@ -76,8 +76,8 @@
 	const slow = $derived(preview?.cameras.reduce((n, c) => n + c.on_slow_destination, 0) ?? 0);
 	const away = $derived(preview?.cameras.reduce((n, c) => n + c.on_unconnected_destination, 0) ?? 0);
 
-	function toggle(alias: string) {
-		picked = picked.includes(alias) ? picked.filter((a) => a !== alias) : [...picked, alias];
+	function toggle(camId: string) {
+		picked = picked.includes(camId) ? picked.filter((a) => a !== camId) : [...picked, camId];
 	}
 </script>
 
@@ -106,10 +106,10 @@
 			{#if cameras.length > 1}
 				<fieldset class="flex flex-wrap gap-x-4 gap-y-2">
 					<legend class="text-sm font-medium">Cameras</legend>
-					{#each cameras as c (c.alias)}
+					{#each cameras as c (c.id)}
 						<label class="flex items-center gap-2 text-sm">
-							<input type="checkbox" checked={picked.includes(c.alias)} onchange={() => toggle(c.alias)} />
-							{c.name || c.alias}
+							<input type="checkbox" checked={picked.includes(c.id)} onchange={() => toggle(c.id)} />
+							{c.name || c.id}
 						</label>
 					{/each}
 				</fieldset>

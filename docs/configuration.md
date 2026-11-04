@@ -23,9 +23,12 @@ startup: change them in the file, then restart.
 
 | Field | Default | |
 |---|---|---|
-| `alias` | required | The `reolink-cli device add <alias>` name, and the name of the camera's restic repository. Never changes. |
-| `name` | alias | Shown in the dashboard. |
+| `id` | required | Names the camera's restic repository (`<repository>/<id>`). Letters, digits, `-` and `_`. Never changes. |
+| `name` | id | Shown in the dashboard. |
 | `timezone` | required | The IANA zone the camera's clock runs in, e.g. `Europe/Brussels`. |
+| `host` | required | The camera's IP address (a `:port` suffix is allowed). Give the camera a DHCP reservation. |
+| `user` | `admin` | The camera login. |
+| `password` | none | The camera password. Keep `reovault.toml` private (0600); ReoVault writes it that way. |
 | `enabled` | `true` | `false` stops backing it up; its backups stay. |
 | `demo` | `false` | A pretend camera with a sliding week of tiny clips, for trying ReoVault without hardware. |
 
@@ -33,13 +36,13 @@ startup: change them in the file, then restart.
 
 | Field | Default | |
 |---|---|---|
-| `password_file` | `$RESTIC_PASSWORD_FILE` | The restic password. The image reads it from the `restic_password` Docker secret. |
+| `password_file` | `$RESTIC_PASSWORD_FILE` | The restic password. The image reads `restic-password` next to `compose.yaml`. |
 | `interval_minutes` | `60` | Time between backup runs. A run that takes longer just continues. |
 
 ## `[[destinations]]`
 
 Where backups go. Each camera gets its own restic repository,
-`<repository>/<alias>`, in every destination. One destination is the
+`<repository>/<id>`, in every destination. One destination is the
 **primary**: cameras back up to it first. Every other one receives **copies**
 of the new snapshots (`restic copy`), so a dead disk or a lost cloud account
 never holds the only copy. Copies run in their own threads: a slow or offline

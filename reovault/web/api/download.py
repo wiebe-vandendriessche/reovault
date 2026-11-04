@@ -10,10 +10,9 @@ import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -27,7 +26,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/download", tags=["download"])
 
 MAX_CLIPS = 10_000
-FromQ = Annotated[str, Query(alias="from")]
 # ponytail: one zip at a time, process-wide; each one reads at full speed.
 _zip_lock = threading.Lock()
 
@@ -50,20 +48,20 @@ class _Pick:
     unreachable: int  # backed up, but only on a destination that isn't connected now
 
 
-def _select(st: AppState, cameras: str, from_: str, to: str, types: str) -> list[_Pick]:
-    aliases = [a for a in cameras.split(",") if a]
-    if not aliases:
+def _select(st: AppState, cameras: str, start: str, end: str, types: str) -> list[_Pick]:
+    cam_ids = [a for a in cameras.split(",") if a]
+    if not cam_ids:
         raise HTTPException(422, "Pick at least one camera.")
     wanted = {t for t in types.split(",") if t}
     out: list[_Pick] = []
-    for alias in aliases:
-        cam = camera_or_404(st, alias)
+    for cam_id in cam_ids:
+        cam = camera_or_404(st, cam_id)
         tz = ZoneInfo(cam.timezone)
-        start, end = _instant(from_, tz), _instant(to, tz)
-        if start >= end:
+        lo, hi = _instant(start, tz), _instant(end, tz)
+        if lo >= hi:
             raise HTTPException(422, "The start must be before the end.")
         chosen, slow, unreachable = [], 0, 0
-        for clip in st.db.clips_between(alias, start, end):
+        for clip in st.db.clips_between(cam_id, lo, hi):
             if clip.state != "backed_up" or not clip.path or not _types_match(clip, wanted):
                 continue
             where = locate(st, clip)
@@ -93,12 +91,12 @@ class DownloadPreviewOut(BaseModel):
 
 
 @router.get("/preview")
-def preview(cameras: str, from_: FromQ, to: str, st: State, types: str = "") -> DownloadPreviewOut:
+def preview(cameras: str, start: str, end: str, st: State, types: str = "") -> DownloadPreviewOut:
     """How much a download would hold, so the dialog can show it first."""
-    picks = _select(st, cameras, from_, to, types)
+    picks = _select(st, cameras, start, end, types)
     cams = [
         PickOut(
-            camera=p.camera.alias,
+            camera=p.camera.id,
             clips=len(p.clips),
             bytes=sum(c.size or 0 for c in p.clips),
             on_slow_destination=p.slow,
@@ -113,9 +111,9 @@ def preview(cameras: str, from_: FromQ, to: str, st: State, types: str = "") -> 
 
 @router.get("/zip", response_class=StreamingResponse, responses={409: {}, 422: {}})
 def download_zip(
-    cameras: str, from_: FromQ, to: str, st: State, types: str = ""
+    cameras: str, start: str, end: str, st: State, types: str = ""
 ) -> StreamingResponse:
-    picks = [p for p in _select(st, cameras, from_, to, types) if p.clips]
+    picks = [p for p in _select(st, cameras, start, end, types) if p.clips]
     if not picks:
         raise HTTPException(422, "Nothing backed up in that span.")
     if not _zip_lock.acquire(blocking=False):
@@ -133,7 +131,7 @@ def download_zip(
             with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_STORED) as zf:
                 for pick in picks:
                     tz = ZoneInfo(pick.camera.timezone)
-                    folder = safe_filename(pick.camera.alias)[:-4]
+                    folder = safe_filename(pick.camera.id)[:-4]
                     for c in pick.clips:
                         local = parse_iso(c.start_utc).astimezone(tz)
                         info = zipfile.ZipInfo(
@@ -151,7 +149,7 @@ def download_zip(
         finally:
             release()
 
-    first, last = from_[:10], to[:10]
+    first, last = start[:10], end[:10]
     name = f"reovault_{first}_{last}.zip" if first != last else f"reovault_{first}.zip"
     stream = body()
     weakref.finalize(stream, release)  # a never-started generator never runs `finally`

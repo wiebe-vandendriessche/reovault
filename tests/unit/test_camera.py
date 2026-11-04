@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr
 
 from reovault.camera import ReolinkCamera
 from reovault.tools import ToolError
@@ -49,7 +50,13 @@ def _stub(tmp_path: Path, script: str) -> str:
 
 def _camera(binary: str) -> ReolinkCamera:
     return ReolinkCamera(
-        alias="doorbell", timezone="Europe/Brussels", binary=binary, gateway=_NoGateway()
+        id="doorbell",
+        timezone="Europe/Brussels",
+        host="192.0.2.10",
+        user="admin",
+        password=SecretStr("pw-never-on-argv"),
+        binary=binary,
+        gateway=_NoGateway(),
     )
 
 
@@ -118,23 +125,29 @@ def test_discover_reads_model_and_name_from_scopes(tmp_path):
     from reovault.camera import discover
 
     found_json = (FIXTURES / "discover.json").read_text()
-    list_json = (FIXTURES / "device_list.json").read_text()
-    script = f"print({list_json!r} if 'list' in sys.argv else {found_json!r})\n"
-    found = discover(_stub(tmp_path, script))
+    found = discover(_stub(tmp_path, f"print({found_json!r})\n"), known_hosts=set())
     assert found, "the fixture holds at least one camera"
     first = found[0]
     assert first.host and first.model  # from the onvif hardware scope
-    registered = {d.host for d in found if d.already_registered}
-    assert registered <= {d.host for d in found}
+    assert not any(d.added for d in found)
+    again = discover(_stub(tmp_path, f"print({found_json!r})\n"), known_hosts={first.host})
+    assert again[0].added  # a configured camera's address is marked
 
 
-def test_registered_aliases_never_carry_a_password(tmp_path):
-    from reovault.camera import registered_aliases
-
-    fixture = (FIXTURES / "device_list.json").read_text()
-    aliases = registered_aliases(_stub(tmp_path, f"print({fixture!r})\n"))
-    assert aliases and all(isinstance(a, str) for a in aliases)
-    assert "password" not in fixture.lower().replace("haspassword", "")
+def test_the_camera_password_goes_over_stdin_never_argv(tmp_path):
+    seen = tmp_path / "seen.json"
+    script = (
+        f"pathlib.Path({str(seen)!r}).write_text(json.dumps("
+        "{'argv': sys.argv, 'stdin': sys.stdin.read()}))\n"
+        "print(json.dumps({'ok': True, 'data': {'items': [{'totalGB': 1}]}}))\n"
+    )
+    _camera(_stub(tmp_path, script)).storage()
+    call = json.loads(seen.read_text())
+    assert "pw-never-on-argv" not in " ".join(call["argv"])
+    assert call["stdin"].strip() == "pw-never-on-argv"
+    assert call["argv"][
+        call["argv"].index("--host") : call["argv"].index("--password-stdin") + 1
+    ] == ["--host", "192.0.2.10", "--user", "admin", "--password-stdin"]
 
 
 @pytest.mark.parametrize(
@@ -173,3 +186,12 @@ def test_a_short_call_that_times_out_is_unreachable_a_long_download_is_not(tmp_p
     with pytest.raises(ToolError) as err:
         cam._call(["vod", "download", "x"], timeout=2)  # a big download is just slow
     assert err.value.unreachable is False
+
+
+def test_an_error_envelope_on_stderr_becomes_its_plain_message(tmp_path):
+    script = (
+        "sys.stderr.write(json.dumps({'ok': False, 'error': {'code': 'AUTH_ERROR', "
+        "'message': 'login failed'}})); sys.exit(3)\n"
+    )
+    with pytest.raises(ToolError, match="^login failed$"):
+        _camera(_stub(tmp_path, script)).storage()

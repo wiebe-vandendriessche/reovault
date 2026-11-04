@@ -248,7 +248,11 @@ class ConfigStore:
             mutate(doc)
             new_text = tomlkit.dumps(doc)
             tmp = self.path.with_name(f".{self.path.name}.tmp")
-            tmp.write_text(new_text, encoding="utf-8")
+            # Owner-only: the file holds the camera passwords.
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(new_text)
+            tmp.chmod(0o600)  # an existing tmp keeps its old mode otherwise
             try:
                 loaded = load_settings(tmp)
             except (tomllib.TOMLDecodeError, ValidationError) as exc:
@@ -257,8 +261,9 @@ class ConfigStore:
             with open(tmp, "rb") as fh:
                 os.fsync(fh.fileno())
             if self.path.exists():
-                shutil.copymode(self.path, tmp)
-                shutil.copyfile(self.path, self.path.with_name(self.path.name + ".bak"))
+                bak = self.path.with_name(self.path.name + ".bak")
+                shutil.copyfile(self.path, bak)
+                bak.chmod(0o600)
             os.replace(tmp, self.path)
             self.last_origin = "dashboard"
             self._apply(loaded, _hash(new_text))
@@ -341,21 +346,21 @@ def camera_entries(doc: TOMLDocument) -> AoT:
     return entries
 
 
-def camera_entry(doc: TOMLDocument, alias: str) -> Table | None:
+def camera_entry(doc: TOMLDocument, cam_id: str) -> Table | None:
     for entry in camera_entries(doc):
-        if entry.get("alias") == alias:
+        if entry.get("id") == cam_id:
             found: Table = entry
             return found
     return None
 
 
-def upsert_camera_entry(doc: TOMLDocument, alias: str, **values: Any) -> Table:
-    entry = camera_entry(doc, alias)
+def upsert_camera_entry(doc: TOMLDocument, cam_id: str, **values: Any) -> Table:
+    entry = camera_entry(doc, cam_id)
     if entry is None:
         entry = tomlkit.table()
-        entry["alias"] = alias
+        entry["id"] = cam_id
         camera_entries(doc).append(entry)
-        entry = camera_entry(doc, alias)
+        entry = camera_entry(doc, cam_id)
         assert entry is not None
     from reovault.config import CameraConfig
 
@@ -364,11 +369,11 @@ def upsert_camera_entry(doc: TOMLDocument, alias: str, **values: Any) -> Table:
     return entry
 
 
-def remove_camera_entry(doc: TOMLDocument, alias: str) -> bool:
+def remove_camera_entry(doc: TOMLDocument, cam_id: str) -> bool:
     """Drops a camera's `[[cameras]]` entry. False when there was none."""
     entries = camera_entries(doc)
     for i, entry in enumerate(entries):
-        if entry.get("alias") == alias:
+        if entry.get("id") == cam_id:
             del entries[i]
             return True
     return False

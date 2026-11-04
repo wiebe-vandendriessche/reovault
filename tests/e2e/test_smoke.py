@@ -90,7 +90,24 @@ def test_a_range_download_and_a_run_detail(browser: Browser, demo) -> None:  # n
     page.wait_for_url("**/activity/runs/*")
     expect(page.get_by_text("Batches", exact=True)).to_be_visible()
     page.goto(f"{demo.url}/settings?tab=destinations")
-    expect(page.get_by_role("button", name="Connect")).to_be_visible()
+    expect(page.get_by_role("button", name="Connect", exact=True)).to_be_visible()
+    context.close()
+    assert problems == []
+
+
+def test_the_activity_camera_filter_can_go_back_to_all_cameras(browser: Browser, demo) -> None:  # noqa: ANN001
+    context = browser.new_context(viewport=VIEWPORTS["desktop"])
+    page = context.new_page()
+    problems = _watch(page)
+    _login(page, demo)
+    page.goto(f"{demo.url}/activity")
+    picker = page.get_by_label("Camera")
+    expect(page.get_by_role("columnheader", name="Camera")).to_be_visible()  # all cameras
+    picker.select_option(index=1)  # one camera: its own column goes away
+    expect(page.get_by_role("columnheader", name="Camera")).to_have_count(0)
+    picker.select_option("")  # and back to all of them
+    expect(page.get_by_role("columnheader", name="Camera")).to_be_visible()
+    assert "camera=" not in page.url
     context.close()
     assert problems == []
 
@@ -108,11 +125,11 @@ def test_first_run_setup_creates_the_login(browser: Browser, fresh) -> None:  # 
     page.fill("#password", "a long enough passphrase")
     page.fill("#again", "a long enough passphrase")
     page.click("button[type=submit]")
-    assert page.get_by_text("setup code is wrong").is_visible()  # a wrong code is refused
+    expect(page.get_by_text("setup code is wrong")).to_be_visible()  # a wrong code is refused
     page.fill("#code", fresh.setup_code())
     page.click("button[type=submit]")
     page.wait_for_url(lambda url: "/setup" not in url)
-    assert page.locator("h1").first.is_visible()
+    expect(page.locator("h1").first).to_be_visible()
     # A second browser signs in with what was just chosen.
     other = browser.new_context(viewport=VIEWPORTS["desktop"])
     page2 = other.new_page()

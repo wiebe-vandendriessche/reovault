@@ -8,7 +8,7 @@
 		value,
 		onchange,
 		all = false
-	}: { cameras: Camera[]; value: string; onchange: (alias: string) => void; all?: boolean } = $props();
+	}: { cameras: Camera[]; value: string; onchange: (id: string) => void; all?: boolean } = $props();
 </script>
 
 <NativeSelect.Root
@@ -18,7 +18,7 @@
 	class="min-w-44"
 >
 	{#if all}<NativeSelect.Option value="">All cameras</NativeSelect.Option>{/if}
-	{#each cameras as c (c.alias)}
-		<NativeSelect.Option value={c.alias}>{c.name || c.alias}</NativeSelect.Option>
+	{#each cameras as c (c.id)}
+		<NativeSelect.Option value={c.id}>{c.name || c.id}</NativeSelect.Option>
 	{/each}
 </NativeSelect.Root>

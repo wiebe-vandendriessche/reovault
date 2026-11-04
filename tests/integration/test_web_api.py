@@ -18,7 +18,7 @@ from tests.integration.conftest import login, make_runtime
 def backed_up(env, web_settings, web_password_hash):
     rt = make_runtime(env, web_settings)
     worker = Worker("demo", rt.settings, rt.db, rt.gateway, rt.bus.publish)
-    rt.workers.by_alias["demo"] = worker  # registered, but no thread: runs inline
+    rt.workers.by_id["demo"] = worker  # registered, but no thread: runs inline
     worker._backup(rt.settings(), rt.settings().camera("demo"))
     # One clip the card overwrote before it could be backed up.
     from datetime import UTC, datetime, timedelta
@@ -67,7 +67,7 @@ def test_a_type_filter_narrows_the_day(backed_up):
 
 def test_lost_clips_show_in_activity_and_cant_be_downloaded(backed_up):
     _rt, client = backed_up
-    act = client.get("/api/v1/activity?camera=demo").json()
+    act = client.get("/api/v1/runs?camera=demo").json()
     assert act["runs"] and act["lost"]
     lost = act["lost"][0]
     assert client.get(f"/api/v1/clips/{lost['id']}/download").status_code == 404
@@ -76,20 +76,45 @@ def test_lost_clips_show_in_activity_and_cant_be_downloaded(backed_up):
 def test_adding_cameras(backed_up, env):
     _rt, client = backed_up
     r = client.post(
-        "/api/v1/cameras", json={"alias": "yard", "timezone": "Europe/Brussels", "demo": True}
+        "/api/v1/cameras", json={"id": "yard", "timezone": "Europe/Brussels", "demo": True}
     )
     assert r.status_code == 201, r.text
-    assert [c["alias"] for c in r.json()] == ["demo", "yard"]
+    assert [c["id"] for c in r.json()] == ["demo", "yard"]
     assert tomllib.loads(env.toml.read_text())["cameras"][1] == {
-        "alias": "yard",
+        "id": "yard",
         "timezone": "Europe/Brussels",
         "demo": True,
     }
-    missing_creds = {"alias": "real", "timezone": "Europe/Brussels"}
+    missing_creds = {"id": "real", "timezone": "Europe/Brussels"}
     assert client.post("/api/v1/cameras", json=missing_creds).status_code == 422
-    bad_tz = {"alias": "x", "timezone": "Mars/Base", "demo": True}
+    bad_tz = {"id": "x", "timezone": "Mars/Base", "demo": True}
     assert client.post("/api/v1/cameras", json=bad_tz).status_code == 422
-    assert client.post("/api/v1/cameras", json={**bad_tz, "alias": "../etc"}).status_code == 422
+    assert client.post("/api/v1/cameras", json={**bad_tz, "id": "../etc"}).status_code == 422
+
+
+def test_a_real_camera_is_saved_only_after_a_login_and_its_password_never_comes_back(
+    backed_up, env, monkeypatch
+):
+    from reovault import camera as cam_mod
+
+    _rt, client = backed_up
+    body = {"id": "gate", "timezone": "UTC", "host": "192.0.2.7", "password": "s3cret-pw"}
+
+    def refuse(*_a, **_k):
+        raise cam_mod.ToolError("login failed: wrong password")
+
+    monkeypatch.setattr(cam_mod, "check", refuse)
+    r = client.post("/api/v1/cameras", json=body)
+    assert r.status_code == 502 and "wrong password" in r.text
+    assert "gate" not in env.toml.read_text()  # nothing saved
+
+    monkeypatch.setattr(cam_mod, "check", lambda *_a, **_k: None)
+    r = client.post("/api/v1/cameras", json=body)
+    assert r.status_code == 201, r.text
+    entry = tomllib.loads(env.toml.read_text())["cameras"][-1]
+    assert (entry["host"], entry["password"]) == ("192.0.2.7", "s3cret-pw")
+    assert "s3cret-pw" not in client.get("/api/v1/cameras").text
+    assert "s3cret-pw" not in client.get("/api/v1/config").text
 
 
 def test_run_now_and_stop_need_a_running_worker(backed_up):
@@ -138,10 +163,10 @@ def test_the_overview_lists_destinations_a_timeline_and_the_password_notice(back
 def test_a_run_shows_its_batches_and_clips(backed_up):
     rt, client = backed_up
     (run,) = rt.db.runs("demo")
-    detail = client.get(f"/api/v1/activity/runs/{run.id}").json()
+    detail = client.get(f"/api/v1/runs/{run.id}").json()
     assert detail["run"]["outcome"] == "ok"
     assert detail["batches"] and detail["batches"][0]["clips"] > 0
     assert detail["batches"][0]["upload_secs"] is not None
     assert {c["outcome"] for c in detail["clips"]} == {"backed_up"}
     assert detail["truncated"] is (detail["run"]["clips"] > 500)
-    assert client.get("/api/v1/activity/runs/99999").status_code == 404
+    assert client.get("/api/v1/runs/99999").status_code == 404

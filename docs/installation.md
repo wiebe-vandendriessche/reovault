@@ -10,19 +10,23 @@ pinned `reolink-cli`, `restic` and `rclone`.
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-mkdir -p config/rclone data reolink-cli secrets
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o config/reovault.toml
+mkdir -p data
+curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
+touch rclone.conf && chmod 600 reovault.toml rclone.conf
 ```
 
-Create the folders before the first `docker compose` command: otherwise
-Docker creates them as root and the container (uid 1000) can't write to them.
+That's the whole layout: `compose.yaml`, `reovault.toml`, `rclone.conf` and
+`restic-password` (next step) in one folder, and `data/` for everything
+ReoVault writes. Create `data/` before the first `docker compose` command:
+otherwise Docker creates it as root and the container (uid 1000) can't write to
+it.
 
 1. **The restic password.** It encrypts every backup. Generate one and keep a
    copy in your password manager: without it, nothing can be restored.
 
    ```bash
-   openssl rand -base64 32 | tr -d '\n' > secrets/restic_password.txt
-   chmod 600 secrets/restic_password.txt
+   openssl rand -base64 32 | tr -d '\n' > restic-password
+   chmod 600 restic-password
    ```
 
 2. **Start it.**
@@ -65,9 +69,9 @@ Docker creates them as root and the container (uid 1000) can't write to them.
    [Restore without ReoVault](restore-without-reovault.md).
 
 6. **Cameras.** Add them on the dashboard's Cameras page (port 8080): find
-   them on your network, enter the camera's user and password (they go
-   straight into reolink-cli's encrypted registry, never into ReoVault), and
-   pick its timezone. A `demo` camera needs no hardware.
+   them on your network, enter the camera's user and password and pick its
+   timezone. ReoVault logs in once to check, then saves the camera in
+   `reovault.toml`. A `demo` camera needs no hardware.
 
 `compose.yaml` supports two ways to reach the dashboard: behind a reverse
 proxy (the default, no port published), or a direct port on your LAN/VPN. See
@@ -108,16 +112,16 @@ In `compose.yaml`, comment out `image:` and uncomment `build: .`, then
 Alerts go out when backups keep failing, clips are about to be overwritten
 before they're backed up, clips keep failing to download, or the weekly check
 finds damage. Configure one or more channels under `[alerts]` in
-`config/reovault.toml`; secrets go in files mounted as Docker secrets:
+`reovault.toml`; secrets go in files next to it (the folder is mounted at `/config`):
 
 ```toml
 [alerts]
 ntfy_url = "https://ntfy.sh/an-unguessable-topic"
-# ntfy_token_file = "/run/secrets/ntfy_token"
-# webhook_url_file = "/run/secrets/alert_webhook"   # Slack and Discord URLs work as-is
+# ntfy_token_file = "/config/ntfy-token"
+# webhook_url_file = "/config/alert-webhook"   # Slack and Discord URLs work as-is
 # smtp_host = "smtp.example.com"
 # smtp_user = "reovault@example.com"
-# smtp_password_file = "/run/secrets/smtp_password"
+# smtp_password_file = "/config/smtp-password"
 # smtp_to = ["you@example.com"]
 ```
 

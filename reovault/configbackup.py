@@ -1,8 +1,8 @@
 """ReoVault's own config, backed up next to the footage.
 
-Footage is only half of a recovery: without `reovault.toml`, `rclone.conf` and
-the camera registry a rebuilt server doesn't know where to look or how to log
-in. Whenever those files change, they are backed up into each destination's
+Footage is only half of a recovery: without `reovault.toml` (the cameras, with
+their passwords) and `rclone.conf` a rebuilt server doesn't know where to look
+or how to log in. Whenever those files change, they are backed up into each destination's
 `reovault-config` repository (restic-encrypted like everything else, same
 password), keeping the last 30 versions. To recover: restore that repository
 into /config (see docs/restore-without-reovault.md), start ReoVault, and the
@@ -25,7 +25,7 @@ from reovault.tools import ToolError
 
 logger = get_logger(__name__)
 
-REPO = "reovault-config"  # the "camera alias" of this repository
+REPO = "reovault-config"  # sits next to the camera repositories, so no camera id may be this
 KEEP_LAST = 30
 EVERY_SECS = 3600
 

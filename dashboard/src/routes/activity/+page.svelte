@@ -23,10 +23,10 @@
 	});
 	const activity = query(() => {
 		void live.activity;
-		return api<Activity>('/activity', { query: { camera: camera || undefined } });
+		return api<Activity>('/runs', { query: { camera: camera || undefined } });
 	});
 
-	const names = $derived(new Map((cameras.data ?? []).map((c) => [c.alias, c.name || c.alias])));
+	const names = $derived(new Map((cameras.data ?? []).map((c) => [c.id, c.name || c.id])));
 	const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const took = (a: string, b: string | null | undefined) =>
 		b ? duration((Date.parse(b) - Date.parse(a)) / 1000) : '-';
@@ -41,7 +41,7 @@
 				all
 				cameras={cameras.data}
 				value={camera}
-				onchange={(c) => goto(c ? `?camera=${encodeURIComponent(c)}` : '?', { reset: false })}
+				onchange={(c) => goto(c ? `/activity?camera=${encodeURIComponent(c)}` : '/activity', { reset: false })}
 			/>
 		{/if}
 	{/snippet}
@@ -64,7 +64,7 @@
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-2">
-					{#each a.failing as clip (clip.id)}<ClipRow {clip} withDate />{/each}
+					{#each a.failing as clip (clip.id)}<ClipRow {clip} withDate label={camera ? undefined : names.get(clip.camera) ?? clip.camera} />{/each}
 				</Card.Content>
 			</Card.Root>
 		{/if}
@@ -79,7 +79,7 @@
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-2">
-					{#each a.lost as clip (clip.id)}<ClipRow {clip} withDate />{/each}
+					{#each a.lost as clip (clip.id)}<ClipRow {clip} withDate label={camera ? undefined : names.get(clip.camera) ?? clip.camera} />{/each}
 				</Card.Content>
 			</Card.Root>
 		{/if}

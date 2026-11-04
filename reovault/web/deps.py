@@ -57,8 +57,8 @@ def get_state(request: Request) -> AppState:
 State = Annotated[AppState, Depends(get_state)]
 
 
-def camera_or_404(st: AppState, alias: str) -> CameraConfig:
-    cam = st.settings.camera(alias)
+def camera_or_404(st: AppState, cam_id: str) -> CameraConfig:
+    cam = st.settings.camera(cam_id)
     if cam is None:
         raise HTTPException(404, "Unknown camera.")
     return cam

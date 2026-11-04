@@ -35,8 +35,9 @@ def env(tmp_path, monkeypatch):
         toml.write_text(
             f"""
 [[cameras]]
-alias = "cam"
+id = "cam"
 timezone = "Europe/Brussels"
+host = "192.0.2.10"
 
 [[destinations]]
 name = "local"

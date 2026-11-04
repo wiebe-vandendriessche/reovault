@@ -10,7 +10,7 @@
 	/** One clip of a day. Only a backed-up clip can be downloaded: it comes
 	 * straight out of restic. Clips still on the SD card play in the Reolink
 	 * app. */
-	let { clip, withDate = false }: { clip: Clip; withDate?: boolean } = $props();
+	let { clip, withDate = false, label }: { clip: Clip; withDate?: boolean; label?: string } = $props();
 
 	const time = $derived(clip.start.slice(11, 19));
 	const when = $derived(withDate ? `${clip.start.slice(0, 10)} ${time}` : time);
@@ -20,6 +20,7 @@
 <div class="rounded-lg border">
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
 		<span class="font-medium tabular-nums">{when}</span>
+		{#if label}<span class="text-muted-foreground text-sm">{label}</span>{/if}
 		<div class="flex flex-wrap gap-1">
 			{#each typesOf(clip.rec_type) as t (t)}<Badge variant="secondary">{typeLabel(t)}</Badge>{/each}
 		</div>

@@ -1,4 +1,4 @@
-"""restic, one repository per camera at `<base>/<alias>`.
+"""restic, one repository per camera at `<base>/<cam_id>`.
 
 Verified with restic 0.19.1 (2026-10-28): exit 10 = repository missing,
 12 = wrong password; `--host` is a per-command flag (backup, forget,
@@ -60,12 +60,12 @@ def _snapshot(raw: dict[str, Any]) -> Snapshot:
 @dataclass(frozen=True, slots=True)
 class Restic:
     binary: str
-    repository: str  # this camera's own repository, `<base>/<alias>`
+    repository: str  # this camera's own repository, `<base>/<cam_id>`
     env: dict[str, str]
 
     @classmethod
-    def for_camera(cls, binary: str, base: str, alias: str, env: dict[str, str]) -> Restic:
-        return cls(binary, f"{base.rstrip('/')}/{alias}", {**os.environ, **env})
+    def for_camera(cls, binary: str, base: str, cam_id: str, env: dict[str, str]) -> Restic:
+        return cls(binary, f"{base.rstrip('/')}/{cam_id}", {**os.environ, **env})
 
     def _run(
         self, *args: str, timeout: float = 600, wait_lock: bool = False

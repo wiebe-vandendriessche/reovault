@@ -98,7 +98,7 @@ from a checkout, with demo cameras and a local restic repository:
 ```bash
 cat > reovault.toml <<'TOML'
 [[cameras]]
-alias = "demo"
+id = "demo"
 timezone = "Europe/Brussels"
 demo = true
 
@@ -124,9 +124,9 @@ uv run reovault daemon                   # backups + API + dashboard on :8080
 # open :8080 and finish setup with the setup.code printed in the log
 ```
 
-For a real camera, install [`reolink-cli`](https://github.com/reolink/reolink-cli),
-register it (`reolink-cli device add <alias> --host <ip> --user admin`) and
-add a `[[cameras]]` entry with that alias. See the
+For a real camera, install [`reolink-cli`](https://github.com/reolink/reolink-cli)
+and add a `[[cameras]]` entry with its `host` and `password` (or add it on the
+dashboard's Cameras page). See the
 [CLI reference](docs/cli-reference.md) for every command.
 
 ## Before implementing Reolink-related behavior

@@ -56,16 +56,13 @@ class Runtime:
 
     def config_files(self) -> dict[str, Path]:
         """What a rebuilt server needs besides the footage (see configbackup.py):
-        the config, the rclone remotes and reolink-cli's camera registry."""
+        the config (cameras and their passwords included) and the rclone remotes."""
         files: dict[str, Path] = {}
         if self.config.path is not None:
             files["reovault.toml"] = self.config.path
         rclone_conf = os.environ.get("RCLONE_CONFIG")
         if rclone_conf:
             files["rclone.conf"] = Path(rclone_conf)
-        registry = Path.home() / ".config" / "reolink-cli"
-        for name in ("aliases.toml", "credentials.key"):
-            files[f"reolink-cli/{name}"] = registry / name
         return files
 
     def scrub_credentials(self, text: str | None) -> str | None:
@@ -107,17 +104,17 @@ class Runtime:
         for cam in settings.cameras:
             if not cam.enabled:
                 continue
-            label = cam.name or cam.alias
-            worker = self.workers.get(cam.alias)
-            status = camera_status(cam.alias, self.db, worker.state if worker else None)
+            label = cam.name or cam.id
+            worker = self.workers.get(cam.id)
+            status = camera_status(cam.id, self.db, worker.state if worker else None)
             # Finished runs only: the one in progress would resolve the alert
             # at the start of every run and reopen it when it fails again.
-            runs = self.db.runs(cam.alias, limit=2, finished=True)
+            runs = self.db.runs(cam.id, limit=2, finished=True)
             if len(runs) == 2 and all(r.outcome == "error" for r in runs):
                 out.append(
                     Condition(
                         "failing",
-                        cam.alias,
+                        cam.id,
                         f"{label}: backups are failing",
                         f"The last two backups of {label} failed: {runs[0].error}",
                     )
@@ -129,19 +126,19 @@ class Runtime:
                     out.append(
                         Condition(
                             "camera_offline",
-                            cam.alias,
+                            cam.id,
                             f"{label}: camera unreachable",
                             f"{label} hasn't answered for {int(waited.total_seconds() // 60)} "
                             "minutes. Is it powered and on the network?",
                         )
                     )
             if status.verdict == "at_risk":
-                out.append(Condition("at_risk", cam.alias, f"{label}: clips at risk", status.text))
+                out.append(Condition("at_risk", cam.id, f"{label}: clips at risk", status.text))
             if status.failing_clips:
                 out.append(
                     Condition(
                         "clips_keep_failing",
-                        cam.alias,
+                        cam.id,
                         f"{label}: clips keep failing",
                         f"{status.failing_clips} clips from {label} failed to download "
                         "several times; they are retried once a day.",
@@ -151,7 +148,7 @@ class Runtime:
                 out.append(
                     Condition(
                         "check_errors",
-                        cam.alias,
+                        cam.id,
                         f"{label}: backup check found errors",
                         f"restic check found {worker.health.check_errors} errors in "
                         f"{label}'s repository. Run `restic check` on it and repair it.",
@@ -161,7 +158,7 @@ class Runtime:
                 out.append(
                     Condition(
                         "index_mismatch",
-                        cam.alias,
+                        cam.id,
                         f"{label}: backups not found",
                         f"The destination answered with no snapshots for {label}, but clips were "
                         "backed up there. Check that the right destination is configured.",
@@ -214,14 +211,14 @@ class Runtime:
                         )
                     )
             for cam in settings.cameras if role == "copy" else []:
-                bad = int(self.db.get_setting(f"check_errors:{dest.name}:{cam.alias}") or 0)
+                bad = int(self.db.get_setting(f"check_errors:{dest.name}:{cam.id}") or 0)
                 if bad:
                     out.append(
                         Condition(
                             "check_errors",
-                            cam.alias,
-                            f"{cam.name or cam.alias}: {dest.name} check found errors",
-                            f"restic check found {bad} errors in {cam.alias}'s repository on "
+                            cam.id,
+                            f"{cam.name or cam.id}: {dest.name} check found errors",
+                            f"restic check found {bad} errors in {cam.id}'s repository on "
                             f"{dest.name}. Run `restic check` on it and repair it.",
                         )
                     )

@@ -15,7 +15,7 @@ from reovault.tools import ToolError
 
 @dataclass
 class FakeCamera:
-    alias: str = "cam"
+    id: str = "cam"
     timezone: str = "Europe/Brussels"
     card: dict[str, tuple[Found, bytes]] = field(default_factory=dict)
     offline: bool = False

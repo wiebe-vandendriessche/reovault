@@ -14,7 +14,7 @@ Backups are restic repositories, one per camera, encrypted by restic
 (AES-256 in counter mode with Poly1305 authentication; see restic's
 [design document](https://restic.readthedocs.io/en/stable/100_references.html#design)).
 The destination, whether a local disk or a cloud account, only ever sees
-encrypted data. The password comes from the `restic_password` Docker secret
+encrypted data. The password comes from the `restic-password` file next to `compose.yaml`
 and is never stored in `reovault.toml`, the database or a log.
 
 **There is no recovery path without the restic password.** Keep a copy in
@@ -28,12 +28,12 @@ upload.
 
 ## Credentials
 
-ReoVault never stores or logs the camera's password. Camera credentials are
-managed entirely by `reolink-cli`'s own encrypted registry
-(`aliases.toml`, AES-GCM, 0600). When a camera is added through the
-dashboard, the password passes through the ReoVault process exactly once,
-on stdin, on its way into that registry. It's never placed on a command
-line, persisted, or echoed.
+Each camera's address, user and password live in its `[[cameras]]` entry in
+`reovault.toml`. ReoVault writes that file (and its `.bak`) owner-only (0600);
+keep it that way if you edit it by hand. The password reaches `reolink-cli` on
+stdin for every call, never on a command line, and it is never logged, never
+sent back by the API (the dashboard shows "Unchanged") and never in an error
+message. reolink-cli keeps no registry of its own.
 
 The dashboard's own login is separate: a single-user password (Argon2id
 hashed) plus the email you sign in with. It is chosen on the **first-run
@@ -54,12 +54,12 @@ send logs only the error, never the URL, since a Slack or Discord webhook
 URL is itself the credential.
 
 `rclone.conf` holds your cloud logins (OAuth tokens, WebDAV passwords). It
-lives in `config/rclone/`, readable only inside the container. Connecting a
+lives next to `reovault.toml`, readable only by you and the container. Connecting a
 destination from the dashboard passes its secret to a short-lived
 `rclone config create` process on the command line, visible only to processes
 inside the container, and rclone obscures it in the file; the dashboard never
-sends it back. That file, `reovault.toml` and the camera registry are backed
-up into each destination (`reovault-config`) encrypted with the restic
+sends it back. That file and `reovault.toml` (camera passwords included) are
+backed up into each destination (`reovault-config`) encrypted with the restic
 password. The recovery sheet and recovery API never contain the restic password
 or repository credentials. The daily update check sends a plain request to
 `api.github.com` and nothing else; turn it off with `[web] update_check`. Error text

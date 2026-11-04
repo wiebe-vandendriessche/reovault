@@ -37,20 +37,20 @@ def version() -> None:
 
 
 @app.command()
-def run(camera: str = typer.Option(..., "--camera", help="The camera's alias.")) -> None:
+def run(camera: str = typer.Option(..., "--camera", help="The camera's id.")) -> None:
     """Run one backup of one camera now, in the foreground."""
     settings = load_settings()
     cam = settings.camera(camera)
     if cam is None:
-        typer.echo(f"[FAIL] no [[cameras]] entry with alias {camera!r}", err=True)
+        typer.echo(f"[FAIL] no [[cameras]] entry with cam_id {camera!r}", err=True)
         raise typer.Exit(1)
     gateway = Gateway(settings.tools.reolink_cli, settings.tools.gateway_addr)
     try:
         result = BackupRun(
             camera=camera_for(settings, cam, gateway),
-            restic=restic_for(settings, cam.alias),
+            restic=restic_for(settings, cam.id),
             db=Db(settings.storage.data_dir / "reovault.db"),
-            staging=settings.storage.staging_dir / cam.alias,
+            staging=settings.storage.staging_dir / cam.id,
             state=CameraState(),
             interval=timedelta(minutes=settings.backup.interval_minutes),
         ).run("manual")
@@ -96,17 +96,17 @@ def doctor() -> None:
             if not cam.enabled:
                 continue
             try:
-                state = restic_for(settings, cam.alias, dest).state()
+                state = restic_for(settings, cam.id, dest).state()
             except ToolError as exc:
-                problems.append(f"{dest.name}/{cam.alias}: {exc}")
+                problems.append(f"{dest.name}/{cam.id}: {exc}")
                 continue
             typer.echo(
-                f"[{'OK' if state == 'ok' else 'INFO'}] {dest.name} ({role}) {cam.alias}: "
+                f"[{'OK' if state == 'ok' else 'INFO'}] {dest.name} ({role}) {cam.id}: "
                 f"repository {state}"
             )
             if state == "wrong_password":
                 problems.append(
-                    f"{dest.name}/{cam.alias}: the restic password doesn't open its repository"
+                    f"{dest.name}/{cam.id}: the restic password doesn't open its repository"
                 )
         if dest.repository.startswith("/") and not _on_mount(Path(dest.repository)):
             typer.echo(

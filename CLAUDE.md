@@ -6,7 +6,7 @@ ReoVault is a self-hosted application that backs up the clips on Reolink cameras
 
 * Project name: **ReoVault**
 * Camera integration: **`reolink-cli`**, pulling clips (`vod search` / batch `vod download`). Not FTP.
-* Storage: **restic**, one repository per camera at `<repository>/<alias>`, reaching any destination through **rclone** (user-mounted `rclone.conf`). restic owns encryption, deduplication, integrity checks and retention; don't rebuild any of them.
+* Storage: **restic**, one repository per camera at `<repository>/<id>`, reaching any destination through **rclone** (user-mounted `rclone.conf`). restic owns encryption, deduplication, integrity checks and retention; don't rebuild any of them.
 * A web dashboard is part of the project: overview, download (no playback), activity, cameras, settings.
 * Simplicity first: the previous version was over-engineered. Every module and setting must earn its place.
 * Keep camera-specific functionality behind the small `Camera` protocol in `reovault/camera.py`.
