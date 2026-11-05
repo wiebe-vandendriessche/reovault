@@ -27,7 +27,8 @@ export type LimitPreview = S['LimitPreviewOut'];
 export type DownloadPreview = S['DownloadPreviewOut'];
 export type Recovery = S['RecoveryOut'];
 export type RunDetail = S['RunDetailOut'];
-export type Bucket = S['BucketOut'];
+export type Coverage = S['CoverageOut'];
+export type Device = S['DeviceOut'];
 export type Verdict = Camera['verdict'];
 
 export const API = '/api/v1';

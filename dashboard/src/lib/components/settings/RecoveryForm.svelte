@@ -67,7 +67,7 @@
 			<Card.Header>
 				<Card.Title>Config backup</Card.Title>
 				<Card.Description>
-					Your reovault.toml (cameras and their passwords included) and rclone remotes are backed up daily into each destination, so a new server
+					Your reovault.toml (cameras and their passwords included) and rclone remotes are backed up into each destination whenever they change, so a new server
 					can pick up where this one stopped.
 				</Card.Description>
 			</Card.Header>

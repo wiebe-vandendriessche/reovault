@@ -33,7 +33,9 @@ Each camera's address, user and password live in its `[[cameras]]` entry in
 keep it that way if you edit it by hand. The password reaches `reolink-cli` on
 stdin for every call, never on a command line, and it is never logged, never
 sent back by the API (the dashboard shows "Unchanged") and never in an error
-message. reolink-cli keeps no registry of its own.
+message. Changing a camera's address or user needs its password again, so a
+stolen session can't point a camera entry at its own host and capture the
+login.
 
 The dashboard's own login is separate: a single-user password (Argon2id
 hashed) plus the email you sign in with. It is chosen on the **first-run
@@ -68,16 +70,19 @@ reaches the dashboard or an alert.
 
 ## Dashboard and API
 
-* **Settings write the config file.** A logged-in user can change anything
-  in `reovault.toml` that isn't infrastructure or env-set, and the change is
-  written to the file. Storage paths, the tool binaries and the
-  web bind, cookie, origin and proxy settings are never writable from the
-  browser, so a stolen session can't swap the tools or loosen the login
-  protections. Secrets are never written either: alert channels hold *paths*
-  to secret files, and the restic password and camera passwords are not
-  config fields. A logged-in user *can* change the backup destination, so
-  treat the dashboard login like the keys to your footage. Pin anything you want out of the dashboard's reach with an
-  env var.
+* **Settings write the config file.** A logged-in user can manage cameras and
+  destinations and change the schedule, the alert rules and the session and
+  login-limit settings; each change is written to `reovault.toml`. File-only,
+  never writable from the browser: storage paths, the tool binaries, the web
+  bind, cookie, origin and proxy settings, the login email (only the setup
+  screen and Change password, which need the password, write it), the alert
+  channels (their `*_file` fields point at secret files, so a stolen session
+  can't redirect a secret) and the restic password file. The restic password
+  itself is never a config field. Camera passwords are: the dashboard writes
+  them, never sends them back, and only sends them to a camera's address after
+  the password was typed again for it. A logged-in user *can* connect a
+  destination, so treat the dashboard login like the keys to your footage. Pin
+  anything you want out of the dashboard's reach with an env var.
 * **Sessions:** a signed, `HttpOnly` cookie. Logout revokes sessions
   server-side by bumping a session epoch, so a copied cookie stops working
   too (single user, so every open session is signed out at once).
@@ -93,8 +98,8 @@ reaches the dashboard or an alert.
 * **Request size:** bodies over 64 KB get 413, and chunked request bodies
   (which carry no length to check) get 411.
 * **`/healthz`** is public and status-only, for the Docker healthcheck.
-* **Downloads** stream out of `restic dump`, one day-zip at a time, with no
-  temporary files.
+* **Downloads** stream out of `restic dump` with no temporary files; one
+  range zip is built at a time, process-wide.
 
 ## Deployment modes
 

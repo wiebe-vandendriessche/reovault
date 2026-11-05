@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from reovault.camera import CardStatus, Downloaded, Found
+from reovault.camera import CardStatus, DeviceInfo, Downloaded, Found
 from reovault.tools import ToolError
 
 
@@ -65,3 +65,6 @@ class FakeCamera:
 
     def storage(self) -> CardStatus:
         return CardStatus(total_gb=64.0, free_gb=1.0, mounted=True)
+
+    def info(self) -> DeviceInfo:
+        return DeviceInfo("Fake", "v1", None)

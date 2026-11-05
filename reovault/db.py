@@ -122,6 +122,11 @@ def parse_iso(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
+def _per_day(start: datetime, end: datetime, buckets: int) -> float:
+    """Buckets per day, to turn a julianday difference into a bucket index."""
+    return buckets / ((end - start).total_seconds() / 86400)
+
+
 def now_iso() -> str:
     return iso(datetime.now(UTC))
 
@@ -298,6 +303,17 @@ class Db:
         row = self._one("SELECT MAX(start_utc) AS m FROM clips WHERE camera = ?", (camera,))
         return parse_iso(row["m"]) if row and row["m"] else None
 
+    def oldest_kept(self, camera: str | None = None) -> datetime | None:
+        """The oldest clip that is backed up, waiting or lost (one camera, or
+        all): how far back there is anything to show."""
+        where, args = ("AND camera = ?", (camera,)) if camera else ("", ())
+        row = self._one(
+            "SELECT MIN(start_utc) AS m FROM clips "
+            f"WHERE state IN ('backed_up', 'pending', 'lost') {where}",
+            args,
+        )
+        return parse_iso(row["m"]) if row and row["m"] else None
+
     def repo_seen(self, destination: str, camera: str) -> bool:
         """Was this camera's repository on this destination ever there? One that
         then reports "does not exist" is a dropped mount or a typo, never
@@ -460,15 +476,6 @@ class Db:
             )
         return True
 
-    def add_location(
-        self, camera: str, root: str, destination: str, snapshot_id: str, time: datetime
-    ) -> None:
-        with self.tx() as c:
-            c.execute(
-                "INSERT OR REPLACE INTO locations VALUES (?, ?, ?, ?, ?)",
-                (camera, root, destination, snapshot_id, iso(time)),
-            )
-
     def expire_unlocated(self, camera: str) -> int:
         """Backed-up clips whose snapshot no destination holds any more (every
         location was forgotten) become expired: never downloaded again, no
@@ -594,15 +601,37 @@ class Db:
         )
         return [Clip(**dict(r)) for r in rows]
 
-    def timeline_rows(self, camera: str, since: datetime) -> list[tuple[str, str, int]]:
-        """(start, state, attempts) of the camera's clips since `since`: just
-        enough to draw the card timeline."""
+    def coverage_clips(
+        self, camera: str, start: datetime, end: datetime, buckets: int
+    ) -> dict[tuple[int, str], int]:
+        """(bucket, class) -> clips in `buckets` equal slices of start..end. The
+        class is backed_up, waiting, failing (tried `MAX_ATTEMPTS` times) or lost."""
+        from reovault.backup import MAX_ATTEMPTS  # backup imports db
+
         rows = self._all(
-            "SELECT start_utc, state, attempts FROM clips WHERE camera = ? AND start_utc >= ? "
-            "AND state IN ('pending', 'backed_up', 'lost')",
-            (camera, iso(since)),
+            "SELECT CAST((julianday(start_utc) - julianday(?)) * ? AS INTEGER) AS b, "
+            "CASE WHEN state = 'backed_up' THEN 'backed_up' WHEN state = 'lost' THEN 'lost' "
+            "WHEN attempts >= ? THEN 'failing' ELSE 'waiting' END AS cls, COUNT(*) AS n "
+            "FROM clips WHERE camera = ? AND start_utc >= ? AND start_utc < ? "
+            "AND state IN ('backed_up', 'pending', 'lost') GROUP BY b, cls",
+            (iso(start), _per_day(start, end, buckets), MAX_ATTEMPTS, camera, iso(start),
+             iso(end)),
+        )  # fmt: skip
+        return {(min(r["b"], buckets - 1), r["cls"]): r["n"] for r in rows}
+
+    def coverage_held(
+        self, camera: str, start: datetime, end: datetime, buckets: int
+    ) -> dict[tuple[int, str], int]:
+        """(bucket, destination) -> backed-up clips whose snapshot it holds."""
+        rows = self._all(
+            "SELECT CAST((julianday(c.start_utc) - julianday(?)) * ? AS INTEGER) AS b, "
+            "l.destination AS dest, COUNT(*) AS n FROM clips c JOIN locations l "
+            "ON l.camera = c.camera AND l.source_snapshot = c.snapshot_id "
+            "WHERE c.camera = ? AND c.state = 'backed_up' AND c.start_utc >= ? "
+            "AND c.start_utc < ? GROUP BY b, dest",
+            (iso(start), _per_day(start, end, buckets), camera, iso(start), iso(end)),
         )
-        return [(r["start_utc"], r["state"], r["attempts"]) for r in rows]
+        return {(min(r["b"], buckets - 1), r["dest"]): r["n"] for r in rows}
 
     def clips_touched(self, camera: str, start: datetime, end: datetime, limit: int) -> list[Clip]:
         """Clips a run (from `start` to `end`) backed up, failed or lost."""

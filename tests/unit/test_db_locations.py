@@ -52,7 +52,7 @@ def test_a_version_1_database_moves_up_and_keeps_its_clips(tmp_path):
     assert (clip.state, clip.snapshot_id) == ("backed_up", "snap1")
     assert db.location_roots("cam", "local") == set()  # filled in by the next run
     assert db.expire_unlocated("cam") == 0  # and nothing expires meanwhile
-    db.add_location("cam", "snap1", "local", "snap1", T)
+    db.set_locations("cam", "local", [("snap1", "snap1", T)])
     assert db.location_roots("cam", "local") == {"snap1"}
 
 
@@ -68,7 +68,7 @@ def test_an_empty_listing_never_replaces_known_locations(tmp_path):
 def test_a_clip_expires_only_when_no_destination_holds_it(tmp_path):
     db = Db(tmp_path / "x.db")
     _clip(db, "c1", "s1")
-    db.add_location("cam", "s1", "cloud", "copy-of-s1", T)
+    db.set_locations("cam", "cloud", [("s1", "copy-of-s1", T)])
     db.set_locations("cam", "local", [("other", "other", T)])  # local forgot s1
     assert db.expire_unlocated("cam") == 0  # the cloud still has it
     db.set_locations("cam", "cloud", [("other", "other2", T)])  # and now the cloud forgot too
@@ -80,7 +80,7 @@ def test_a_clip_expires_only_when_no_destination_holds_it(tmp_path):
 def test_a_clip_is_read_from_the_most_preferred_destination_that_holds_it(tmp_path):
     db = Db(tmp_path / "x.db")
     cid = _clip(db, "c1", "s1")
-    db.add_location("cam", "s1", "cloud", "cloud-id", T)
+    db.set_locations("cam", "cloud", [("s1", "cloud-id", T)])
     clip = db.get_clip(cid)
     assert db.clip_location(clip, ["local", "cloud"]) == ("local", "s1")
     assert db.clip_location(clip, ["cloud", "local"]) == ("cloud", "cloud-id")
@@ -110,7 +110,7 @@ def test_a_repository_once_seen_stays_seen(tmp_path):
 def test_forgetting_a_destination_clears_only_its_own_memory(tmp_path):
     db = Db(tmp_path / "x.db")
     for dest in ("old", "other"):
-        db.add_location("cam", "s1", dest, "x", T)
+        db.set_locations("cam", dest, [("s1", "x", T)])
         db.mark_repo_seen(dest, "cam")
         db.set_setting(f"copy_floor:{dest}", "2026-01-01T00:00:00Z")
     db.forget_destination("old")

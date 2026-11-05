@@ -112,6 +112,27 @@ def test_the_activity_camera_filter_can_go_back_to_all_cameras(browser: Browser,
     assert problems == []
 
 
+def test_the_overview_coverage_range_and_the_camera_device_details(browser: Browser, demo) -> None:  # noqa: ANN001, E501
+    context = browser.new_context(viewport=VIEWPORTS["desktop"])
+    page = context.new_page()
+    problems = _watch(page)
+    _login(page, demo)
+    page.goto(f"{demo.url}/")
+    expect(
+        page.get_by_role("img", name=re.compile("^SD card, footage since")).first
+    ).to_be_visible()
+    page.get_by_label("How far back").select_option("all")
+    page.wait_for_url("**/?span=all")
+    expect(
+        page.get_by_role("img", name=re.compile("^nextcloud, footage since")).first
+    ).to_be_visible()
+    page.goto(f"{demo.url}/cameras")
+    expect(page.get_by_text("Demo camera", exact=True).first).to_be_visible()  # the model
+    expect(page.get_by_text(re.compile(r"of 64 GB used")).first).to_be_visible()
+    context.close()
+    assert problems == []
+
+
 def test_first_run_setup_creates_the_login(browser: Browser, fresh) -> None:  # noqa: ANN001
     """A fresh install: every page leads to /setup, the logged code finishes it,
     and then the same password signs in again."""

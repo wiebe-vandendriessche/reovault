@@ -78,7 +78,7 @@ class ConfigInvalidError(Exception):
 
 
 def is_infra(section: str, field: str | None = None) -> bool:
-    if section in INFRA_SECTIONS:
+    if section in INFRA_SECTIONS or (section, field) == ("backup", "password_file"):
         return True
     return section == "web" and field not in WEB_EDITABLE
 

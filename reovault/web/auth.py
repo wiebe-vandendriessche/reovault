@@ -3,7 +3,7 @@ control, written via tmp-file + atomic replace.
 
 A web password verifier is offline-attackable, so it stays out of
 `reovault.toml`: it lives in a 0600 file in the data folder, or in
-`REOVAULT_WEB__PASSWORD_HASH` for the Docker-secret path.
+`REOVAULT_WEB__PASSWORD_HASH`.
 """
 
 from __future__ import annotations

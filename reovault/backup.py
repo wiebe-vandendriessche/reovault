@@ -78,6 +78,27 @@ class _Upload:
         return self._result
 
 
+def open_repository(
+    db: Db, destination: str, name: str, restic: Restic, copy_of: Restic | None = None
+) -> None:
+    """Make sure the repository `name` on `destination` exists, creating it only
+    the very first time: one that vanished after it existed is a dropped mount or
+    a wrong path, never something to silently start again empty."""
+    state = restic.state()
+    if state == "wrong_password":
+        raise ToolError(f"The restic password doesn't open the repository for {name}")
+    if state == "missing":
+        if db.repo_seen(destination, name):
+            raise ToolError(
+                f"{destination} has no repository for {name} any more, but it had one "
+                "before. Check that it is mounted or reachable and the path is right; "
+                "nothing will be created."
+            )
+        logger.info("backup.repository_init", destination=destination, name=name)
+        restic.init(copy_of=copy_of)
+    db.mark_repo_seen(destination, name)
+
+
 class RunError(Exception):
     """Ends a run with a message for the dashboard; nothing is lost."""
 
@@ -191,7 +212,7 @@ class BackupRun:
         return result
 
     def _run(self, result: RunResult, run_id: int) -> None:
-        self._ensure_repository()
+        open_repository(self.db, self.destination, self.camera.id, self.restic)
         self._rebuild_index()
         self._recover(result, run_id)
         self._list()
@@ -284,23 +305,6 @@ class BackupRun:
             result.clips += clips_n
             result.bytes += size
 
-    def _ensure_repository(self) -> None:
-        state = self.restic.state()
-        if state == "wrong_password":
-            raise RunError("The restic password does not open this camera's repository")
-        if state == "ok":
-            self.db.mark_repo_seen(self.destination, self.camera.id)
-        if state == "missing":
-            if self.db.repo_seen(self.destination, self.camera.id):
-                raise RunError(
-                    "The backup destination has no repository for this camera any more, "
-                    "but clips were backed up to it before. Check that the destination is "
-                    "mounted and the path is right; nothing will be created."
-                )
-            logger.info("backup.repository_init", camera=self.camera.id)
-            self.restic.init()
-            self.db.mark_repo_seen(self.destination, self.camera.id)
-
     def _list(self) -> None:
         now = self.clock()
         due = (
@@ -315,6 +319,8 @@ class BackupRun:
         self.state.unreachable_since = None  # it answered
         self._upsert(found)
         self.state.oldest_on_card, self.state.scanned_at = oldest, now
+        if oldest is not None:  # remembered, so a restart doesn't forget where the card starts
+            self.db.set_setting(f"card_start:{self.camera.id}", iso(oldest))
         try:
             self.state.card = self.camera.storage()
         except ToolError as exc:  # only shown, never acted on

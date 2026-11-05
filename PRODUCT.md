@@ -14,7 +14,7 @@ Phone and desktop are equally first-class. The phone is the installed PWA, often
 
 ## Product Purpose
 
-ReoVault copies every clip off each camera's SD card before the loop recording overwrites it, into an encrypted restic backup on a destination the user picks (a local disk, Nextcloud, OneDrive, S3, anything rclone reaches). The dashboard exists to answer "is every card backed up?" at a glance, to say what is waiting or at risk and when it catches up, and to let the user download any backed-up clip or day.
+ReoVault copies every clip off each camera's SD card before the loop recording overwrites it, into an encrypted restic backup on a destination the user picks (a local disk, Nextcloud, OneDrive, S3, anything rclone reaches). The dashboard exists to answer "is every card backed up?" at a glance, to say what is waiting or at risk and when it catches up, and to let the user download any backed-up clip, hour or range.
 
 Success: the user trusts the backups without checking them often, and when something is wrong they learn it early enough to act.
 
@@ -23,15 +23,16 @@ Success: the user trusts the backups without checking them often, and when somet
 - **Backup, not surveillance.** No live view, no playback, no detection of its own. Playback of what's still on the card stays in the Reolink app; ReoVault makes sure the card's clips survive the overwrite. It complements the Reolink app, an NVR or Frigate rather than replacing them.
 - **Trust through honesty.** A clip is never shown as backed up before its size matched the card's and restic confirmed a snapshot. The UI states plainly what is waiting, what is at risk and what was lost.
 - **Not locked in.** The backups are ordinary restic repositories: restorable with plain restic, with or without ReoVault.
-- **Self-hosted, destination of your choice.** No Reolink cloud. The backup goes wherever the user points restic, local or cloud.
+- **Self-hosted, destinations of your choice.** No Reolink cloud. The backup goes to a primary destination and copies to others (3-2-1), local or cloud, each with its own keep-days and size limit.
+- **Set up in the browser.** A data folder and a restic password file are all the user creates by hand; the first-run screen and the dashboard write `reovault.toml` and `rclone.conf`.
 - **Official tooling only.** It talks to cameras only through Reolink's official `reolink-cli`, never a reverse-engineered protocol.
 
 ## Operating Context
 
 - Deployed with Docker Compose, either behind a reverse proxy or as a direct port on the LAN/VPN. One password-protected user.
 - The dashboard is served by the ReoVault daemon on port 8080 and updates live over Server-Sent Events.
-- Dashboard pages: Overview (what needs attention, one tile per camera with its verdict, backlog and catch-up estimate, the destination), Footage (month calendar, day grouped by hour, detection-type filter, download a clip or a day as zip), Activity (backup runs, clips that keep failing, clips lost this week), Cameras (LAN discovery, demo cameras, on/off, rename), Settings (backup destination with a test, interval, retention, alerts; writes back into `reovault.toml`, comments kept), Login.
-- Alerts fire when backups of a camera keep failing, clips are about to be overwritten before they're backed up, clips keep failing to download, the weekly restic check finds errors, or the destination answers with no backups where there should be some.
+- Dashboard pages: Setup (first run, protected by a one-time code from the log), Login, Overview (what needs attention, one tile per camera with its verdict and where its footage is, from the SD card's window back to everything kept: SD card, primary, each copy; every destination with size and copy progress), Footage (month calendar, day grouped by hour, detection-type filter, download a clip, an hour or a range as one zip), Activity (backup runs with a detail page per run, clips that keep failing, clips lost this week), Cameras (the device: model, firmware, SD card usage; LAN discovery, demo cameras, on/off, edit address and login, remove), Settings (Destinations, Schedule, Recovery, Alerts, Web, System; writes back into `reovault.toml`, comments kept).
+- Alerts fire when backups of a camera keep failing, a camera stops answering, clips are about to be overwritten before they're backed up, clips keep failing to download, the weekly restic check finds errors, a destination answers with no backups where there should be some, a destination can't be reached or a copy falls behind, a size limit cuts backups short (is too small, or waits for copies), no destination is set up, or alerts are on with no channel.
 
 ## Capabilities and Constraints
 

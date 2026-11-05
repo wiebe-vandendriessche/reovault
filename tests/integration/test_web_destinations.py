@@ -138,12 +138,12 @@ def test_make_primary_waits_until_the_copy_has_everything(api, tmp_path):
     folder = tmp_path / "disk2"
     folder.mkdir()
     client.post("/api/v1/destinations", json={"name": "usb", "kind": "local", "path": str(folder)})
-    rt.db.add_location("demo", "s1", "local", "s1", T)  # the primary holds a snapshot ...
+    rt.db.set_locations("demo", "local", [("s1", "s1", T)])  # the primary holds a snapshot ...
     confirm = {"confirm_password": WEB_TEST_PASSWORD}
     r = client.post("/api/v1/destinations/usb/primary", json=confirm)
     assert r.status_code == 409 and "still copying" in r.json()["detail"]
     assert _names(client)["local"] == "primary"
-    rt.db.add_location("demo", "s1", "usb", "copy-of-s1", T)  # ... and the copy caught up
+    rt.db.set_locations("demo", "usb", [("s1", "copy-of-s1", T)])  # ... and the copy caught up
     assert client.post("/api/v1/destinations/usb/primary", json={}).status_code == 401
     r = client.post("/api/v1/destinations/usb/primary", json=confirm)
     assert r.status_code == 200, r.text
@@ -168,7 +168,7 @@ def test_disconnecting_a_copy_needs_the_password_and_keeps_its_rows(api, tmp_pat
     folder = tmp_path / "disk2"
     folder.mkdir()
     client.post("/api/v1/destinations", json={"name": "usb", "kind": "local", "path": str(folder)})
-    rt.db.add_location("demo", "s1", "usb", "x", T)
+    rt.db.set_locations("demo", "usb", [("s1", "x", T)])
     assert client.delete("/api/v1/destinations/usb").status_code == 401
     r = client.request(
         "DELETE", "/api/v1/destinations/usb", json={"confirm_password": WEB_TEST_PASSWORD}
@@ -225,7 +225,7 @@ def test_a_reused_name_does_not_inherit_the_old_destinations_memory(api, tmp_pat
     new.mkdir()
     body = {"name": "offsite", "kind": "local"}
     client.post("/api/v1/destinations", json={**body, "path": str(old)})
-    rt.db.add_location("demo", "s1", "offsite", "x", T)
+    rt.db.set_locations("demo", "offsite", [("s1", "x", T)])
     rt.db.mark_repo_seen("offsite", "demo")
     client.request(
         "DELETE", "/api/v1/destinations/offsite", json={"confirm_password": WEB_TEST_PASSWORD}

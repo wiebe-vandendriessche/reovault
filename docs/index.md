@@ -19,16 +19,19 @@ the camera is stolen. ReoVault keeps a copy that outlives the card.
 
 * **Backs up continuously:** every hour by default, newest clips first, then
   the oldest ones the card will overwrite next.
-* **Only restic stores your footage:** encrypted, deduplicated, verified,
-  with retention. You can restore it with plain restic, with or without
-  ReoVault: see [Restore without ReoVault](restore-without-reovault.md).
+* **Only restic stores your footage:** encrypted, deduplicated, verified, on
+  one destination plus copies on others (3-2-1), each kept for a number of
+  days and/or up to a size limit. You can restore it with plain restic, with
+  or without ReoVault: see [Restore without ReoVault](restore-without-reovault.md).
 * **Tells you when something's wrong:** ntfy, webhook or email alerts when
   backups keep failing or clips are about to be overwritten before they're
   backed up.
 * **A small dashboard:** is every card backed up, what's waiting, and a
-  calendar to download any backed-up clip or day.
-* **Light on your server:** only one 2 GB batch of clips is ever on local
-  disk.
+  calendar to download any backed-up clip, hour or range.
+* **Set up in the browser:** create a data folder and a restic password, start
+  the container, and do the rest on the first-run screen.
+* **Light on your server:** at most two 2 GB batches of clips per camera are
+  ever on local disk.
 
 Playback stays in the Reolink app, for whatever is still on the card.
 
@@ -36,12 +39,12 @@ Playback stays in the Reolink app, for whatever is still on the card.
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and where the backups go" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, and per camera where its footage is: on the SD card, the primary and each copy" /></td>
 <td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup, or a whole time range as one zip" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-activity.png" alt="Activity: every backup run, plus clips that keep failing or that the card overwrote" /></td>
-<td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera with its status and backup totals, add from LAN discovery, turn backups on or off" /></td>
+<td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera's model, firmware and SD card usage, add from LAN discovery, turn backups on or off" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-settings-destinations.png" alt="Settings, Destinations: the primary destination and its copies, with keep days and a size limit each" /></td>
@@ -54,7 +57,7 @@ Playback stays in the Reolink app, for whatever is still on the card.
 * [Installation](installation.md): Docker Compose setup, upgrading, and alerts
 * [Compatible devices](compatibility.md): camera models verified so far
 * [Dashboard](dashboard.md): what each page shows and does
-* [Configuration](configuration.md): every `reovault.toml` / env var option
+* [Configuration](configuration.md): the `reovault.toml` options
 * [CLI reference](cli-reference.md): every `reovault` subcommand
 * [Restore without ReoVault](restore-without-reovault.md): plain restic recipes
 * [Architecture](architecture.md): how a backup run works

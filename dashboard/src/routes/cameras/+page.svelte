@@ -11,12 +11,9 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
-	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
-	import RunOutcome from '#lib/components/runs/RunOutcome.svelte';
 	import AddCameraDialog from '#lib/components/cameras/AddCameraDialog.svelte';
 	import EditCameraSheet from '#lib/components/cameras/EditCameraSheet.svelte';
-	import { bytes, count, relative } from '#lib/format.js';
-	import { VERDICTS } from '#lib/labels.js';
+	import DeviceDetails from '#lib/components/cameras/DeviceDetails.svelte';
 	import { toast } from 'svelte-sonner';
 	import Cctv from '@lucide/svelte/icons/cctv';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -52,7 +49,7 @@
 
 <svelte:head><title>Cameras | ReoVault</title></svelte:head>
 
-<PageHeader title="Cameras" description="Every camera ReoVault backs up. Each one gets its own restic repository.">
+<PageHeader title="Cameras" description="Your cameras and their SD cards. How their backups are doing is on the Overview.">
 	{#snippet actions()}
 		{#if config.data?.writable}
 			<AddCameraDialog onadded={(c) => (cameras.data = c)} />
@@ -75,7 +72,6 @@
 {:else}
 	<div class="grid gap-4 md:grid-cols-2">
 		{#each cameras.data as c (c.id)}
-			{@const verdict = VERDICTS[c.verdict]}
 			<Card.Root class={c.enabled ? '' : 'bg-muted/40'}>
 				<Card.Header>
 					<Card.Title class="truncate">{label(c)}</Card.Title>
@@ -93,33 +89,7 @@
 					</Card.Action>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-4">
-					<div class="flex flex-wrap gap-2">
-						{#if c.enabled}
-							<StatusBadge level={verdict.level}>{verdict.label}</StatusBadge>
-						{:else}
-							<StatusBadge level="idle">Off</StatusBadge>
-						{/if}
-					</div>
-					<dl class="grid grid-cols-2 gap-3 text-sm">
-						<div>
-							<dt class="text-subtle text-xs">Backed up</dt>
-							<dd class="flex flex-wrap gap-x-3 font-medium tabular-nums">
-								<span>{count(c.backed_up_clips)} clips</span>
-								<span>{bytes(c.backed_up_bytes)}</span>
-							</dd>
-						</div>
-						<div>
-							<dt class="text-subtle text-xs">Last backup</dt>
-							<dd class="flex items-center gap-2">
-								{#if c.last_run}
-									<RunOutcome run={c.last_run} />
-									<span class="text-muted-foreground text-xs">{relative(c.last_run.finished_at)}</span>
-								{:else}
-									<span class="text-muted-foreground">None yet</span>
-								{/if}
-							</dd>
-						</div>
-					</dl>
+					<DeviceDetails camera={c} />
 				</Card.Content>
 				<Card.Footer class="justify-end">
 					<Button variant="ghost" size="sm" onclick={() => (editingId = c.id)}>

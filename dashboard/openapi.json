@@ -214,34 +214,6 @@
         "title": "BatchOut",
         "type": "object"
       },
-      "BucketOut": {
-        "properties": {
-          "backed_up": {
-            "title": "Backed Up",
-            "type": "integer"
-          },
-          "failing": {
-            "title": "Failing",
-            "type": "integer"
-          },
-          "lost": {
-            "title": "Lost",
-            "type": "integer"
-          },
-          "waiting": {
-            "title": "Waiting",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "backed_up",
-          "waiting",
-          "failing",
-          "lost"
-        ],
-        "title": "BucketOut",
-        "type": "object"
-      },
       "CalendarDayOut": {
         "properties": {
           "backed_up": {
@@ -312,6 +284,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverageOut"
               },
               {
                 "type": "null"
@@ -432,20 +414,6 @@
           "text": {
             "title": "Text",
             "type": "string"
-          },
-          "timeline": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BucketOut"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timeline"
           },
           "timezone": {
             "title": "Timezone",
@@ -762,8 +730,7 @@
             "type": "integer"
           },
           "name": {
-            "maxLength": 32,
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
             "title": "Name",
             "type": "string"
           },
@@ -786,6 +753,82 @@
           "kind"
         ],
         "title": "ConnectIn",
+        "type": "object"
+      },
+      "CoverageOut": {
+        "properties": {
+          "buckets": {
+            "title": "Buckets",
+            "type": "integer"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "buckets",
+          "rows"
+        ],
+        "title": "CoverageOut",
+        "type": "object"
+      },
+      "CoverageRowOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "card",
+              "primary",
+              "copy"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "marker": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSegOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "runs",
+          "marker"
+        ],
+        "title": "CoverageRowOut",
         "type": "object"
       },
       "DayOut": {
@@ -918,6 +961,79 @@
           "behind"
         ],
         "title": "DestinationOut",
+        "type": "object"
+      },
+      "DeviceOut": {
+        "properties": {
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "firmware": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware"
+          },
+          "hardware": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "required": [
+          "model",
+          "firmware",
+          "hardware",
+          "card",
+          "checked_at",
+          "error"
+        ],
+        "title": "DeviceOut",
         "type": "object"
       },
       "DiscoveredOut": {
@@ -1396,13 +1512,26 @@
             },
             "title": "Notices",
             "type": "array"
+          },
+          "oldest_backup": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Backup"
           }
         },
         "required": [
           "issues",
           "notices",
           "cameras",
-          "destinations"
+          "destinations",
+          "oldest_backup"
         ],
         "title": "OverviewOut",
         "type": "object"
@@ -1824,6 +1953,41 @@
           "error"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "RunSegOut": {
+        "properties": {
+          "clips": {
+            "title": "Clips",
+            "type": "integer"
+          },
+          "length": {
+            "title": "Length",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "none",
+              "safe",
+              "waiting",
+              "lost",
+              "failing"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "length",
+          "state",
+          "clips"
+        ],
+        "title": "RunSegOut",
         "type": "object"
       },
       "SectionOut": {
@@ -2328,6 +2492,52 @@
           }
         },
         "summary": "Edit Camera",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{cam_id}/device": {
+      "get": {
+        "description": "The camera itself: model, firmware and the SD card, asked live (cached\nfor 10 minutes, so opening the page doesn't keep calling the camera).",
+        "operationId": "device_api_v1_cameras__cam_id__device_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cam_id",
+            "required": true,
+            "schema": {
+              "title": "Cam Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Device",
         "tags": [
           "cameras"
         ]
@@ -3211,8 +3421,21 @@
     },
     "/api/v1/overview": {
       "get": {
-        "description": "Read from the index and memory only: loading it never calls a camera\nor the destination.",
+        "description": "Read from the index and memory only: loading it never calls a camera\nor the destination. `span` is how far back each camera's coverage looks:\n`card` (since its SD card starts), `all` (everything ReoVault knows), or a\nnumber of days.",
         "operationId": "overview_api_v1_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "span",
+            "required": false,
+            "schema": {
+              "default": "card",
+              "pattern": "^(card|all|[1-9][0-9]{0,4})$",
+              "title": "Span",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3223,6 +3446,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Overview",

@@ -22,12 +22,12 @@ Full docs (installation, dashboard guide, configuration reference, architecture)
 
 <table>
 <tr>
-<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, each camera's card and next backup, and where the backups go" /></td>
+<td width="50%"><img src="img/screenshot-overview.png" alt="Overview: whether every SD card is backed up, and per camera where its footage is: on the SD card, the primary and each copy" /></td>
 <td width="50%"><img src="img/screenshot-footage.png" alt="Footage: a month calendar and a day's clips by hour, filterable by detection type, each downloadable from the backup, or a whole time range as one zip" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-activity.png" alt="Activity: every backup run, plus clips that keep failing or that the card overwrote" /></td>
-<td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera with its status and backup totals, add from LAN discovery, turn backups on or off" /></td>
+<td width="50%"><img src="img/screenshot-cameras.png" alt="Cameras: each camera's model, firmware and SD card usage, add from LAN discovery, turn backups on or off" /></td>
 </tr>
 <tr>
 <td width="50%"><img src="img/screenshot-settings-destinations.png" alt="Settings, Destinations: the primary destination and its copies, with keep days and a size limit each" /></td>
@@ -38,12 +38,12 @@ Full docs (installation, dashboard guide, configuration reference, architecture)
 ## How it works
 
 ```
-camera SD card --reolink-cli--> one 2 GB batch on local disk --restic--> your destination
+camera SD card --reolink-cli--> 2 GB batches on local disk --restic--> primary destination --restic copy--> other destinations
 ```
 
 * Backs up every hour by default: clips recorded since the last run first, then the oldest ones, which the card overwrites next.
-* restic does the storing: encryption, deduplication, integrity checks and retention ("keep N days", or forever).
-* A clip counts as backed up only after its size matched the card's and restic confirmed a snapshot. Download and upload overlap; when the destination is down, ReoVault stops downloading and the clips wait on the SD card, so local disk never holds more than two batches (about 5 GB per camera).
+* restic does the storing: encryption, deduplication and integrity checks. Each destination keeps backups for a number of days and/or up to a size limit; a second destination gets copies of everything (3-2-1).
+* A clip counts as backed up only after its size matched the card's and restic confirmed a snapshot. Download and upload overlap; when the destination is down, ReoVault stops downloading and the clips wait on the SD card, so local disk never holds more than two batches (about 4.3 GB per camera).
 * Alerts over ntfy, a webhook (Slack and Discord URLs work as-is) or email when backups keep failing or clips are about to be overwritten before they're backed up.
 * Playback stays in the Reolink app for what's still on the card; ReoVault's dashboard downloads anything that's backed up.
 
@@ -54,27 +54,26 @@ Signed images for `linux/amd64` and `linux/arm64` are published at `ghcr.io/wieb
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-mkdir -p data
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-touch rclone.conf && chmod 600 reovault.toml rclone.conf
-
-openssl rand -base64 32 | tr -d '\n' > restic-password && chmod 600 restic-password   # keep a copy: it unlocks every backup
+mkdir data
+openssl rand -base64 32 | tr -d '\n' > restic-password && chmod 600 restic-password   # keep a copy elsewhere: it unlocks every backup
 
 docker compose up -d
 docker compose logs reovault | grep setup.code      # the one-time code for the first-run screen
 ```
 
-Then open the dashboard (port 8080), finish setup with that code, connect a destination (a local disk, Nextcloud, OneDrive, SFTP, S3 ...; add a second one for 3-2-1 copies) and add your cameras. Create the folders before the first `docker compose` command: otherwise Docker creates them as root and the container (uid 1000) can't write to them. [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/) covers destinations, the first run on a full card, deployment behind a reverse proxy, and verifying the image signature.
+Open the dashboard (port 8080), enter the setup code and choose your login, connect a destination (a local disk, Nextcloud, OneDrive, SFTP, S3 ...; a second one gets copies) and add your cameras. That's it: ReoVault writes `reovault.toml` and `rclone.conf` next to `compose.yaml` for you, and you can still [edit them by hand](https://wiebe-vandendriessche.github.io/reovault/configuration/).
+
+The folder must be writable by uid 1000 (the container user): create it as a normal user, not with `sudo`. [Installation](https://wiebe-vandendriessche.github.io/reovault/installation/) covers destinations, the first run on a full card, deployment behind a reverse proxy, and verifying the image signature.
 
 ## Dashboard
 
 A Svelte single-page app on a typed JSON API, updated live over Server-Sent Events, installable as a PWA, password-protected:
 
-* **Overview**: is every SD card backed up; per camera what's waiting, how long until it catches up, and the card's fill; the destination and retention.
-* **Footage**: a month calendar and the day's clips by hour, filterable by detection type; download a clip or a whole day as a zip, straight out of restic.
-* **Activity**: every backup run, clips that keep failing, and clips the card overwrote before they could be backed up.
-* **Cameras**: add from LAN discovery (ReoVault logs in once to check, then saves the camera in `reovault.toml`), turn backups on or off, edit the name, timezone and login.
-* **Settings**: the backup destination (with a test), interval, retention, alerts; written back into `reovault.toml` with your comments kept.
+* **Overview**: is every SD card backed up; per camera what's waiting and how long until it catches up, and where its footage is, from what's on the SD card back to everything you've kept (months or years): on the card, on the primary, on each copy; every destination with its size and copy progress.
+* **Footage**: a month calendar and the day's clips by hour, filterable by detection type; download one clip, an hour, or any range from one or more cameras as one zip, straight out of restic.
+* **Activity**: every backup run with its batches and clips, clips that keep failing, and clips the card overwrote before they could be backed up.
+* **Cameras**: each camera's model, firmware and SD card usage; add from LAN discovery (ReoVault logs in once to check), turn backups on or off, edit the name, timezone, address and login, or remove a camera.
+* **Settings**: destinations (connect, limits, primary), schedule, recovery, alerts, login; written back into `reovault.toml` with your comments kept.
 
 ## Development
 

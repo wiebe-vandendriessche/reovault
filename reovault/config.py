@@ -70,8 +70,9 @@ class BackupConfig(BaseModel):
     interval_minutes: int = Field(default=60, ge=1, le=1440)
     password_file: Path | None = None
     """The restic password, the same for every destination (copying needs two
-    repositories open at once). A file such as a Docker secret, never in this
-    config; unset means `$RESTIC_PASSWORD_FILE`."""
+    repositories open at once). A file of its own (`restic-password` next to
+    reovault.toml in the image), never in this config; unset means
+    `$RESTIC_PASSWORD_FILE`."""
 
 
 class AlertRules(BaseModel):
@@ -81,7 +82,7 @@ class AlertRules(BaseModel):
 
 
 class AlertsConfig(BaseModel):
-    """Where alerts go. Credentials are read from files (Docker secrets)."""
+    """Where alerts go. Credentials are read from files, e.g. next to reovault.toml."""
 
     ntfy_url: str | None = None
     ntfy_token_file: Path | None = None

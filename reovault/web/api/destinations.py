@@ -6,6 +6,7 @@ running app follows (see `Destinations.sync`)."""
 from __future__ import annotations
 
 import os
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from reovault import rclone, retention
 from reovault.config import DestinationConfig
 from reovault.config_store import remove_destination_entry, upsert_destination_entry
 from reovault.db import parse_iso
-from reovault.destinations import lag, quota_short, restic_for, status_of, usage
+from reovault.destinations import lag, quota_short, status_of, usage
 from reovault.tools import ToolError
 from reovault.web.api.auth import confirm_password
 from reovault.web.api.config import write
@@ -112,24 +113,12 @@ class KindOut(BaseModel):
 @router.get("/kinds")
 def kinds() -> list[KindOut]:
     """What the "connect" form offers, so the dashboard doesn't hard-code it."""
-    return [
-        KindOut(
-            id=k.id,
-            label=k.label,
-            paste=k.paste,
-            help=k.help,
-            fields=[
-                RemoteFieldOut(key=f.key, label=f.label, secret=f.secret, required=f.required,
-                         default=f.default, help=f.help)
-                for f in k.fields
-            ],
-        )
-        for k in rclone.TYPES
-    ]  # fmt: skip
+    return [KindOut.model_validate(asdict(k)) for k in rclone.TYPES]
 
 
 class ConnectIn(BaseModel):
-    name: str = Field(min_length=1, max_length=32)
+    # The same rule as `DestinationConfig.name`; it also names the rclone remote.
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
     kind: str  # "local" or an rclone kind id
     path: str = Field(default="", max_length=1024)  # a local folder, or the folder on the remote
     values: dict[str, str] = Field(default_factory=dict)
@@ -164,14 +153,9 @@ def connect(body: ConnectIn, st: State) -> list[DestinationOut]:
         raise HTTPException(
             409, "The config file is read-only, so destinations can't be added here."
         )
-    if not rclone.valid_name(body.name):
-        raise HTTPException(
-            422, "A name is letters, digits, - and _ (up to 32), starting with one."
-        )
     if st.settings.destination(body.name) is not None:
         raise HTTPException(409, f"A destination named {body.name!r} already exists.")
-    tools = st.settings.tools
-    config = os.environ.get("RCLONE_CONFIG")
+    binary = st.settings.tools.rclone
     created: str | None = None
     try:
         if body.kind == "local":
@@ -180,40 +164,33 @@ def connect(body: ConnectIn, st: State) -> list[DestinationOut]:
             kind = rclone.BY_ID.get(body.kind)
             if kind is None:
                 raise HTTPException(422, "Unknown destination type.")
-            created = rclone.create(tools.rclone, body.name, kind, body.values, config)
-            rclone.check(tools.rclone, created, config)
+            created = rclone.create(binary, body.name, kind, body.values)
+            rclone.check(binary, created)
             repository = f"rclone:{created}:{_remote_path(body.path)}"
-    except ToolError as exc:
-        if created:
-            rclone.delete(tools.rclone, created, config)  # a half-made remote is no use
-        raise HTTPException(422, st.redact(str(exc))) from None
-    except HTTPException:
-        if created:
-            rclone.delete(tools.rclone, created, config)
-        raise
-    current = st.settings.primary()
-    # A name reused for a different repository must not inherit what was
-    # remembered about the old one (its snapshots, "the repository existed").
-    remembered = st.db.get_setting(f"repository_of:{body.name}")
-    if remembered is not None and remembered != repository:
-        st.db.forget_destination(body.name)
-    st.db.set_setting(f"repository_of:{body.name}", repository)
+        current = st.settings.primary()
+        # A name reused for a different repository must not inherit what was
+        # remembered about the old one (its snapshots, "the repository existed").
+        remembered = st.db.get_setting(f"repository_of:{body.name}")
+        if remembered is not None and remembered != repository:
+            st.db.forget_destination(body.name)
+        st.db.set_setting(f"repository_of:{body.name}", repository)
 
-    def mutate(doc: TOMLDocument) -> None:
-        if current is not None:
-            # A lone destination is primary only implicitly; with a second one
-            # the config must say which.
-            upsert_destination_entry(doc, current.name, primary=True)
-        upsert_destination_entry(
-            doc, body.name, repository=repository, primary=True if current is None else None,
-            keep_days=body.keep_days or None, max_gb=body.max_gb or None,
-        )  # fmt: skip
+        def mutate(doc: TOMLDocument) -> None:
+            if current is not None:
+                # A lone destination is primary only implicitly; with a second one
+                # the config must say which.
+                upsert_destination_entry(doc, current.name, primary=True)
+            upsert_destination_entry(
+                doc, body.name, repository=repository, primary=True if current is None else None,
+                keep_days=body.keep_days or None, max_gb=body.max_gb or None,
+            )  # fmt: skip
 
-    try:
         write(st, mutate)
-    except HTTPException:
+    except Exception as exc:
         if created:
-            rclone.delete(tools.rclone, created, config)  # don't leave it behind for a retry
+            rclone.delete(binary, created)  # a half-made remote is no use, and blocks a retry
+        if isinstance(exc, ToolError):
+            raise HTTPException(422, st.redact(str(exc))) from None
         raise
     return _all(st)
 
@@ -325,10 +302,3 @@ def preview(name: str, keep_days: int, max_gb: int, st: State) -> LimitPreviewOu
     forget, _short, _small = retention.quota_cut(used, keep_days, max_gb, skip)
     gone.update({s.id: s for s in forget})
     return LimitPreviewOut(snapshots=len(gone), bytes=sum(s.bytes for s in gone.values()))
-
-
-def check_state(st: AppState, d: DestinationConfig, cam_id: str) -> str:
-    try:
-        return restic_for(st.settings, cam_id, d).state()
-    except ToolError as exc:
-        return f"error: {st.redact(str(exc))}"

@@ -140,6 +140,13 @@ name = "Driveway"
 timezone = "Europe/Brussels"
 demo = true
 
+# A realistic 3-2-1 setup: a local disk as primary, a cloud copy that keeps less.
+[[destinations]]
+name = "nas"
+repository = "./backups"
+primary = true
+keep_days = 30
+
 [[destinations]]
 name = "nextcloud"
 repository = "rclone:nextcloud:reovault"
@@ -182,7 +189,12 @@ gateway_addr = "127.0.0.1:{_free_port()}"
         env["PATH"] = os.pathsep.join([str(Path(rclone).parent), env.get("PATH", "")])
         log = open(folder / "daemon.log", "w")  # noqa: SIM115 - closed below
         proc = subprocess.Popen(
-            [sys.executable, "-m", "reovault", "daemon"], cwd=ROOT, env=env, stdout=log, stderr=log
+            # cwd: the local destination `./backups` lives in this folder too.
+            [sys.executable, "-m", "reovault", "daemon"],
+            cwd=folder,
+            env=env,
+            stdout=log,
+            stderr=log,
         )
         url = f"http://127.0.0.1:{port}"
         try:
@@ -198,7 +210,13 @@ gateway_addr = "127.0.0.1:{_free_port()}"
                 cams = api.call("GET", "/overview")["cameras"]  # type: ignore[index]
                 return all(c["verdict"] == "up_to_date" for c in cams)
 
+            def copied() -> bool:  # nothing left waiting in any row: copies caught up
+                cams = api.call("GET", "/overview")["cameras"]  # type: ignore[index]
+                runs = [r for c in cams for row in c["coverage"]["rows"] for r in row["runs"]]
+                return all(r["state"] != "waiting" for r in runs)
+
             _wait(backed_up, "both demo cameras backed up")
+            _wait(copied, "the cloud copy caught up")
             # Alerts are evaluated once a minute; healthy means none open.
             api.call("POST", "/recovery/confirm")  # the screenshots show no reminder
             issues = api.call("GET", "/overview")["issues"]  # type: ignore[index]

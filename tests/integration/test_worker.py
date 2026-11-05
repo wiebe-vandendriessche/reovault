@@ -121,3 +121,23 @@ def test_an_empty_answer_never_expires_the_whole_index(setup, tmp_path):
     assert db.expire_unlocated("demo") == 0
     assert db.totals("demo") == before
     assert worker is not None
+
+
+def test_a_changed_camera_entry_is_used_from_the_next_run(setup, monkeypatch):
+    """A new password (or address) must not wait for a restart."""
+    from reovault import worker as worker_mod
+
+    store, db = setup
+    built = []
+    monkeypatch.setattr(
+        worker_mod, "camera_for", lambda _s, cfg, _g: built.append(cfg.name) or object()
+    )
+    monkeypatch.setattr(backup.BackupRun, "run", lambda self, trigger: backup.RunResult())
+    gateway = Gateway("reolink-cli", "127.0.0.1:1")
+    w = Worker("demo", lambda: store.current, db, gateway, lambda *_a, **_k: None)
+    cfg = store.current.camera("demo")
+    w._backup(store.current, cfg)
+    w._backup(store.current, cfg)
+    assert built == [cfg.name]  # unchanged: the same camera object is kept
+    w._backup(store.current, cfg.model_copy(update={"name": "renamed"}))
+    assert built == [cfg.name, "renamed"]

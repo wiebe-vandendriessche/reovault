@@ -7,8 +7,8 @@ table below tracks what's actually been run against real hardware.
 
 | Model | Discovery / connection | Backup (search, download, verify) |
 |---|---|---|
-| Reolink Video Doorbell D340W | Verified | Verified. Test fixtures come from this device. |
-| Reolink E1 Outdoor Pro | Verified | Verified: 2 GB batches backed up to a local repository and to Nextcloud. |
+| Reolink Video Doorbell D340W | Verified | Verified (reolink-cli 0.20.0, 2026-11-05, login by host and password from `reovault.toml`): search, batch download and storage status through the gateway. Test fixtures come from this device. |
+| Reolink E1 Outdoor Pro | Verified | Verified (reolink-cli 0.20.0, 2026-11-05, login by host and password from `reovault.toml`): 2 GB batches backed up to a local repository and copied to Nextcloud. |
 
 ## Measured (2026-10-28)
 
@@ -49,7 +49,8 @@ Nothing else was using the cameras during these runs.
   [reolink-downloader](https://github.com/deviantintegral/reolink-downloader)).
 
 A camera that changes IP address (DHCP) can no longer be reached at its old
-`host`. Give it a DHCP reservation, or change its address under Cameras, Edit.
+`host`. Give it a DHCP reservation, or change its address under Cameras, Edit
+(together with the camera password, which a new address always needs).
 
 If you run ReoVault against a device that isn't listed here, please open an
 issue with the model and what worked. That's how this table grows.

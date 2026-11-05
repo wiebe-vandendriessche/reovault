@@ -504,16 +504,11 @@ def test_a_device_error_is_a_failure_not_an_outage(env):
     assert env.state.unreachable_since is None
 
 
-def test_the_card_timeline_splits_the_card_into_slices(env):
-    from reovault.status import BUCKETS, timeline
+def test_where_the_card_starts_is_remembered_across_restarts(env):
+    from reovault.db import iso
 
-    for h in (70, 60, 40, 30, 20, 10):
-        env.cam.add(NOW - timedelta(hours=h))
-    env.cam.refuse.add(env.cam.add(NOW - timedelta(hours=5)))  # keeps failing
+    env.cam.add(NOW - timedelta(hours=30))
+    env.cam.add(NOW - timedelta(hours=2))
     env.run()
-    slices = timeline("cam", env.db, env.state)
-    assert len(slices) == BUCKETS
-    assert sum(b.backed_up for b in slices) == 6
-    assert sum(b.waiting + b.failing for b in slices) == 1
-    assert slices[0].backed_up == 1  # the oldest clip is the first slice
-    assert timeline("cam", env.db, CameraState()) == []  # card not scanned yet: nothing to draw
+    assert env.state.oldest_on_card is not None
+    assert env.db.get_setting("card_start:cam") == iso(env.state.oldest_on_card)

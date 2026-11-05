@@ -151,7 +151,7 @@ def test_a_copy_that_stays_behind_alerts_but_not_while_it_is_seeding(tmp_path):
     rt.db.upsert_clips("cam", [("c1", old, None, 100, "md")])
     (clip,) = rt.db.clips_by_name("cam", ["c1"]).values()
     rt.db.mark_backed_up("cam", "local", "s1", old, {clip.id: "/b/c1.mp4"})
-    rt.db.add_location("cam", "s1", "local", "s1", old)
+    rt.db.set_locations("cam", "local", [("s1", "s1", old)])
     kinds = [c.condition for c in rt._destination_conditions(rt.settings())]
     assert kinds == ["copy_behind"]
     update_status(rt.db, "cloud", seeding={"cam": [1, 5]})  # progress: copying right now

@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-GiB = 1024**3
+GB = 1_000_000_000  # decimal, as disks and cloud plans count
 QUOTA_HIGH = 0.90  # start cutting above this share of the cap ...
 QUOTA_LOW = 0.85  # ... until back under this one (covers the index, the config
 # repository and prune's unused space)
@@ -53,11 +53,7 @@ class Cut:
 
 
 def newest_by_camera(snaps: list[Snap]) -> dict[str, Snap]:
-    newest: dict[str, Snap] = {}
-    for s in snaps:
-        if s.camera not in newest or s.time > newest[s.camera].time:
-            newest[s.camera] = s
-    return newest
+    return {s.camera: s for s in sorted(snaps, key=lambda s: s.time)}
 
 
 def wants(keep_days: int, floor: datetime | None, snap: Snap, newest: Snap) -> bool:
@@ -87,7 +83,7 @@ def quota_cut(
     age. Oldest first, until under the low-water mark."""
     if not max_gb:
         return [], False, False
-    cap = max_gb * GiB
+    cap = max_gb * GB
     used = sum(s.bytes for s in usage if s.id not in skip)
     if used <= cap * QUOTA_HIGH:
         return [], False, False
@@ -104,17 +100,19 @@ def quota_cut(
     return forget, short, used > cap
 
 
+def _lacks(copy: CopyView, s: Snap, newest: Snap) -> bool:
+    """`copy` should hold `s` but doesn't yet."""
+    return s.root not in copy.roots.get(s.camera, frozenset()) and wants(
+        copy.keep_days, copy.floor, s, newest
+    )
+
+
 def copy_candidates(primary: list[Snap], copy: CopyView) -> list[Snap]:
     """Primary snapshots this copy still lacks and wants, newest first (the
     freshest footage is protected first, and the newest carries the index)."""
     newest = newest_by_camera(primary)
     return sorted(
-        (
-            s
-            for s in primary
-            if s.root not in copy.roots.get(s.camera, frozenset())
-            and wants(copy.keep_days, copy.floor, s, newest[s.camera])
-        ),
+        (s for s in primary if _lacks(copy, s, newest[s.camera])),
         key=lambda x: x.time,
         reverse=True,
     )
@@ -128,12 +126,7 @@ def release(
     newest = newest_by_camera(all_snaps)
     ok, held = [], 0
     for s in forget:
-        needed = any(
-            s.root not in c.roots.get(s.camera, frozenset())
-            and wants(c.keep_days, c.floor, s, newest[s.camera])
-            for c in copies
-        )
-        if needed:
+        if any(_lacks(c, s, newest[s.camera]) for c in copies):
             held += 1
         else:
             ok.append(s)

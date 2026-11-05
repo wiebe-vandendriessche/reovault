@@ -195,3 +195,13 @@ def test_an_error_envelope_on_stderr_becomes_its_plain_message(tmp_path):
     )
     with pytest.raises(ToolError, match="^login failed$"):
         _camera(_stub(tmp_path, script)).storage()
+
+
+def test_info_reads_model_firmware_and_hardware(tmp_path):
+    fixture = (FIXTURES / "device_info.json").read_text()
+    info = _camera(_stub(tmp_path, f"print({fixture!r})\n")).info()
+    assert (info.model, info.firmware, info.hardware) == (
+        "D340W",
+        "v3.0.0.6460_2605271708",
+        "DB_566128M5MP_W",
+    )

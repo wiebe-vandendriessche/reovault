@@ -17,6 +17,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from reovault.backup import open_repository
 from reovault.config import DestinationConfig, Settings
 from reovault.db import Db, now_iso
 from reovault.destinations import restic_for, update_status
@@ -83,26 +84,14 @@ class ConfigBackup:
 
     def _one(self, settings: Settings, dest: DestinationConfig, files: dict[str, Path]) -> None:
         restic = restic_for(settings, REPO, dest)
-        state = restic.state()
-        if state == "wrong_password":
-            raise ToolError("the restic password doesn't open the config repository")
-        if state == "missing":
-            if self.db.repo_seen(dest.name, REPO):
-                raise ToolError(
-                    "the destination has no config repository any more, but there was one "
-                    "before. Check that it is reachable: nothing will be created."
-                )
-            restic.init()
-        self.db.mark_repo_seen(dest.name, REPO)
+        open_repository(self.db, dest.name, REPO, restic)
         # A fixed folder, so every snapshot is one group; removed right after.
         stage = settings.storage.data_dir / "config-backup"
         shutil.rmtree(stage, ignore_errors=True)
         stage.mkdir(parents=True, mode=0o700)
         try:
             for name, path in files.items():
-                target = stage / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
+                shutil.copyfile(path, stage / name)
             restic.backup(stage, timeout=600)
             restic.forget_last(KEEP_LAST)
         finally:

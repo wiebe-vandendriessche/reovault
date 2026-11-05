@@ -3,13 +3,15 @@
 ReoVault does one thing: it copies the clips on each camera's SD card into a
 [restic](https://restic.net/) backup, before the card's loop recording
 overwrites them. Everything that makes a backup trustworthy (encryption,
-deduplication, integrity checks, retention) is restic's job, not ReoVault's.
+deduplication, integrity checks, pruning) is restic's job, not ReoVault's.
+ReoVault only decides *which* snapshots retention may forget, because that
+depends on the copies and size limits restic doesn't know about.
 
 ```
 camera SD card --reolink-cli vod download--> local batch --restic backup--> primary destination
                                              (at most two batches)          (a local disk, ideally)
                                                                                   |
-                                                            restic copy (own threads, never block a backup)
+                                                            restic copy (own threads; see "pause" below)
                                                                                   v
                                                               copy destinations (Nextcloud, OneDrive, S3, ... via rclone)
 ```
@@ -18,18 +20,20 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
 
 | Module | Job |
 |---|---|
-| `camera.py` | Talks to cameras through the official `reolink-cli`: search a card, batch-download clips, read the card's status, discover and add cameras. Also `DemoCamera`, a pretend camera for trying ReoVault without hardware. |
+| `camera.py` | Talks to cameras through the official `reolink-cli`: search a card, batch-download clips, read the card's status, discover cameras and check a login. Every call passes the camera's host and user, the password on stdin. Also `DemoCamera`, a pretend camera for trying ReoVault without hardware. |
 | `restic.py` | A thin wrapper around the pinned `restic` binary: open/init a repository, back up, list snapshots, `forget`, `check`, `dump`. |
 | `backup.py` | One camera's backup run, below. The core. |
-| `worker.py` | One thread per enabled camera: runs on its interval, plus that camera's daily retention and weekly check. |
+| `worker.py` | One thread per enabled camera: runs on its interval, plus that camera's retention on the primary (daily; with a size limit, hourly and after every batch) and weekly check. |
 | `destinations.py`, `retention.py` | The 3-2-1 side: one thread per copy destination (`restic copy`, its own retention and size limit, weekly check), and the pure functions that choose which snapshots to forget. |
 | `rclone.py` | Connects rclone remotes from the dashboard through `rclone config create`; ReoVault never parses `rclone.conf`. |
 | `configbackup.py` | Backs up ReoVault's own config (`reovault.toml` with the cameras, and `rclone.conf`) into each destination. |
 | `updates.py` | The optional daily "is there a newer release" check. |
-| `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, offline, no SD card, and the SD-card timeline. |
+| `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, offline, no SD card, no backup yet, and each camera's coverage (where its footage of the last days is: card, primary, copies). |
 | `alerts.py` | ntfy, webhook and email, driven by what's wrong right now. |
 | `db.py` | SQLite: the clip index and the run history. |
 | `config.py`, `config_store.py` | `reovault.toml`, written back by the dashboard with comments kept. |
+| `runtime.py` | Wires it all together for the daemon and the API, and computes the alert conditions. |
+| `tools.py`, `cli.py` | Running the pinned external tools; the `reovault` command. |
 | `web/` | The `/api/v1` JSON API and the built dashboard. |
 
 ## A backup run
@@ -69,7 +73,7 @@ camera SD card --reolink-cli vod download--> local batch --restic backup--> prim
    * If an upload fails, the next batch is still staged next to it and the
      run stops: nothing more is downloaded until the destination is back.
      The next run uploads both in one snapshot. Local disk holds at most two
-     batches (one uploading, one downloading), about 4.8 GB per camera. The
+     batches (one uploading, one downloading), about 4.3 GB per camera. The
      clips wait on the SD card.
 
 Overlapping the two cuts a first backup of a full card by about a third:
@@ -133,6 +137,13 @@ then the rest.
   trims the oldest at 90% down to 85% (headroom for manifests and prune), and
   alerts when it had to cut younger than `keep_days`, when even the newest
   backups don't fit, or when copies it is waiting for block it.
+
+**The pause.** A size-limited primary is trimmed after every committed batch,
+not just once a day, so a first run on a full card can't fill a small disk.
+When it is at its limit and can't trim (its copies don't have the old
+snapshots yet), the camera's run stops before the next batch with "backups
+wait for the copies", rather than grow past `max_gb`. The clips wait on the SD
+card, and the next run continues once the copies have caught up.
 
 ## The index
 

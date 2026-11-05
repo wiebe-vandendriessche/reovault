@@ -7,6 +7,8 @@ fixture-pin the parsing in `reovault/camera.py` so a
   from an `onvif://...hardware/<MODEL>` scope entry, the friendly name from a
   `reolink-lan://name/<NAME>` entry. There's no dedicated `model`/`name`
   field on the discovery record itself.
+- `device_info.json`: `info --output json` output (D340W), serial redacted.
+  The firmware and hardware fields are `firmware` and `hardware_version`.
 - `storage.json`: `storage status` output. Fields are nested under
   `data.items[0]`, not flat under `data`.
 - `vod_search.json`: **not** a verbatim capture. The real response covered

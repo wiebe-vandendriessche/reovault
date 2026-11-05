@@ -87,3 +87,19 @@ def test_recovery_needs_a_login(env, web_settings, web_password_hash):
     assert client.get("/api/v1/recovery").status_code == 401
     assert client.get("/api/v1/recovery/sheet").status_code == 401
     assert client.post("/api/v1/recovery/confirm").status_code in (401, 403)
+
+
+def test_the_password_file_from_the_environment_is_shown(
+    env, web_settings, web_password_hash, monkeypatch, tmp_path
+):
+    from fastapi.testclient import TestClient
+
+    from tests.integration.conftest import login, make_web_app
+
+    pw = tmp_path / "restic-password"
+    pw.write_text("x")
+    monkeypatch.setattr(web_settings.backup, "password_file", None)
+    monkeypatch.setenv("RESTIC_PASSWORD_FILE", str(pw))
+    client = login(TestClient(make_web_app(env, web_settings)))
+    body = client.get("/api/v1/recovery").json()
+    assert body["password_file"] == str(pw) and body["password_file_found"]

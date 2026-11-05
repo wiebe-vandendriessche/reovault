@@ -69,6 +69,13 @@ class CardStatus:
     mounted: bool | None
 
 
+@dataclass(frozen=True, slots=True)
+class DeviceInfo:
+    model: str | None
+    firmware: str | None
+    hardware: str | None
+
+
 @dataclass(slots=True)
 class Downloaded:
     files: dict[str, Path] = field(default_factory=dict)
@@ -82,6 +89,7 @@ class Camera(Protocol):
     def search(self, from_utc: datetime, to_utc: datetime) -> list[Found]: ...
     def download(self, names: list[str], dest: Path, timeout: float) -> Downloaded: ...
     def storage(self) -> CardStatus: ...
+    def info(self) -> DeviceInfo: ...
 
 
 def _first(d: dict[str, Any], keys: tuple[str, ...]) -> Any:
@@ -264,6 +272,15 @@ class ReolinkCamera:
                 out.failed[name] = "reolink-cli reported no file for it"
         return out
 
+    def info(self) -> DeviceInfo:
+        data = self._call(["info"], timeout=_SHORT_CALL_SECS)
+
+        def text(key: str) -> str | None:
+            value = data.get(key)
+            return value if isinstance(value, str) and value else None
+
+        return DeviceInfo(text("model"), text("firmware"), text("hardware_version"))
+
     def storage(self) -> CardStatus:
         data = self._call(["storage", "status"], timeout=60)
         items = data.get("items")
@@ -323,6 +340,9 @@ class DemoCamera:
 
     def storage(self) -> CardStatus:
         return CardStatus(total_gb=64.0, free_gb=1.5, mounted=True)
+
+    def info(self) -> DeviceInfo:
+        return DeviceInfo("Demo camera", "demo", None)
 
 
 def scan_card(camera: Camera, now: datetime) -> tuple[list[Found], datetime | None]:

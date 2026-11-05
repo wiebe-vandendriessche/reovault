@@ -13,7 +13,6 @@ goes over stdin). Error text is scrubbed of them before it reaches anyone.
 from __future__ import annotations
 
 import configparser
-import os
 import re
 from dataclasses import dataclass
 
@@ -21,7 +20,6 @@ from reovault.tools import ToolError, run
 
 PREFIX = "reovault-"
 _KEY = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,10 +119,6 @@ _PASTE_KEYS = {
 }  # fmt: skip
 
 
-def valid_name(name: str) -> bool:
-    return bool(_NAME.fullmatch(name))
-
-
 def remote_name(destination: str) -> str:
     return PREFIX + destination
 
@@ -158,15 +152,8 @@ def _scrub(text: str, secrets: list[str]) -> str:
     return text
 
 
-def _env(config: str | None) -> dict[str, str]:
-    env = dict(os.environ)
-    if config:
-        env["RCLONE_CONFIG"] = config
-    return env
-
-
-def remotes(binary: str, config: str | None = None) -> set[str]:
-    proc = run([binary, "listremotes"], timeout=30, env=_env(config))
+def remotes(binary: str) -> set[str]:
+    proc = run([binary, "listremotes"], timeout=30)
     return {line.rstrip(":") for line in proc.stdout.split() if line.endswith(":")}
 
 
@@ -175,12 +162,11 @@ def create(
     destination: str,
     kind: RemoteType,
     values: dict[str, str],
-    config: str | None = None,
 ) -> str:
     """Creates `reovault-<destination>` (rclone writes the file) and returns its
     name. Raises `ToolError` with a clean message when rclone refuses."""
     name = remote_name(destination)
-    if name in remotes(binary, config):
+    if name in remotes(binary):
         raise ToolError(f"An rclone remote named {name} already exists.")
     secrets = [v for f in kind.fields if f.secret and (v := values.get(f.key))]
     if kind.paste:
@@ -198,7 +184,6 @@ def create(
     proc = run(
         [binary, "config", "create", name, kind.rclone_type, *args, "--non-interactive", *obscure],
         timeout=60,
-        env=_env(config),
     )
     if proc.returncode != 0:
         last = (proc.stderr.strip().splitlines() or ["rclone failed"])[-1]
@@ -206,19 +191,18 @@ def create(
     return name
 
 
-def check(binary: str, name: str, config: str | None = None) -> None:
+def check(binary: str, name: str) -> None:
     """Can the remote be listed? Fast failure, so a wrong password is reported
     now and not at the first backup."""
     proc = run(
         [binary, "lsd", f"{name}:", "--contimeout", "10s", "--retries", "1",
          "--low-level-retries", "1"],
         timeout=90,
-        env=_env(config),
     )  # fmt: skip
     if proc.returncode != 0:
         last = (proc.stderr.strip().splitlines() or ["rclone failed"])[-1]
         raise ToolError(f"The destination doesn't answer: {last.split(' ', 3)[-1][:240]}")
 
 
-def delete(binary: str, name: str, config: str | None = None) -> None:
-    run([binary, "config", "delete", name], timeout=30, env=_env(config))
+def delete(binary: str, name: str) -> None:
+    run([binary, "config", "delete", name], timeout=30)

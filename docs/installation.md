@@ -7,71 +7,60 @@ pinned `reolink-cli`, `restic` and `rclone`.
 
 ## Docker Compose
 
+You create two things; ReoVault makes the rest from the dashboard.
+
 ```bash
 mkdir reovault && cd reovault
 curl -fsSLO https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/compose.yaml
-mkdir -p data
-curl -fsSL https://raw.githubusercontent.com/wiebe-vandendriessche/reovault/main/reovault.example.toml -o reovault.toml
-touch rclone.conf && chmod 600 reovault.toml rclone.conf
+mkdir data
+openssl rand -base64 32 | tr -d '\n' > restic-password && chmod 600 restic-password
+docker compose up -d
+docker compose logs reovault | grep setup.code
 ```
 
-That's the whole layout: `compose.yaml`, `reovault.toml`, `rclone.conf` and
-`restic-password` (next step) in one folder, and `data/` for everything
-ReoVault writes. Create `data/` before the first `docker compose` command:
-otherwise Docker creates it as root and the container (uid 1000) can't write to
-it.
+The folder is mounted at `/config` and must be writable by uid 1000 (the
+container user): create it and `data/` as a normal user before the first
+`docker compose` command, not with `sudo`.
 
-1. **The restic password.** It encrypts every backup. Generate one and keep a
+1. **The restic password** (`restic-password`) encrypts every backup. Keep a
    copy in your password manager: without it, nothing can be restored.
 
-   ```bash
-   openssl rand -base64 32 | tr -d '\n' > restic-password
-   chmod 600 restic-password
-   ```
-
-2. **Start it.**
-
-   ```bash
-   docker compose up -d
-   docker compose logs reovault | grep setup.code
-   ```
-
-3. **The first-run screen.** Open the dashboard (port 8080). With no login
-   yet, it asks for the one-time **setup code** printed in the log above
-   (`XXXX-XXXX`, shown on every start until setup is done), and for the email
+2. **The first-run screen.** Open the dashboard (port 8080). With no login
+   yet, it asks for the one-time **setup code** from the log above
+   (`XXXX-XXXX`, printed on every start until setup is done), and for the email
    and password you want to sign in with. Nobody who can reach the port but
-   can't read the log can take the dashboard over.
+   can't read the log can take the dashboard over. (`docker compose run --rm
+   reovault web set-password` after setting `[web] email` by hand does the
+   same from the terminal.)
 
-   Prefer the terminal? `docker compose run --rm reovault web set-password`
-   after setting `[web] email` does the same.
-
-4. **Destinations.** Settings, Destinations, **Connect**:
+3. **Destinations.** Settings, Destinations, **Connect**:
    * a local disk: mount it in `compose.yaml` (`/mnt/disk/reovault:/backups`),
      then connect the folder `/backups`;
    * Nextcloud, SFTP, S3 and Backblaze B2: fill in the form;
    * OneDrive and Google Drive: run `rclone config` on a computer with a
-     browser, make the remote, and paste its `[section]` from `rclone.conf`.
+     browser, make the remote, and paste its `[section]` from its `rclone.conf`.
 
    The first destination is the primary. Connect a second (a cloud account, a
    NAS) and it receives copies of everything: that is 3-2-1. Each one can have
-   a keep-days and a size limit (`max_gb`). Editing `config/reovault.toml`
-   by hand works the same; see [Configuration](configuration.md).
+   a keep-days and a size limit.
 
-   Then check with `docker compose exec reovault reovault doctor`: it checks
-   the tools, the folders and every camera's repository without changing
-   anything.
+4. **Cameras.** Cameras, **Add camera**: find them on your network, enter the
+   camera's user and password and pick its timezone. ReoVault logs in once to
+   check before it saves the camera. A demo camera needs no hardware.
 
 5. **Recovery.** Settings, Recovery says where the restic password lives and
-   offers a recovery sheet (no passwords in it). Store the restic password
-   somewhere other than this server, then tick the box: until you do, the
-   Overview reminds you. ReoVault also backs up its own config into each
-   destination, so a replacement server can start from the footage alone; see
+   offers a recovery sheet (no passwords in it). Once something is backed up,
+   the Overview reminds you to store the restic password somewhere other than
+   this server until you press **I stored a copy somewhere safe**. ReoVault
+   also backs up its own config into each destination, so a replacement server
+   can start from the footage alone; see
    [Restore without ReoVault](restore-without-reovault.md).
 
-6. **Cameras.** Add them on the dashboard's Cameras page (port 8080): find
-   them on your network, enter the camera's user and password and pick its
-   timezone. ReoVault logs in once to check, then saves the camera in
-   `reovault.toml`. A `demo` camera needs no hardware.
+All of this ends up in `reovault.toml` and `rclone.conf` next to
+`compose.yaml`, written by ReoVault (owner-only). Editing them by hand works
+the same; see [Configuration](configuration.md). `docker compose exec reovault
+reovault doctor` checks the tools, the folders and every camera's repository
+without changing anything.
 
 `compose.yaml` supports two ways to reach the dashboard: behind a reverse
 proxy (the default, no port published), or a direct port on your LAN/VPN. See
@@ -79,10 +68,12 @@ the comments at its top and [Security](security.md#deployment-modes).
 
 ## The first run
 
-The first run backs up everything that's on each SD card. A second destination is seeded in the background (the dashboard shows "copying 120 of 430") without slowing the backups. A full 256 GB card
-at about 2 MB/s takes a day or two. ReoVault works through it oldest-first
-(the clips the card overwrites next) while new clips still go out within the
-hour; the dashboard shows the progress and an estimate. Only one 2 GB batch is
+The first run backs up everything that's on each SD card: on the verified
+cameras about 4 to 5 MB/s, so a full 256 GB card takes about 16 hours.
+ReoVault works through it oldest-first (the clips the card overwrites next)
+while new clips still go out within the hour; the dashboard shows the progress
+and an estimate. A second destination is seeded in the background (the
+dashboard shows "copying 120 of 430"). At most two 2 GB batches per camera are
 on local disk at any time.
 
 ## Upgrading
@@ -109,9 +100,12 @@ In `compose.yaml`, comment out `image:` and uncomment `build: .`, then
 
 ## Alerts
 
-Alerts go out when backups keep failing, clips are about to be overwritten
-before they're backed up, clips keep failing to download, or the weekly check
-finds damage. Configure one or more channels under `[alerts]` in
+Alerts go out when backups keep failing, a camera stops answering, clips are
+about to be overwritten before they're backed up, clips keep failing to
+download, the weekly check finds damage, a destination answers without the
+backups it should hold, a destination can't be reached or a copy falls behind,
+a size limit cuts backups short (is too small, or waits for copies), no
+destination is set up, or alerts are on with no channel. Configure one or more channels under `[alerts]` in
 `reovault.toml`; secrets go in files next to it (the folder is mounted at `/config`):
 
 ```toml

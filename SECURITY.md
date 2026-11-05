@@ -1,8 +1,8 @@
 # Security Policy
 
-ReoVault handles camera credentials (via `reolink-cli`'s own encrypted
-registry), cloud logins (`rclone.conf`) and the password to every backup, so
-security issues are treated as a priority.
+ReoVault handles camera credentials (in `reovault.toml`, owner-only, never
+returned by the API), cloud logins (`rclone.conf`) and the password to every
+backup (`restic-password`), so security issues are treated as a priority.
 
 ## Supported versions
 

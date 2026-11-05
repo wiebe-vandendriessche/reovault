@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from reovault import retention
-from reovault.backup import _MIN_UPLOAD_RATE
+from reovault.backup import _MIN_UPLOAD_RATE, open_repository
 from reovault.config import DestinationConfig, Settings
 from reovault.db import Db, iso, now_iso, parse_iso
 from reovault.logging import get_logger
@@ -80,8 +80,7 @@ def copy_view(db: Db, dest: DestinationConfig, cameras: list[str]) -> CopyView:
 def update_status(db: Db, name: str, **fields: Any) -> None:
     """What the dashboard and alerts show about a destination, kept in the
     index so a restart remembers it: `{used, short, too_small, blocked, ...}`."""
-    raw = db.get_setting(f"dest_status:{name}")
-    status = json.loads(raw) if raw else {}
+    status = status_of(db, name)
     status.update(fields)
     db.set_setting(f"dest_status:{name}", json.dumps(status))
 
@@ -132,8 +131,7 @@ def status_of(db: Db, name: str) -> dict[str, Any]:
 QUOTA_NOTICE = timedelta(days=7)
 ROUND_EVERY = timedelta(minutes=15)  # between rounds, when nothing wakes a thread sooner
 CHECK_EVERY = timedelta(days=7)
-CHECK_SUBSET = "500M"
-FALLBACK_COPY_SECS = 1800.0
+CHECK_SUBSET = "500M"  # read back this much data a week: catches bit rot cheaply
 
 
 class DestinationWorker:
@@ -214,19 +212,7 @@ class DestinationWorker:
         src, dst = restic_for(settings, cam_id, primary), restic_for(settings, cam_id, dest)
         if src.state() != "ok":
             return  # nothing backed up yet
-        state = dst.state()
-        if state == "wrong_password":
-            raise ToolError("the restic password doesn't open this destination's repository")
-        if state == "missing":
-            if self.db.repo_seen(dest.name, cam_id):
-                raise ToolError(
-                    "the destination has no repository for this camera any more, but there was "
-                    "one before. Check that it is reachable and the path is right: nothing "
-                    "will be created."
-                )
-            logger.info("destination.repository_init", destination=dest.name, camera=cam_id)
-            dst.init(copy_of=src)
-        self.db.mark_repo_seen(dest.name, cam_id)
+        open_repository(self.db, dest.name, cam_id, dst, copy_of=src)
 
         cameras = [c.id for c in settings.cameras]
         theirs = dst.snapshots()
@@ -234,7 +220,7 @@ class DestinationWorker:
         used = usage(self.db, primary.name)
         ours = snaps_of(cam_id, src.snapshots(), used)
         todo = copy_candidates(ours, copy_view(self.db, dest, cameras))
-        cap = dest.max_gb * retention.GiB
+        cap = dest.max_gb * retention.GB
         held = sum(s.bytes for s in usage(self.db, dest.name))
         for done, snap in enumerate(todo):
             if self._quit.is_set():

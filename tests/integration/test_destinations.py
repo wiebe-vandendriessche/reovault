@@ -28,7 +28,7 @@ def env(tmp_path, monkeypatch):
         pytest.fail("restic is not on PATH (python3 scripts/fetch_tools.py .tools)")
     (tmp_path / "pw").write_text("test-password")
     monkeypatch.setattr(backup, "BATCH_BYTES", 1000)  # one 1000-byte clip per snapshot
-    monkeypatch.setattr(retention, "GiB", 1000)  # so `max_gb = 2` is a 2000-byte cap
+    monkeypatch.setattr(retention, "GB", 1000)  # so `max_gb = 2` is a 2000-byte cap
 
     def configure(primary_extra: str = "", second_extra: str = ""):
         toml = tmp_path / "reovault.toml"

@@ -9,13 +9,17 @@ You need:
 * `restic` (any recent version) and, for a cloud destination, `rclone` with
   the same `rclone.conf`;
 * the restic password (the `restic-password` file);
-* the destination, e.g. `rclone:nextcloud:reovault`, plus the camera's id.
+* the destination's `repository` from `reovault.toml` (or the recovery
+  sheet), e.g. `rclone:reovault-cloud:reovault`, plus the camera's id.
 
 ```bash
 export RESTIC_PASSWORD_FILE=./restic-password
 export RCLONE_CONFIG=./rclone.conf                 # only for rclone: destinations
-REPO=rclone:nextcloud:reovault/front-door          # <destination>/<id>
+REPO=rclone:reovault-cloud:reovault/front-door     # <repository>/<id>
 ```
+
+Remotes connected from the dashboard are named `reovault-<destination name>`;
+one you made by hand keeps its own name.
 
 ## Find a clip
 
@@ -65,8 +69,8 @@ one copy next to the clips.
 ## Rebuild ReoVault on a new server
 
 The server died but a destination survived? Nothing is lost, as long as you
-have the restic password. ReoVault backs up its own config daily into each
-destination, as the repository `<destination>/reovault-config`: `reovault.toml`
+have the restic password. ReoVault backs up its own config into each
+destination whenever it changes (checked hourly, the last 30 versions kept), as the repository `<destination>/reovault-config`: `reovault.toml`
 (the cameras with their passwords) and `rclone.conf`. It is encrypted by restic
 like everything else: the rclone tokens and camera passwords in it are why the
 restic password matters twice.
@@ -79,7 +83,8 @@ restic password matters twice.
    restic -r <destination>/reovault-config restore latest --target ./restored-config
    ```
 
-   Put `reovault.toml` and `rclone.conf` next to `compose.yaml`. For a cloud
+   The files land in `./restored-config/data/config-backup/`. Put
+   `reovault.toml` and `rclone.conf` next to `compose.yaml`. For a cloud
    destination you need an `rclone.conf` that reaches it first: the old
    server's recovery sheet says which destinations there were.
 3. Start ReoVault. It sees snapshots it has no record of, rebuilds its clip

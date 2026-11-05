@@ -6,8 +6,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from reovault.retention import (
+    GB,
     CopyView,
-    GiB,
     Snap,
     age_cut,
     copy_candidates,
@@ -22,7 +22,7 @@ NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 def snap(camera: str, days_ago: float, gb: float = 1.0, id: str | None = None) -> Snap:
     t = NOW - timedelta(days=days_ago)
     sid = id or f"{camera}-{days_ago}"
-    return Snap(camera, sid, sid, t, int(gb * GiB))
+    return Snap(camera, sid, sid, t, int(gb * GB))
 
 
 def test_age_cut_counts_from_the_newest_and_never_cuts_it():

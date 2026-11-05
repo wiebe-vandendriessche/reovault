@@ -11,7 +11,6 @@
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
 	import DestinationsForm from '#lib/components/settings/DestinationsForm.svelte';
 	import RecoveryForm from '#lib/components/settings/RecoveryForm.svelte';
-	import BackupForm from '#lib/components/settings/BackupForm.svelte';
 	import AlertsForm from '#lib/components/settings/AlertsForm.svelte';
 	import ConfigSection from '#lib/components/settings/ConfigSection.svelte';
 	import PasswordForm from '#lib/components/settings/PasswordForm.svelte';
@@ -104,7 +103,17 @@
 		</Tabs.List>
 
 		<Tabs.Content value="destinations"><DestinationsForm writable={c.writable} /></Tabs.Content>
-		<Tabs.Content value="backup"><BackupForm config={c} {onsaved} /></Tabs.Content>
+		<Tabs.Content value="backup">
+			<ConfigSection
+				config={c}
+				path={['backup']}
+				section="backup"
+				title="Schedule"
+				description="How often each camera's SD card is read and new clips are backed up. A run that takes longer simply continues."
+				labels={{ interval_minutes: 'Back up every', password_file: 'Restic password file' }}
+				{onsaved}
+			/>
+		</Tabs.Content>
 		<Tabs.Content value="recovery"><RecoveryForm /></Tabs.Content>
 
 		<Tabs.Content value="alerts" class="flex flex-col gap-4">
@@ -113,7 +122,7 @@
 				config={c}
 				path={['alerts']}
 				title="Alert channels"
-				description="Set these in reovault.toml (applied without a restart). The *_file fields point at files holding the secret, such as Docker secrets; they are read-only here so a stolen session can't redirect a secret."
+				description="Set these in reovault.toml (applied without a restart). The *_file fields point at files holding the secret, e.g. next to reovault.toml; they are read-only here so a stolen session can't redirect a secret."
 				labels={alertLabels}
 				{onsaved}
 			/>

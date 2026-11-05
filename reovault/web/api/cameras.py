@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, SecretStr
 
 from reovault import camera as cam_cli
+from reovault.backup import CameraState
 from reovault.config_store import remove_camera_entry, upsert_camera_entry
 from reovault.db import Run, parse_iso
-from reovault.status import Verdict, camera_status, timeline
+from reovault.status import Verdict, camera_status, coverage, coverage_start
 from reovault.tools import ToolError
 from reovault.web.api.config import write
 from reovault.web.api.destinations import DestinationOut, destination_out
 from reovault.web.deps import AppState, State, camera_or_404
+from reovault.worker import camera_for
 
 router = APIRouter(tags=["cameras"])
 
@@ -61,11 +64,25 @@ class CardOut(BaseModel):
     mounted: bool | None
 
 
-class BucketOut(BaseModel):
-    backed_up: int
-    waiting: int
-    failing: int
-    lost: int
+class RunSegOut(BaseModel):
+    start: int  # first bucket
+    length: int
+    state: Literal["none", "safe", "waiting", "lost", "failing"]
+    clips: int
+
+
+class CoverageRowOut(BaseModel):
+    kind: Literal["card", "primary", "copy"]
+    name: str
+    runs: list[RunSegOut]
+    marker: float | None  # percent along the axis: the card's oldest clip
+
+
+class CoverageOut(BaseModel):
+    start: datetime
+    end: datetime
+    buckets: int
+    rows: list[CoverageRowOut]
 
 
 class CameraOut(BaseModel):
@@ -91,11 +108,15 @@ class CameraOut(BaseModel):
     running: bool
     next_run_at: datetime | None
     last_run: RunOut | None
-    # The SD card in 48 slices, oldest to now; only on the overview.
-    timeline: list[BucketOut] | None = None
+    # Where the footage of the chosen span is; only on the overview.
+    coverage: CoverageOut | None = None
 
 
-def camera_out(st: AppState, cam_id: str, *, with_timeline: bool = False) -> CameraOut:
+def span_start(st: AppState, cam_id: str, state: CameraState | None, span: str | None) -> datetime:
+    return coverage_start(span or "card", cam_id, st.db, state, datetime.now(UTC))
+
+
+def camera_out(st: AppState, cam_id: str, *, coverage_span: str | None = None) -> CameraOut:
     cfg = camera_or_404(st, cam_id)
     worker = st.rt.workers.get(cam_id)
     state = worker.state if worker else None
@@ -128,8 +149,14 @@ def camera_out(st: AppState, cam_id: str, *, with_timeline: bool = False) -> Cam
         running=bool(worker and worker.running),
         next_run_at=worker.next_run_at if worker else None,
         last_run=run_out(st, runs[0]) if runs else None,
-        timeline=[BucketOut(**asdict(b)) for b in timeline(cam_id, st.db, state)]
-        if with_timeline
+        coverage=CoverageOut.model_validate(
+            asdict(
+                coverage(
+                    cam_id, st.db, st.settings, state, span_start(st, cam_id, state, coverage_span)
+                )
+            )
+        )
+        if coverage_span
         else None,
     )
 
@@ -146,13 +173,20 @@ class OverviewOut(BaseModel):
     notices: list[IssueOut]
     cameras: list[CameraOut]
     destinations: list[DestinationOut]
+    # How far back there is anything at all, to offer sensible spans.
+    oldest_backup: datetime | None
 
 
-@router.get("/overview")
-def overview(st: State) -> OverviewOut:
+_SPAN = r"^(card|all|[1-9][0-9]{0,4})$"
+
+
+@router.get("/overview", responses={422: {}})
+def overview(st: State, span: Annotated[str, Query(pattern=_SPAN)] = "card") -> OverviewOut:
     """Read from the index and memory only: loading it never calls a camera
-    or the destination."""
-    cams = [camera_out(st, c.id, with_timeline=True) for c in st.settings.cameras if c.enabled]
+    or the destination. `span` is how far back each camera's coverage looks:
+    `card` (since its SD card starts), `all` (everything ReoVault knows), or a
+    number of days."""
+    cams = [camera_out(st, c.id, coverage_span=span) for c in st.settings.cameras if c.enabled]
     notices = []
     if any(c.backed_up_clips for c in cams) and st.db.get_setting(PASSWORD_CONFIRMED) is None:
         notices.append(
@@ -170,6 +204,7 @@ def overview(st: State) -> OverviewOut:
         notices=notices,
         cameras=cams,
         destinations=[destination_out(st, d) for d in st.settings.destinations],
+        oldest_backup=st.db.oldest_kept(),
     )
 
 
@@ -195,6 +230,48 @@ def stop(cam_id: str, st: State) -> CameraOut:
         raise HTTPException(409, "No backup is running for this camera.")
     worker.stop_run()
     return camera_out(st, cam_id)
+
+
+class DeviceOut(BaseModel):
+    model: str | None
+    firmware: str | None
+    hardware: str | None
+    card: CardOut | None
+    checked_at: datetime
+    error: str | None  # the camera couldn't be asked; everything else is None
+
+
+_DEVICE_TTL = timedelta(minutes=10)
+# ponytail: process-wide, per (camera, address, user); good enough for a handful
+# of cameras on one page.
+_devices: dict[tuple[str, str | None, str], DeviceOut] = {}
+
+
+@router.get("/cameras/{cam_id}/device", responses={404: {}})
+def device(cam_id: str, st: State) -> DeviceOut:
+    """The camera itself: model, firmware and the SD card, asked live (cached
+    for 10 minutes, so opening the page doesn't keep calling the camera)."""
+    cfg = camera_or_404(st, cam_id)
+    key = (cam_id, cfg.host, cfg.user)
+    now = datetime.now(UTC)
+    hit = _devices.get(key)
+    if hit is not None and now - hit.checked_at < _DEVICE_TTL:
+        return hit
+    cam = camera_for(st.settings, cfg, st.rt.gateway)
+    try:
+        info, card = cam.info(), cam.storage()
+    except ToolError as exc:
+        return DeviceOut(
+            model=None, firmware=None, hardware=None, card=None, checked_at=now,
+            error=f"Can't reach the camera: {st.redact(str(exc))}",
+        )  # fmt: skip
+    out = DeviceOut(
+        model=info.model, firmware=info.firmware, hardware=info.hardware,
+        card=CardOut(total_gb=card.total_gb, free_gb=card.free_gb, mounted=card.mounted),
+        checked_at=now, error=None,
+    )  # fmt: skip
+    _devices[key] = out
+    return out
 
 
 class DiscoveredOut(BaseModel):
@@ -305,12 +382,15 @@ def edit_camera(cam_id: str, body: EditCameraIn, st: State) -> list[CameraOut]:
     login: dict[str, str | None] = {}
     if not cfg.demo:
         host, user = body.host or cfg.host, body.user or cfg.user
-        password = body.password or cfg.password
         assert host is not None
-        if (host, user) != (cfg.host, cfg.user) or body.password is not None:
-            if password is None:
-                raise HTTPException(422, "The camera needs its password.")
-            _check_login(st, host, user, password)
+        if (host, user) != (cfg.host, cfg.user) and body.password is None:
+            # Never send the stored password to a new address: a stolen session
+            # could point the camera at its own host and capture the login.
+            raise HTTPException(
+                422, "Enter the camera password again to change its address or user."
+            )
+        if body.password is not None:
+            _check_login(st, host, user, body.password)
         login = {
             "host": host,
             "user": None if user == "admin" else user,

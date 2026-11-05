@@ -48,6 +48,8 @@
 			error = null;
 		}
 	});
+	// A new address or user needs the password again: it's never sent to a new host on its own.
+	const moved = $derived(!!camera && (host !== (camera.host ?? '') || user !== camera.user));
 	const dirty = $derived(
 		!!camera &&
 			(name !== (camera.name ?? '') ||
@@ -141,10 +143,12 @@
 						</Field.Field>
 						<Field.Field>
 							<Field.Label for="edit-cam-pass">Password</Field.Label>
-							<Input id="edit-cam-pass" type="password" autocomplete="new-password" placeholder="Unchanged" disabled={!writable} bind:value={password} />
+							<Input id="edit-cam-pass" type="password" autocomplete="new-password" placeholder={moved ? 'Required' : 'Unchanged'} required={moved} disabled={!writable} bind:value={password} />
 						</Field.Field>
 					</div>
-					<Field.Description>A new address or login is checked with the camera before it's saved.</Field.Description>
+					<Field.Description>
+						A new address or user needs the password again, and is checked with the camera before it's saved.
+					</Field.Description>
 				{/if}
 				{#if error}<p class="text-bad text-sm" role="alert">{error}</p>{/if}
 			</form>

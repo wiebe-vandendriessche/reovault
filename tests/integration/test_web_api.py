@@ -147,17 +147,45 @@ def test_alert_channels_cant_be_changed_from_the_dashboard(backed_up):
     assert r.status_code == 404
 
 
-def test_the_overview_lists_destinations_a_timeline_and_the_password_notice(backed_up):
+def test_the_overview_lists_destinations_coverage_and_the_password_notice(backed_up):
     _rt, client = backed_up
-    ov = client.get("/api/v1/overview").json()
+    ov = client.get("/api/v1/overview", params={"span": "7"}).json()
     (dest,) = ov["destinations"]
     assert (dest["name"], dest["role"]) == ("local", "primary")
     assert dest["used_bytes"] > 0 and dest["snapshots"] >= 1
     (cam,) = ov["cameras"]
-    assert len(cam["timeline"]) == 48
-    assert sum(b["backed_up"] for b in cam["timeline"]) == cam["backed_up_clips"]
+    rows = cam["coverage"]["rows"]
+    assert [(r["kind"], r["name"]) for r in rows] == [("card", "SD card"), ("primary", "local")]
+    held = sum(r["clips"] for r in rows[1]["runs"] if r["state"] == "safe")
+    assert held == cam["backed_up_clips"]  # every backed-up clip of the week is on the primary
+    assert "lost" in {r["state"] for r in rows[0]["runs"]}  # the clip the card overwrote
     assert [n["title"] for n in ov["notices"]] == ["Keep your restic password safe"]
-    assert client.get("/api/v1/cameras").json()[0]["timeline"] is None  # only on the overview
+    assert client.get("/api/v1/cameras").json()[0]["coverage"] is None  # only on the overview
+    assert ov["oldest_backup"] is not None
+    for span in ("card", "all", "365"):
+        assert client.get("/api/v1/overview", params={"span": span}).status_code == 200
+    for bad in ("0", "week", "-3"):
+        assert client.get("/api/v1/overview", params={"span": bad}).status_code == 422
+
+
+def test_the_device_endpoint_asks_the_camera_and_says_when_it_cant(backed_up, monkeypatch):
+    from reovault import camera as cam_mod
+    from reovault.web.api import cameras as api
+
+    _rt, client = backed_up
+    api._devices.clear()
+    dev = client.get("/api/v1/cameras/demo/device").json()
+    assert (dev["model"], dev["error"]) == ("Demo camera", None)
+    assert dev["card"]["total_gb"] == 64.0
+
+    def unreachable(self):
+        raise cam_mod.ToolError("timed out")
+
+    api._devices.clear()
+    monkeypatch.setattr(cam_mod.DemoCamera, "info", unreachable)
+    dev = client.get("/api/v1/cameras/demo/device").json()
+    assert dev["model"] is None and dev["error"].startswith("Can't reach the camera")
+    assert client.get("/api/v1/cameras/nope/device").status_code == 404
 
 
 def test_a_run_shows_its_batches_and_clips(backed_up):
@@ -170,3 +198,33 @@ def test_a_run_shows_its_batches_and_clips(backed_up):
     assert {c["outcome"] for c in detail["clips"]} == {"backed_up"}
     assert detail["truncated"] is (detail["run"]["clips"] > 500)
     assert client.get("/api/v1/runs/99999").status_code == 404
+
+
+def test_the_restic_password_file_cant_be_moved_from_the_dashboard(backed_up):
+    _rt, client = backed_up
+    config = client.get("/api/v1/config").json()
+    backup = next(s for s in config["sections"] if s["path"] == ["backup"])
+    fields = {f["key"]: f for f in backup["fields"]}
+    assert fields["interval_minutes"]["editable"] and not fields["password_file"]["editable"]
+    r = client.put(
+        "/api/v1/config/backup",
+        json={"version": config["version"], "values": {"password_file": "/tmp/elsewhere"}},
+    )
+    assert r.status_code == 409, r.text
+
+
+def test_a_new_camera_address_needs_the_password_again(backed_up, env, monkeypatch):
+    from reovault import camera as cam_mod
+
+    _rt, client = backed_up
+    tried: list[str] = []
+    monkeypatch.setattr(cam_mod, "check", lambda *_a, host, **_k: tried.append(host))
+    body = {"id": "gate", "timezone": "UTC", "host": "192.0.2.7", "password": "s3cret-pw"}
+    assert client.post("/api/v1/cameras", json=body).status_code == 201
+    tried.clear()
+    edit = {"timezone": "UTC", "enabled": True, "host": "203.0.113.66"}
+    r = client.put("/api/v1/cameras/gate", json=edit)
+    assert r.status_code == 422 and tried == []  # the stored password went nowhere
+    assert "203.0.113.66" not in env.toml.read_text()
+    r = client.put("/api/v1/cameras/gate", json={**edit, "password": "s3cret-pw"})
+    assert r.status_code == 200 and tried == ["203.0.113.66"]

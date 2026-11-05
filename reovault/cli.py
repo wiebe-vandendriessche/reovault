@@ -42,7 +42,7 @@ def run(camera: str = typer.Option(..., "--camera", help="The camera's id.")) ->
     settings = load_settings()
     cam = settings.camera(camera)
     if cam is None:
-        typer.echo(f"[FAIL] no [[cameras]] entry with cam_id {camera!r}", err=True)
+        typer.echo(f"[FAIL] no [[cameras]] entry with id {camera!r}", err=True)
         raise typer.Exit(1)
     gateway = Gateway(settings.tools.reolink_cli, settings.tools.gateway_addr)
     try:

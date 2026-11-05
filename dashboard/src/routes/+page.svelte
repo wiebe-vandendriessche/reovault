@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { api, type Camera, type Overview } from '#lib/api/index.js';
 	import { live } from '#lib/state/live.svelte.js';
 	import { query } from '#lib/state/query.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
+	import * as NativeSelect from '#lib/components/ui/native-select/index.js';
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
@@ -14,12 +17,47 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 
+	// How far back the cameras' coverage looks: since the SD card starts (the
+	// default), a number of days, or everything. In the URL, like Footage's filters.
+	const span = $derived(page.url.searchParams.get('span') ?? 'card');
+
 	const overview = query(() => {
 		void live.activity;
 		void live.settings;
 		void live.alert;
-		return api<Overview>('/overview');
+		return api<Overview>('/overview', { query: { span } });
 	});
+
+	// Offered only as far back as there is anything backed up.
+	const PRESETS: [number, string][] = [
+		[7, 'Last week'],
+		[30, 'Last month'],
+		[90, 'Last 3 months'],
+		[180, 'Last 6 months'],
+		[365, 'Last year'],
+		[730, 'Last 2 years']
+	];
+	const spans = $derived.by(() => {
+		const oldest = overview.data?.oldest_backup;
+		const history = oldest ? (Date.now() - Date.parse(oldest)) / 86400000 : 0;
+		const since = oldest
+			? new Date(oldest).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+			: '';
+		const out = [
+			{ value: 'card', label: 'Since the SD card starts' },
+			...PRESETS.filter(([d]) => d < history).map(([d, label]) => ({ value: String(d), label })),
+			{ value: 'all', label: since ? `Everything (since ${since})` : 'Everything' }
+		];
+		if (!out.some((o) => o.value === span)) out.splice(1, 0, { value: span, label: `Last ${span} days` });
+		return out;
+	});
+
+	const LEGEND = [
+		{ label: 'Backed up', class: 'fill-ok' },
+		{ label: 'Waiting', class: 'fill-brand' },
+		{ label: 'Keeps failing', class: 'fill-bad' },
+		{ label: 'Lost', class: 'fill-warn' }
+	];
 
 	// Worst first, so the camera that needs you is at the top.
 	const rank: Record<Camera['verdict'], number> = {
@@ -37,7 +75,10 @@
 
 	function replace(c: Camera) {
 		if (!overview.data) return;
-		overview.data.cameras = overview.data.cameras.map((x) => (x.id === c.id ? c : x));
+		// Run/stop answers without coverage: keep what the card already shows.
+		overview.data.cameras = overview.data.cameras.map((x) =>
+			x.id === c.id ? { ...c, coverage: c.coverage ?? x.coverage } : x
+		);
 	}
 </script>
 
@@ -111,12 +152,37 @@
 		{/if}
 
 		<section class="flex flex-col gap-3" aria-labelledby="cameras-heading">
-			<h2 id="cameras-heading" class="text-base font-semibold">Cameras</h2>
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<h2 id="cameras-heading" class="text-base font-semibold">Cameras</h2>
+				<NativeSelect.Root
+					value={span}
+					onchange={(e: Event) =>
+						goto(`?span=${(e.currentTarget as HTMLSelectElement).value}`, { replace: true, reset: false })}
+					aria-label="How far back"
+					class="min-w-52"
+				>
+					{#each spans as o (o.value)}
+						<NativeSelect.Option value={o.value}>{o.label}</NativeSelect.Option>
+					{/each}
+				</NativeSelect.Root>
+			</div>
 			<div class="grid gap-4 md:grid-cols-2">
 				{#each cameras as cam (cam.id)}
 					<CameraTile {cam} onchange={replace} />
 				{/each}
 			</div>
+			<ul class="text-subtle flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Colours">
+				{#each LEGEND as l (l.label)}
+					<li class="flex items-center gap-1.5">
+						<svg class="size-2.5" aria-hidden="true"><circle cx="50%" cy="50%" r="50%" class={l.class} /></svg>
+						{l.label}
+					</li>
+				{/each}
+				<li class="flex items-center gap-1.5">
+					<svg class="h-3 w-0.5" aria-hidden="true"><rect width="100%" height="100%" class="fill-foreground" /></svg>
+					Where the SD card starts
+				</li>
+			</ul>
 		</section>
 
 		<section class="flex flex-col gap-3" aria-labelledby="dest-heading">

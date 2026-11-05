@@ -5,9 +5,10 @@ ReoVault is a self-hosted application that backs up the clips on Reolink cameras
 ## Current direction
 
 * Project name: **ReoVault**
-* Camera integration: **`reolink-cli`**, pulling clips (`vod search` / batch `vod download`). Not FTP.
-* Storage: **restic**, one repository per camera at `<repository>/<id>`, reaching any destination through **rclone** (user-mounted `rclone.conf`). restic owns encryption, deduplication, integrity checks and retention; don't rebuild any of them.
-* A web dashboard is part of the project: overview, download (no playback), activity, cameras, settings.
+* Camera integration: **`reolink-cli`**, pulling clips (`vod search` / batch `vod download`). Not FTP. Each camera is `[[cameras]] id, host, user, password` in `reovault.toml`; reolink-cli gets `--host --user --password-stdin`, never a registry of its own.
+* Storage: **restic**, one repository per camera at `<repository>/<id>`, on a primary destination plus `restic copy` copies (3-2-1), reaching any destination through **rclone**. restic owns encryption, deduplication, integrity checks and pruning; don't rebuild any of them. ReoVault only picks which snapshot ids retention forgets (`keep_days`/`max_gb` per destination, never what a copy still needs).
+* Deployment: one folder with `compose.yaml`, `reovault.toml`, `rclone.conf`, `restic-password` and `data/`. The user creates only `data/` and `restic-password`; the first-run screen and the dashboard write the rest (hand-editing stays supported).
+* A web dashboard is part of the project: setup, overview, footage download (no playback), activity, cameras, settings.
 * Simplicity first: the previous version was over-engineered. Every module and setting must earn its place.
 * Keep camera-specific functionality behind the small `Camera` protocol in `reovault/camera.py`.
 * The architecture is documented in `docs/architecture.md`.

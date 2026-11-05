@@ -4,7 +4,9 @@ restic password. The dashboard never shows that password."""
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
@@ -36,7 +38,9 @@ class RecoveryOut(BaseModel):
 
 def _out(st: AppState) -> RecoveryOut:
     s = st.settings
-    pw = s.backup.password_file
+    # The same fallback restic itself gets (see `restic_env`): the image sets only the env var.
+    env_pw = os.environ.get("RESTIC_PASSWORD_FILE")
+    pw = s.backup.password_file or (Path(env_pw) if env_pw else None)
     confirmed = st.db.get_setting(PASSWORD_CONFIRMED)
     out = []
     for d in s.destinations:
@@ -123,7 +127,7 @@ def sheet(st: State) -> PlainTextResponse:
     else:
         repo = f"{st.rt.scrub_credentials(first.repository)}/{s.cameras[0].id}"
         commands = (
-            f"  export RESTIC_PASSWORD_FILE=./restic_password.txt\n"
+            f"  export RESTIC_PASSWORD_FILE=./restic-password\n"
             f'  restic -r "{repo}" snapshots\n'
             f'  restic -r "{repo}" find 0120261027221944.mp4      # a clip, by its camera name\n'
             f'  restic -r "{repo}" dump <snapshot> <path> > clip.mp4'

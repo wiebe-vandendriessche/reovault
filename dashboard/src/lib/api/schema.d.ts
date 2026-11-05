@@ -113,6 +113,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/{cam_id}/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Device
+         * @description The camera itself: model, firmware and the SD card, asked live (cached
+         *     for 10 minutes, so opening the page doesn't keep calling the camera).
+         */
+        get: operations["device_api_v1_cameras__cam_id__device_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/{cam_id}/run": {
         parameters: {
             query?: never;
@@ -448,7 +469,9 @@ export interface paths {
         /**
          * Overview
          * @description Read from the index and memory only: loading it never calls a camera
-         *     or the destination.
+         *     or the destination. `span` is how far back each camera's coverage looks:
+         *     `card` (since its SD card starts), `all` (everything ReoVault knows), or a
+         *     number of days.
          */
         get: operations["overview_api_v1_overview_get"];
         put?: never;
@@ -715,17 +738,6 @@ export interface components {
             /** Upload Secs */
             upload_secs: number | null;
         };
-        /** BucketOut */
-        BucketOut: {
-            /** Backed Up */
-            backed_up: number;
-            /** Failing */
-            failing: number;
-            /** Lost */
-            lost: number;
-            /** Waiting */
-            waiting: number;
-        };
         /** CalendarDayOut */
         CalendarDayOut: {
             /** Backed Up */
@@ -759,6 +771,7 @@ export interface components {
             /** Backed Up Clips */
             backed_up_clips: number;
             card: components["schemas"]["CardOut"] | null;
+            coverage?: components["schemas"]["CoverageOut"] | null;
             /** Demo */
             demo: boolean;
             /** Enabled */
@@ -790,8 +803,6 @@ export interface components {
             running: boolean;
             /** Text */
             text: string;
-            /** Timeline */
-            timeline?: components["schemas"]["BucketOut"][] | null;
             /** Timezone */
             timezone: string;
             /** User */
@@ -899,6 +910,37 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** CoverageOut */
+        CoverageOut: {
+            /** Buckets */
+            buckets: number;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Rows */
+            rows: components["schemas"]["CoverageRowOut"][];
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+        };
+        /** CoverageRowOut */
+        CoverageRowOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "card" | "primary" | "copy";
+            /** Marker */
+            marker: number | null;
+            /** Name */
+            name: string;
+            /** Runs */
+            runs: components["schemas"]["RunSegOut"][];
+        };
         /** DayOut */
         DayOut: {
             /**
@@ -946,6 +988,23 @@ export interface components {
             snapshots: number;
             /** Used Bytes */
             used_bytes: number;
+        };
+        /** DeviceOut */
+        DeviceOut: {
+            card: components["schemas"]["CardOut"] | null;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Error */
+            error: string | null;
+            /** Firmware */
+            firmware: string | null;
+            /** Hardware */
+            hardware: string | null;
+            /** Model */
+            model: string | null;
         };
         /** DiscoveredOut */
         DiscoveredOut: {
@@ -1099,6 +1158,8 @@ export interface components {
             issues: components["schemas"]["IssueOut"][];
             /** Notices */
             notices: components["schemas"]["IssueOut"][];
+            /** Oldest Backup */
+            oldest_backup: string | null;
         };
         /** PasswordIn */
         PasswordIn: {
@@ -1226,6 +1287,20 @@ export interface components {
             started_at: string;
             /** Trigger */
             trigger: string;
+        };
+        /** RunSegOut */
+        RunSegOut: {
+            /** Clips */
+            clips: number;
+            /** Length */
+            length: number;
+            /** Start */
+            start: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "none" | "safe" | "waiting" | "lost" | "failing";
         };
         /** SectionOut */
         SectionOut: {
@@ -1558,6 +1633,44 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    device_api_v1_cameras__cam_id__device_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2228,7 +2341,9 @@ export interface operations {
     };
     overview_api_v1_overview_get: {
         parameters: {
-            query?: never;
+            query?: {
+                span?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2243,6 +2358,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OverviewOut"];
                 };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

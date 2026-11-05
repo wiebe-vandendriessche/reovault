@@ -18,17 +18,23 @@ from reovault.backup import BackupRun, CameraState, RunResult
 from reovault.camera import Camera, DemoCamera, Gateway, ReolinkCamera
 from reovault.config import CameraConfig, DestinationConfig, Settings
 from reovault.db import Db, now_iso, parse_iso
-from reovault.destinations import copy_view, record_cut, restic_for, snaps_of, usage
+from reovault.destinations import (
+    CHECK_EVERY,
+    CHECK_SUBSET,
+    copy_view,
+    record_cut,
+    restic_for,
+    snaps_of,
+    usage,
+)
 from reovault.logging import get_logger
 from reovault.restic import Restic
-from reovault.retention import GiB
+from reovault.retention import GB
 from reovault.tools import ToolError
 
 logger = get_logger(__name__)
 
 FORGET_EVERY = timedelta(days=1)
-CHECK_EVERY = timedelta(days=7)
-CHECK_SUBSET = "500M"  # read back this much data a week: catches bit rot cheaply
 
 
 def camera_for(settings: Settings, cfg: CameraConfig, gateway: Gateway) -> Camera:
@@ -72,6 +78,7 @@ class Worker:
     _last_end: datetime | None = None
     _thread: threading.Thread | None = None
     _camera: Any = None  # kept across runs: a demo camera remembers its overwritten clips
+    _camera_cfg: CameraConfig | None = None  # what `_camera` was built from
     # Told after every run, so copy destinations look for new snapshots at once.
     on_backed_up: Callable[[], None] = field(default=lambda: None)
 
@@ -110,6 +117,10 @@ class Worker:
             try:
                 if first:
                     first = False
+                    # Where the card starts, until this run's full scan says again.
+                    remembered = self.db.get_setting(f"card_start:{self.id}")
+                    if remembered and self.state.oldest_on_card is None:
+                        self.state.oldest_on_card = parse_iso(remembered)
                     with contextlib.suppress(ToolError):
                         restic_for(settings, self.id).unlock()  # locks a crash left behind
                 self._backup(settings, cfg)
@@ -140,8 +151,10 @@ class Worker:
     def _backup(self, settings: Settings, cfg: CameraConfig) -> RunResult | None:
         trigger, self._trigger = self._trigger, "schedule"
         self.state.stop.clear()
-        if self._camera is None or getattr(self._camera, "timezone", None) != cfg.timezone:
-            self._camera = camera_for(settings, cfg, self.gateway)
+        # Rebuilt whenever its entry changes (address, login, timezone): an edit
+        # in the dashboard or the file applies from the next run, no restart.
+        if self._camera is None or cfg != self._camera_cfg:
+            self._camera, self._camera_cfg = camera_for(settings, cfg, self.gateway), cfg
         self.running = True
         self.publish("activity", camera=self.id)
         try:
@@ -170,7 +183,7 @@ class Worker:
 
     def _over_limit(self, primary: DestinationConfig, fraction: float) -> bool:
         used = sum(s.bytes for s in usage(self.db, primary.name))
-        return used >= primary.max_gb * GiB * fraction
+        return used >= primary.max_gb * GB * fraction
 
     def _hold(self, settings: Settings) -> str | None:
         """A primary at its size limit that can't trim (its copies don't have the
