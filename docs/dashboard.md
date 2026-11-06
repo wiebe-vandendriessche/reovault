@@ -37,7 +37,9 @@ everything ReoVault has kept:
 * **Each copy destination**: the same, where blue also means footage the primary
   has that this copy wants but hasn't copied yet.
 
-Hover a stretch for its times and how many clips it holds. The footer has the
+Next to each row a few words say what needs attention, each in its own
+colour ("3 lost, 6615 waiting"), or "all backed up"; screen readers get the
+same text. Hover a stretch for its times and how many clips it holds. The footer has the
 last and next backup, with **Back up now** and **Stop**. Last come the
 destinations: role, size against its limit, and whether a copy is still
 seeding.

@@ -191,7 +191,7 @@
 				{#if kindInfo.paste}
 					<Field.Field>
 						<Field.Label for="d-section">rclone section</Field.Label>
-						<textarea id="d-section" class="border-input bg-background min-h-28 rounded-md border p-2 font-mono text-xs" required bind:value={values.section}></textarea>
+						<textarea id="d-section" class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 min-h-28 rounded-md border bg-transparent p-2 font-mono text-xs outline-none focus-visible:ring-3" required bind:value={values.section}></textarea>
 					</Field.Field>
 				{:else}
 					{#each kindInfo.fields as f (f.key)}

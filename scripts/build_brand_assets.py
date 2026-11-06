@@ -11,7 +11,8 @@ Writes into `dashboard/static/icons/`:
   the light theme) with the empty margin of the 400x200 artboard cropped off
   (at the navbar's 28px height the uncropped art renders as a smear). Same
   paths, only the viewBox changes.
-* `icon.svg`: the icon, as it is.
+* `icon.svg`: the icon, without Inkscape's hidden reference bitmap (an
+  embedded `<image>` that never shows, two thirds of the file).
 * PNGs for what can't take an SVG (home-screen icons, the PWA manifest),
   rendered from the icon SVG by Chromium: `icon-192.png`, `icon-512.png`,
   `apple-touch-icon-180.png` and `icon-maskable-512.png` (the last two on the
@@ -93,7 +94,7 @@ def main() -> None:
             dest.write_text(_crop(src.read_text(), box))
             print(f"{src.relative_to(_ROOT)} -> {dest.relative_to(_ROOT)}")
 
-        icon = (_IMG / "reovault-icon.svg").read_bytes()
+        icon = re.sub(rb"<image\b.*?/>", b"", (_IMG / "reovault-icon.svg").read_bytes(), flags=re.S)
         (_OUT / "icon.svg").write_bytes(icon)
         print("img/reovault-icon.svg -> dashboard/static/icons/icon.svg")
         # (file, size, background, share of the canvas the icon fills)

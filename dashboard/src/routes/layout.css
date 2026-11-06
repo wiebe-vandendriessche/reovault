@@ -202,6 +202,14 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+	/* A visible keyboard focus on everything the generated components don't
+	   style themselves (plain links, nav items, raw form fields). Components
+	   that draw their own ring set `outline-none`, a utility, which wins over
+	   this base-layer rule. --ring is --brand-text: 5:1 on dark surfaces. */
+	:focus-visible {
+		outline: 2px solid var(--color-ring);
+		outline-offset: 2px;
+	}
 	body {
 		@apply bg-background text-foreground font-sans antialiased;
 	}
@@ -234,12 +242,23 @@
 	[data-disabled]:not([data-disabled='false']) {
 		cursor: not-allowed;
 	}
+	/* Reduced motion keeps the fades (they still say "this appeared") and drops
+	   the movement: dialogs and sheets stop sliding and zooming, and nothing
+	   rotates or moves on a transition. */
 	@media (prefers-reduced-motion: reduce) {
 		*,
 		*::before,
 		*::after {
-			animation-duration: 0.01ms !important;
-			transition-duration: 0.01ms !important;
+			--tw-enter-translate-x: 0 !important;
+			--tw-enter-translate-y: 0 !important;
+			--tw-exit-translate-x: 0 !important;
+			--tw-exit-translate-y: 0 !important;
+			--tw-enter-scale: 1 !important;
+			--tw-exit-scale: 1 !important;
+			--tw-enter-rotate: 0 !important;
+			--tw-exit-rotate: 0 !important;
+			transition-property: color, background-color, border-color, opacity, box-shadow !important;
+			scroll-behavior: auto !important;
 		}
 	}
 }

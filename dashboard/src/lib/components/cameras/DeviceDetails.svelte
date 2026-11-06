@@ -9,6 +9,12 @@
 	let { camera }: { camera: Camera } = $props();
 
 	const device = query(() => api<Device>(`/cameras/${camera.id}/device`));
+	// A camera that doesn't answer can take up to a minute to time out: say so.
+	let slow = $state(false);
+	$effect(() => {
+		const t = setTimeout(() => (slow = true), 2000);
+		return () => clearTimeout(t);
+	});
 	const card = $derived(device.data?.card);
 	const usedGb = $derived(card?.total_gb != null && card.free_gb != null ? card.total_gb - card.free_gb : null);
 	const usedPct = $derived(card?.total_gb && usedGb != null ? (usedGb / card.total_gb) * 100 : null);
@@ -18,7 +24,10 @@
 </script>
 
 {#if !device.data}
-	<div class="flex flex-col gap-2"><Skeleton class="h-4 w-2/3" /><Skeleton class="h-4 w-1/2" /><Skeleton class="h-2 w-full" /></div>
+	<div class="flex flex-col gap-2" aria-busy="true">
+		<Skeleton class="h-4 w-2/3" /><Skeleton class="h-4 w-1/2" /><Skeleton class="h-2 w-full" />
+		{#if slow}<p class="text-muted-foreground text-xs" role="status">Asking the camera, this can take a minute when it's slow to answer.</p>{/if}
+	</div>
 {:else}
 	{@const d = device.data}
 	<dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">

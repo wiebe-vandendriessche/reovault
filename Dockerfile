@@ -10,7 +10,7 @@
 
 ARG REOLINK_CLI_VERSION=0.20.0
 ARG RESTIC_RELEASE=0.19.1
-ARG RCLONE_RELEASE=1.75.2
+ARG RCLONE_RELEASE=1.76.0
 
 # Static output is architecture-independent: build it once, natively.
 FROM --platform=$BUILDPLATFORM node:26-alpine AS dashboard
@@ -60,7 +60,7 @@ RUN groupadd -g 1000 reovault && useradd -u 1000 -g reovault -m -d /home/reovaul
 
 COPY --from=tools /out/ /usr/local/bin/
 
-RUN pip install --no-cache-dir uv==0.12.*
+RUN pip install --no-cache-dir uv==0.13.*
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

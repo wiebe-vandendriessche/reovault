@@ -133,7 +133,7 @@ class ToolsConfig(BaseModel):
     restic: str = "restic"
     restic_version: str = "0.19.1"
     rclone: str = "rclone"
-    rclone_version: str = "1.75.2"
+    rclone_version: str = "1.76.0"
     # reolink-cli needs its gateway for search, storage and download.
     gateway_addr: str = "127.0.0.1:9210"
 

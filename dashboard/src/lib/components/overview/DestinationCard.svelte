@@ -42,7 +42,7 @@
 					<span>About {bytes(d.used_bytes)} of {d.max_gb} GB</span>
 					<span class="tabular-nums">{Math.round(pct)}%</span>
 				</div>
-				<Meter label="{Math.round(pct)}% of the size limit used" segments={[{ value: pct, class: pct > 90 ? 'fill-warn' : 'fill-brand' }]} />
+				<Meter label="{Math.round(pct)}% of the size limit used" segments={[{ value: pct, class: pct > 90 ? 'fill-warn' : 'fill-brand-text' }]} />
 			</div>
 		{/if}
 		{#if d.error}<p class="text-bad text-xs break-words">{d.error}</p>{/if}

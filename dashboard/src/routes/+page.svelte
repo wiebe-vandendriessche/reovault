@@ -54,7 +54,7 @@
 
 	const LEGEND = [
 		{ label: 'Backed up', class: 'fill-ok' },
-		{ label: 'Waiting', class: 'fill-brand' },
+		{ label: 'Waiting', class: 'fill-brand-text' },
 		{ label: 'Keeps failing', class: 'fill-bad' },
 		{ label: 'Lost', class: 'fill-warn' }
 	];
