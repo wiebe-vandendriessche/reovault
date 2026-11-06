@@ -22,7 +22,8 @@
 	}
 
 	$effect(() => {
-		if (session.authenticated) goto(nextPath(), { replace: true });
+		if (session.setupNeeded) goto('/setup', { replace: true });
+		else if (session.authenticated) goto(nextPath(), { replace: true });
 	});
 
 	async function submit(e: SubmitEvent) {
@@ -45,13 +46,13 @@
 <main class="grid min-h-dvh place-items-center p-4">
 	<div class="w-full max-w-sm">
 		<div class="mb-8 flex justify-center">
-			<img src="/icons/wordmark-dark.png" alt="ReoVault" class="hidden h-10 w-auto dark:block" />
-			<img src="/icons/wordmark-light.png" alt="ReoVault" class="block h-10 w-auto dark:hidden" />
+			<img src="/icons/wordmark-dark.svg" alt="ReoVault" class="hidden h-10 w-auto dark:block" />
+			<img src="/icons/wordmark-light.svg" alt="ReoVault" class="block h-10 w-auto dark:hidden" />
 		</div>
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Sign in</Card.Title>
-				<Card.Description>Your recordings stay on this server, encrypted.</Card.Description>
+				<Card.Description>Your camera backups, encrypted by restic.</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<form onsubmit={submit} class="flex flex-col gap-5">

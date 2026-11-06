@@ -1,14 +1,9 @@
-"""Configuration loading: `reovault.toml` (or `$REOVAULT_CONFIG_FILE`) merged with
-`REOVAULT_*` environment variables / Docker secrets. Env always wins over the file.
+"""Configuration: `reovault.toml` (or `$REOVAULT_CONFIG_FILE`) merged with
+`REOVAULT_*` environment variables, which always win over the file.
 
-Nothing here is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the camera
-password are deliberately not modeled as config fields; the former is read directly
-from the environment by `crypto.keyring`. The camera password is handled by
-`providers.reolink_cli_registry.ReolinkCliRegistry` when a camera is added from the
-dashboard: ReoVault never persists, logs, echoes, or places it on a command line,
-but it does pass through this process once, on stdin, on its way to reolink-cli's
-own encrypted registry -- a narrower invariant than "never touched" (see CLAUDE.md:
-"never store secrets in source control").
+Camera passwords live here, next to each camera's address: keep the file
+private (0600). The restic password is its own file (`RESTIC_PASSWORD_FILE`),
+and alert channel secrets are file paths.
 """
 
 from __future__ import annotations
@@ -16,9 +11,9 @@ from __future__ import annotations
 import os
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -26,116 +21,70 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-# pydantic-settings resolves `model_config["toml_file"]` once, at class
-# definition time, which would freeze `$REOVAULT_CONFIG_FILE` at import time
-# and give tests no way to point at a fixture file. This contextvar lets
-# `settings_customise_sources` (a classmethod) pick the path fresh on every
-# `load_settings()` call instead.
+# pydantic-settings resolves `toml_file` once, at class definition time; this
+# lets `load_settings()` point at a different file on every call (tests).
 _config_file_override: ContextVar[str | None] = ContextVar("_config_file_override", default=None)
 
 
-class DeviceConfig(BaseModel):
-    """One Reolink device. Kept as a list so the data model stays multi-device
-    capable even though only one doorbell is tested."""
-
-    alias: str
-    """The `reolink-cli device add <alias>` name, never the camera password."""
-    channel: int = 0
-    timezone: str
-    """IANA tz name the camera's clock runs in, e.g. 'Europe/Brussels'."""
+class CameraConfig(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    """Names the camera's restic repository (`<repository>/<id>`): never changes."""
     name: str | None = None
-    """The camera's own configured display name (e.g. "Front door"), shown
-    throughout the dashboard instead of `alias`. Optional: when unset, the
-    dashboard shows `alias` until `device_info` backfills it from the camera
-    itself (see reovault/web/api/devices.py's `_backfill_identity`)."""
+    timezone: str
+    """IANA zone the camera's clock runs in; its search times are local."""
+    host: str | None = None
+    """The camera's IP address or host name."""
+    user: str = "admin"
+    password: SecretStr | None = None
     enabled: bool = True
-    """False stops archiving this camera; its archived footage stays. A
-    camera removed from the file entirely is treated the same way."""
-    schedule: ScheduleConfig | None = None
-    """This camera's own `[devices.schedule]`; unset means it follows the
-    global `[schedule]`."""
-    provider: Literal["reolink-cli", "fake"] = "reolink-cli"
-    """`fake` swaps the camera for `providers.fake.DemoProvider`, a pretend
-    camera with a sliding window of tiny clips, for trying the dashboard
-    with several devices. Never needs `reolink-cli device add`."""
+    demo: bool = False
+    """A pretend camera with a sliding week of tiny clips, for trying
+    ReoVault without hardware. Needs no host or password."""
+
+    @model_validator(mode="after")
+    def _reachable(self) -> CameraConfig:
+        if not self.demo and not self.host:
+            raise ValueError(f"camera {self.id!r} needs a host (or demo = true)")
+        return self
 
 
-class ReolinkCliConfig(BaseModel):
-    binary: str = "reolink-cli"
-    pinned_version: str = "0.19.0"
-    gateway_addr: str = "127.0.0.1:9000"
-    search_timeout_secs: int = 30
-    download_timeout_secs: int = 300
-    # Where `reolink-cli`'s own aliases.toml/credentials.key pair lives.
-    # `ReolinkCliRegistry` never passes `--config-file` (see its module
-    # docstring), so this must match reolink-cli's actual default
-    # ($HOME/.config/reolink-cli); it exists here only so `doctor` can
-    # preflight the directory reolink-cli will try to write into, the
-    # single most likely thing to break on first run.
-    registry_dir: Path = Field(default_factory=lambda: Path.home() / ".config" / "reolink-cli")
+class DestinationConfig(BaseModel):
+    """Where backups go. Each camera gets its own restic repository at
+    `<repository>/<cam_id>`. One enabled destination is the *primary*: clips are
+    backed up there first. The others receive copies of its snapshots."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
+    """Unique and never renamed: the index remembers snapshots by it."""
+    repository: str
+    """A local path, or `rclone:<remote>:<path>`."""
+    primary: bool = False
+    """With exactly one enabled destination, that one is the primary anyway."""
+    keep_days: int = Field(default=0, ge=0)
+    """Keep backups this long, counted from the newest one. 0 keeps everything."""
+    max_gb: int = Field(default=0, ge=0)
+    """The most this destination may hold. 0 means no limit."""
+    enabled: bool = True
 
 
-class StorageConfig(BaseModel):
-    config_dir: Path = Path("./data/config")
-    vault_dir: Path = Path("./data/vault")
-    staging_dir: Path = Path("./data/staging")
-    db_path: Path = Path("./data/config/reovault.db")
-    master_key_path: Path = Path("./data/config/master.key")
-
-
-class ScheduleConfig(BaseModel):
-    archive_cron: str = "0 5 * * *"
-    archive_enabled: bool = True
-    archive_overlap_hours: int = 48
-    backfill_cron: str = "0 4 * * 0"
-    backfill_enabled: bool = True
-    backfill_days: int = 30
-    reconcile_interval_hours: int = 6
-    reconcile_enabled: bool = True
-    integrity_scan_sample_pct: float = 5.0
-    integrity_scan_enabled: bool = True
-    # None means "no global override": each device's cron jobs are
-    # evaluated in that device's own `timezone` (see
-    # `scheduler.add_device_jobs`). Set this only to force every device's
-    # schedule onto one timezone regardless of where each camera actually
-    # is.
-    timezone: str | None = None
-
-
-DeviceConfig.model_rebuild()  # resolves the forward reference to ScheduleConfig
-
-
-class RetentionConfig(BaseModel):
-    """Global, rolling cap on the vault. Either limit (or both) prunes the
-    oldest archived clips first; `None` disables that limit. Both default to
-    off so upgrading never deletes anything (see `reovault.retention`)."""
-
-    max_age_days: int | None = Field(default=None, ge=1)
-    max_vault_gb: float | None = Field(default=None, ge=1)
+class BackupConfig(BaseModel):
+    interval_minutes: int = Field(default=60, ge=1, le=1440)
+    password_file: Path | None = None
+    """The restic password, the same for every destination (copying needs two
+    repositories open at once). A file of its own (`restic-password` next to
+    reovault.toml in the image), never in this config; unset means
+    `$RESTIC_PASSWORD_FILE`."""
 
 
 class AlertRules(BaseModel):
-    """What to alert on. Seeded from `[alerts.rules]` and editable from the
-    dashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same
-    scheme as retention)."""
-
     enabled: bool = True
-    run_failed: bool = True
-    problems: bool = True
-    gateway_down: bool = True
-    gateway_down_minutes: int = Field(default=15, ge=1, le=1440)
-    coverage: bool = True
     renotify_hours: int = Field(default=24, ge=1, le=720)
     notify_on_resolve: bool = True
 
 
 class AlertsConfig(BaseModel):
-    """Where alerts go. Config/env only, never the database or the
-    dashboard: a webhook URL (Slack, Discord) or an ntfy token is a
-    credential, so those are read from files (Docker secrets), the same
-    posture as the master passphrase."""
+    """Where alerts go. Credentials are read from files, e.g. next to reovault.toml."""
 
-    ntfy_url: str | None = None  # full topic URL, e.g. https://ntfy.sh/my-reovault
+    ntfy_url: str | None = None
     ntfy_token_file: Path | None = None
     webhook_url_file: Path | None = None
     smtp_host: str | None = None
@@ -151,23 +100,13 @@ class AlertsConfig(BaseModel):
 class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
-
-    # Auth. `password_hash` is the Docker-secret/env path
-    # (REOVAULT_WEB__PASSWORD_HASH); the file is the default. Neither being
-    # set doesn't stop the app starting (so /healthz keeps working for the
-    # Docker healthcheck); it just refuses every UI route with 503 until
-    # `reovault web set-password` runs.
+    # REOVAULT_WEB__PASSWORD_HASH is the Docker-secret path; the file is the
+    # default. Without either, the API answers 503 until `web set-password`.
     password_hash: str | None = None
-    # The login's identity field. With one account this adds no actual
-    # security -- it can't prevent enumeration and doesn't raise the
-    # offline attack cost -- what it buys is real but mundane: a password
-    # manager reliably recognizes and autofills an email + password pair.
-    # Not a secret, so it does NOT go in the 0600 credential file; putting
-    # it there would also break the `REOVAULT_WEB__PASSWORD_HASH`
-    # Docker-secret path, which expects a PHC string and nothing else.
+    # Login identity, only so password managers autofill reliably.
     email: str | None = None
-    password_file: Path = Path("./data/config/web_password")
-    session_key_path: Path = Path("./data/config/web_session.key")
+    password_file: Path = Path("./data/web_password")
+    session_key_path: Path = Path("./data/web_session.key")
     session_max_age_days: int = 30
     cookie_secure: bool = True
     cookie_samesite: str = "lax"
@@ -175,32 +114,71 @@ class WebConfig(BaseModel):
     login_max_attempts: int = 5
     login_window_secs: int = 900
     login_lockout_secs: int = 300
-
-    # Proxy: uvicorn only trusts X-Forwarded-* from these addresses.
-    # Behind a reverse proxy in Docker this must be the proxy's own
-    # container IP/subnet, never "*" unless the port is genuinely
-    # unreachable except through the proxy.
+    # A daily look at GitHub's releases for a newer ReoVault; only the version
+    # number comes back, nothing about this server goes out.
+    update_check: bool = True
+    # uvicorn trusts X-Forwarded-* only from these addresses: the reverse
+    # proxy's own IP/subnet, never "*".
     forwarded_allow_ips: str = "127.0.0.1"
 
-    # Streaming/paging.
-    stream_chunk_bytes: int = 1024 * 1024
-    page_size: int = 100
+
+class StorageConfig(BaseModel):
+    data_dir: Path = Path("./data")
+    staging_dir: Path = Path("./data/staging")
+
+
+class ToolsConfig(BaseModel):
+    reolink_cli: str = "reolink-cli"
+    reolink_cli_version: str = "0.20.0"
+    restic: str = "restic"
+    restic_version: str = "0.19.1"
+    rclone: str = "rclone"
+    rclone_version: str = "1.76.0"
+    # reolink-cli needs its gateway for search, storage and download.
+    gateway_addr: str = "127.0.0.1:9210"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="REOVAULT_",
-        env_nested_delimiter="__",
-        extra="ignore",
+        env_prefix="REOVAULT_", env_nested_delimiter="__", extra="ignore"
     )
 
-    devices: list[DeviceConfig] = Field(default_factory=list)
-    reolink_cli: ReolinkCliConfig = Field(default_factory=ReolinkCliConfig)
-    storage: StorageConfig = Field(default_factory=StorageConfig)
-    schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
-    retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    cameras: list[CameraConfig] = Field(default_factory=list)
+    destinations: list[DestinationConfig] = Field(default_factory=list)
+    backup: BackupConfig = Field(default_factory=BackupConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
+
+    def camera(self, cam_id: str) -> CameraConfig | None:
+        return next((c for c in self.cameras if c.id == cam_id), None)
+
+    @model_validator(mode="after")
+    def _destinations_make_sense(self) -> Settings:
+        names = [d.name for d in self.destinations]
+        if len(set(names)) != len(names):
+            raise ValueError("destination names must be unique")
+        enabled = [d for d in self.destinations if d.enabled]
+        marked = [d for d in enabled if d.primary]
+        if len(marked) > 1:
+            raise ValueError("only one enabled destination can be the primary")
+        if len(enabled) > 1 and not marked:
+            raise ValueError("with several enabled destinations, one must have primary = true")
+        return self
+
+    def primary(self) -> DestinationConfig | None:
+        """Where clips are backed up first, or None before any is connected."""
+        enabled = [d for d in self.destinations if d.enabled]
+        return next((d for d in enabled if d.primary), enabled[0] if len(enabled) == 1 else None)
+
+    def copies(self) -> list[DestinationConfig]:
+        """Enabled destinations that receive copies of the primary's snapshots."""
+        primary = self.primary()
+        return [d for d in self.destinations if d.enabled and d is not primary]
+
+    def destination(self, name: str) -> DestinationConfig | None:
+        return next((d for d in self.destinations if d.name == name), None)
 
     @classmethod
     def settings_customise_sources(
@@ -211,7 +189,6 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        # Env overrides the TOML file; the TOML file overrides class defaults.
         config_file = _config_file_override.get() or os.environ.get(
             "REOVAULT_CONFIG_FILE", "reovault.toml"
         )
@@ -224,10 +201,8 @@ class Settings(BaseSettings):
 
 
 def load_settings(config_file: str | Path | None = None, **overrides: Any) -> Settings:
-    """Load settings from `config_file` (default: `$REOVAULT_CONFIG_FILE` or
-    `./reovault.toml`) merged with `REOVAULT_*` env vars, which always win.
-    Kept as a function, not a module-level singleton, so tests can point it at
-    a fixture file without import-order surprises."""
+    """Settings from `config_file` (default `$REOVAULT_CONFIG_FILE` or
+    `./reovault.toml`) merged with `REOVAULT_*` env vars, which always win."""
     token = _config_file_override.set(str(config_file) if config_file else None)
     try:
         return Settings(**overrides)

@@ -1,0 +1,752 @@
+"""SQLite: the clip index and run history. The only module that touches sqlite3.
+
+restic is the source of truth for what is backed up; this index exists so
+the dashboard never has to ask a (possibly remote) repository, and so a clip
+that was backed up, lost or expired is never downloaded twice.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+SCHEMA = """
+CREATE TABLE clips (
+  id              INTEGER PRIMARY KEY,
+  camera          TEXT NOT NULL,          -- the camera's cam_id
+  name            TEXT NOT NULL,          -- the name on the card, e.g. 0120261027221944
+  start_utc       TEXT NOT NULL,
+  end_utc         TEXT,
+  size            INTEGER,                -- bytes, as `vod search` reports them
+  rec_type        TEXT,                   -- md,people,vehicle,...
+  state           TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (state IN ('pending', 'backed_up', 'lost', 'expired')),
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  last_attempt_at TEXT,
+  snapshot_id     TEXT,                   -- the root snapshot (its id where it was first backed up)
+  path            TEXT,                   -- absolute path inside the snapshot
+  backed_up_at    TEXT,
+  first_seen_at   TEXT NOT NULL,
+  UNIQUE (camera, name, start_utc)
+);
+CREATE INDEX clips_by_state ON clips (camera, state, start_utc);
+CREATE INDEX clips_by_start ON clips (camera, start_utc);
+
+CREATE TABLE runs (
+  id          INTEGER PRIMARY KEY,
+  camera      TEXT NOT NULL,
+  trigger     TEXT NOT NULL,              -- schedule | manual
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  outcome     TEXT,                       -- ok | error | stopped
+  clips       INTEGER NOT NULL DEFAULT 0,
+  bytes       INTEGER NOT NULL DEFAULT 0,
+  lost        INTEGER NOT NULL DEFAULT 0,
+  error       TEXT
+);
+CREATE INDEX runs_by_camera ON runs (camera, started_at DESC);
+
+-- Which destination holds which snapshot. `source_snapshot` is the root id a
+-- clip points at (`clips.snapshot_id`); `snapshot_id` is that snapshot's own id
+-- in the destination's repository (copies get new ids, restic records the
+-- root in `original`). Rows stay when a destination is disconnected.
+CREATE TABLE locations (
+  camera          TEXT NOT NULL,
+  source_snapshot TEXT NOT NULL,
+  destination     TEXT NOT NULL,
+  snapshot_id     TEXT NOT NULL,
+  time            TEXT NOT NULL,          -- the snapshot's time, UTC
+  PRIMARY KEY (camera, source_snapshot, destination)
+);
+
+CREATE TABLE run_batches (
+  id            INTEGER PRIMARY KEY,
+  run_id        INTEGER NOT NULL,
+  snapshot_id   TEXT NOT NULL,
+  clips         INTEGER NOT NULL,
+  bytes         INTEGER NOT NULL,
+  download_secs REAL,
+  upload_secs   REAL,
+  finished_at   TEXT NOT NULL
+);
+CREATE INDEX run_batches_by_run ON run_batches (run_id);
+
+CREATE TABLE alert_state (
+  key           TEXT PRIMARY KEY,
+  condition     TEXT NOT NULL,
+  camera        TEXT,
+  title         TEXT NOT NULL,
+  message       TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  last_sent_at  TEXT
+);
+
+CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+"""
+
+
+# Version 1 kept the destination on each clip; version 2 tracks every snapshot
+# in `locations`, so a clip can live on several destinations. The locations are
+# filled in by the next backup run, which finds snapshots it has no location
+# for and reads them from the repository.
+_V1_TO_V2 = """
+ALTER TABLE clips DROP COLUMN repository;
+CREATE TABLE locations (
+  camera TEXT NOT NULL, source_snapshot TEXT NOT NULL, destination TEXT NOT NULL,
+  snapshot_id TEXT NOT NULL, time TEXT NOT NULL,
+  PRIMARY KEY (camera, source_snapshot, destination)
+);
+CREATE TABLE run_batches (
+  id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL, snapshot_id TEXT NOT NULL,
+  clips INTEGER NOT NULL, bytes INTEGER NOT NULL, download_secs REAL, upload_secs REAL,
+  finished_at TEXT NOT NULL
+);
+CREATE INDEX run_batches_by_run ON run_batches (run_id);
+"""
+VERSION = 2
+
+
+def iso(dt: datetime) -> str:
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso(s: str) -> datetime:
+    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def _per_day(start: datetime, end: datetime, buckets: int) -> float:
+    """Buckets per day, to turn a julianday difference into a bucket index."""
+    return buckets / ((end - start).total_seconds() / 86400)
+
+
+def now_iso() -> str:
+    return iso(datetime.now(UTC))
+
+
+def local_day_bounds(day: date, tz: str) -> tuple[datetime, datetime]:
+    """UTC [start, end) of one local calendar day: 23 h or 25 h on DST days."""
+    zone = ZoneInfo(tz)
+    start = datetime(day.year, day.month, day.day, tzinfo=zone)
+    return start.astimezone(UTC), (start + timedelta(days=1)).astimezone(UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class Clip:
+    id: int
+    camera: str
+    name: str
+    start_utc: str
+    end_utc: str | None
+    size: int | None
+    rec_type: str | None
+    state: str
+    attempts: int
+    last_error: str | None
+    last_attempt_at: str | None
+    snapshot_id: str | None
+    path: str | None
+    backed_up_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Run:
+    id: int
+    camera: str
+    trigger: str
+    started_at: str
+    finished_at: str | None
+    outcome: str | None
+    clips: int
+    bytes: int
+    lost: int
+    error: str | None
+
+
+_CLIP_COLS = ", ".join(Clip.__slots__)
+# No `repository`: a rebuild knows which one it reads from, and the string
+# may carry credentials (`rest:https://user:pass@...`).
+_MANIFEST_KEYS = (
+    "name",
+    "start_utc",
+    "end_utc",
+    "size",
+    "rec_type",
+    "state",
+    "snapshot_id",
+    "path",
+    "backed_up_at",
+)
+_RUN_COLS = ", ".join(Run.__slots__)
+
+
+class Db:
+    """One connection, one lock: worker threads and the web threadpool all
+    go through it, which is exactly SQLite's single-writer model."""
+
+    def __init__(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
+        version = self.conn.execute("PRAGMA user_version").fetchone()[0]
+        script = {0: SCHEMA, 1: _V1_TO_V2}.get(version)
+        if script is not None:
+            # executescript commits first, so the transaction is in the script.
+            self.conn.executescript(f"BEGIN;\n{script}\nPRAGMA user_version = {VERSION};\nCOMMIT;")
+        elif version != VERSION:
+            raise RuntimeError(
+                f"reovault.db has schema version {version}, newer than this ReoVault"
+            )
+
+    def close(self) -> None:
+        with self._lock:
+            self.conn.execute("PRAGMA optimize")
+            self.conn.close()
+
+    @contextmanager
+    def tx(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield self.conn
+            except BaseException:
+                self.conn.execute("ROLLBACK")
+                raise
+            self.conn.execute("COMMIT")
+
+    def _all(self, sql: str, params: tuple[object, ...] = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self.conn.execute(sql, params).fetchall()
+
+    def _one(self, sql: str, params: tuple[object, ...] = ()) -> sqlite3.Row | None:
+        with self._lock:
+            row: sqlite3.Row | None = self.conn.execute(sql, params).fetchone()
+            return row
+
+    # -- kv --------------------------------------------------------------
+
+    def get_setting(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM kv WHERE key = ?", (key,))
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self.tx() as c:
+            c.execute(
+                "INSERT INTO kv (key, value) VALUES (?, ?) "
+                "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
+    # -- clips -----------------------------------------------------------
+
+    def upsert_clips(
+        self,
+        camera: str,
+        found: list[tuple[str, datetime, datetime | None, int | None, str | None]],
+    ) -> int:
+        """`found` is what the card lists: (name, start, end, size, type).
+        New clips become pending; a pending clip takes the card's latest
+        size and end (it may still have been recording when first seen).
+        Returns how many were new."""
+        now = now_iso()
+        with self.tx() as c:
+            before = c.execute("SELECT COUNT(*) FROM clips WHERE camera = ?", (camera,)).fetchone()[
+                0
+            ]
+            c.executemany(
+                """
+                INSERT INTO clips (camera, name, start_utc, end_utc, size, rec_type, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (camera, name, start_utc) DO UPDATE
+                  SET size = excluded.size, end_utc = excluded.end_utc
+                  WHERE clips.state = 'pending'
+                """,
+                [
+                    (camera, name, iso(start), iso(end) if end else None, size, rec_type, now)
+                    for name, start, end, size, rec_type in found
+                ],
+            )
+            after = c.execute("SELECT COUNT(*) FROM clips WHERE camera = ?", (camera,)).fetchone()[
+                0
+            ]
+        return int(after - before)
+
+    def pending(self, camera: str) -> list[Clip]:
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND state = 'pending' "
+            "ORDER BY start_utc",
+            (camera,),
+        )
+        return [Clip(**dict(r)) for r in rows]
+
+    def clips_by_name(self, camera: str, names: list[str]) -> dict[str, Clip]:
+        if not names:
+            return {}
+        marks = ",".join("?" * len(names))
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND name IN ({marks})",
+            (camera, *names),
+        )
+        return {r["name"]: Clip(**dict(r)) for r in rows}
+
+    def newest_start(self, camera: str) -> datetime | None:
+        row = self._one("SELECT MAX(start_utc) AS m FROM clips WHERE camera = ?", (camera,))
+        return parse_iso(row["m"]) if row and row["m"] else None
+
+    def oldest_kept(self, camera: str | None = None) -> datetime | None:
+        """The oldest clip that is backed up, waiting or lost (one camera, or
+        all): how far back there is anything to show."""
+        where, args = ("AND camera = ?", (camera,)) if camera else ("", ())
+        row = self._one(
+            "SELECT MIN(start_utc) AS m FROM clips "
+            f"WHERE state IN ('backed_up', 'pending', 'lost') {where}",
+            args,
+        )
+        return parse_iso(row["m"]) if row and row["m"] else None
+
+    def repo_seen(self, destination: str, camera: str) -> bool:
+        """Was this camera's repository on this destination ever there? One that
+        then reports "does not exist" is a dropped mount or a typo, never
+        something to silently re-create. Survives retention and disconnects."""
+        return self.get_setting(f"repo_seen:{destination}:{camera}") is not None
+
+    def forget_destination(self, name: str) -> None:
+        """Drop everything remembered about a destination name, for a name that
+        is reused for a different repository."""
+        with self.tx() as c:
+            c.execute("DELETE FROM locations WHERE destination = ?", (name,))
+            # GLOB: a destination name is [A-Za-z0-9_-], none of which is special to it.
+            c.execute(
+                "DELETE FROM kv WHERE key GLOB ? OR key GLOB ? OR key GLOB ? OR key IN (?, ?, ?)",
+                (
+                    f"repo_seen:{name}:*",
+                    f"check:{name}:*",
+                    f"check_errors:{name}:*",
+                    f"copy_floor:{name}",
+                    f"dest_status:{name}",
+                    f"copied_at:{name}",
+                ),
+            )
+
+    def mark_repo_seen(self, destination: str, camera: str) -> None:
+        if not self.repo_seen(destination, camera):
+            self.set_setting(f"repo_seen:{destination}:{camera}", now_iso())
+
+    def mark_backed_up(
+        self,
+        camera: str,
+        destination: str,
+        snapshot_id: str,
+        snapshot_time: datetime,
+        paths: dict[int, str],
+    ) -> None:
+        """One transaction: the clips are backed up, and the snapshot is known
+        to be on this destination."""
+        now = now_iso()
+        with self.tx() as c:
+            c.executemany(
+                """
+                UPDATE clips SET state = 'backed_up', snapshot_id = ?, path = ?,
+                  backed_up_at = ?, last_error = NULL
+                WHERE id = ? AND camera = ?
+                """,
+                [(snapshot_id, path, now, cid, camera) for cid, path in paths.items()],
+            )
+            c.execute(
+                "INSERT OR REPLACE INTO locations VALUES (?, ?, ?, ?, ?)",
+                (camera, snapshot_id, destination, snapshot_id, iso(snapshot_time)),
+            )
+
+    def record_failure(self, clip_id: int, error: str) -> None:
+        with self.tx() as c:
+            c.execute(
+                "UPDATE clips SET attempts = attempts + 1, last_error = ?, last_attempt_at = ? "
+                "WHERE id = ? AND state = 'pending'",
+                (error, now_iso(), clip_id),
+            )
+
+    def mark_lost(self, clip_id: int) -> None:
+        with self.tx() as c:
+            c.execute(
+                "UPDATE clips SET state = 'lost', last_attempt_at = ? "
+                "WHERE id = ? AND state = 'pending'",
+                (now_iso(), clip_id),
+            )
+
+    def index_rows(self, camera: str, staged: dict[int, Path]) -> list[dict[str, object]]:
+        """The camera's index for a snapshot's manifest: every backed-up clip,
+        every lost and expired clip (any could still be on
+        a big card, so a rebuild must never download them again), and the
+        clips being staged now (`snapshot_id` None: this snapshot)."""
+        # ponytail: grows by ~250 B per clip forever (~30 MB/year for a busy
+        # doorbell; restic stores the unchanged part once). Trim old lost and
+        # expired rows if it ever matters.
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? "
+            "AND state IN ('backed_up', 'lost', 'expired') ORDER BY start_utc",
+            (camera,),
+        )
+        out: list[dict[str, object]] = []
+        for r in rows:
+            out.append({k: r[k] for k in _MANIFEST_KEYS})
+        if staged:
+            marks = ",".join("?" * len(staged))
+            for r in self._all(
+                f"SELECT {_CLIP_COLS} FROM clips WHERE id IN ({marks})", tuple(staged)
+            ):
+                row = {k: r[k] for k in _MANIFEST_KEYS}
+                row.update(state="backed_up", snapshot_id=None, path=str(staged[r["id"]]))
+                out.append(row)
+        return out
+
+    def import_index(
+        self, camera: str, root: str, snapshot_time: str, rows: list[dict[str, Any]]
+    ) -> int:
+        """Rows from a manifest. Never downgrades what this database already
+        knows: only new or still-pending clips take the manifest's state."""
+        when = iso(datetime.fromisoformat(snapshot_time))
+        with self.tx() as c:
+            c.executemany(
+                """
+                INSERT INTO clips (camera, name, start_utc, end_utc, size, rec_type, state,
+                                   snapshot_id, path, backed_up_at, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (camera, name, start_utc) DO UPDATE SET
+                  state = excluded.state,
+                  snapshot_id = excluded.snapshot_id, path = excluded.path,
+                  backed_up_at = excluded.backed_up_at, rec_type = excluded.rec_type
+                WHERE clips.state = 'pending'
+                """,
+                [
+                    (
+                        camera,
+                        r["name"],
+                        r["start_utc"],
+                        r["end_utc"],
+                        r["size"],
+                        r["rec_type"],
+                        r["state"],
+                        r["snapshot_id"] or (root if r["state"] == "backed_up" else None),
+                        r["path"],
+                        r["backed_up_at"] or (when if r["state"] == "backed_up" else None),
+                        r["backed_up_at"] or when,
+                    )
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    # -- locations: which destination holds which snapshot ---------------
+
+    def location_roots(self, camera: str, destination: str) -> set[str]:
+        rows = self._all(
+            "SELECT source_snapshot FROM locations WHERE camera = ? AND destination = ?",
+            (camera, destination),
+        )
+        return {r["source_snapshot"] for r in rows}
+
+    def set_locations(
+        self, camera: str, destination: str, snapshots: list[tuple[str, str, datetime]]
+    ) -> bool:
+        """Makes `snapshots` (root id, own id, time) exactly what this
+        destination holds, after a successful listing. Refuses (False) an empty
+        listing when rows exist: an empty answer from a repository that had
+        snapshots means the wrong or a wiped repository answered, and acting
+        on it would expire everything."""
+        known = self.location_roots(camera, destination)
+        if not snapshots and known:
+            return False
+        with self.tx() as c:
+            c.execute(
+                "DELETE FROM locations WHERE camera = ? AND destination = ?", (camera, destination)
+            )
+            c.executemany(
+                "INSERT OR REPLACE INTO locations VALUES (?, ?, ?, ?, ?)",
+                [(camera, root, destination, sid, iso(t)) for root, sid, t in snapshots],
+            )
+        return True
+
+    def expire_unlocated(self, camera: str) -> int:
+        """Backed-up clips whose snapshot no destination holds any more (every
+        location was forgotten) become expired: never downloaded again, no
+        longer offered. A no-op until some location is known, so a database
+        that has not been reconciled yet can't expire everything."""
+        with self.tx() as c:
+            if not c.execute(
+                "SELECT 1 FROM locations WHERE camera = ? LIMIT 1", (camera,)
+            ).fetchone():
+                return 0
+            cur = c.execute(
+                """
+                UPDATE clips SET state = 'expired'
+                WHERE camera = ? AND state = 'backed_up' AND snapshot_id IS NOT NULL
+                  AND snapshot_id NOT IN (SELECT source_snapshot FROM locations WHERE camera = ?)
+                """,
+                (camera, camera),
+            )
+            return cur.rowcount
+
+    def clip_location(self, clip: Clip, destinations: list[str]) -> tuple[str, str] | None:
+        """(destination, snapshot id there) to read `clip` from: the first of
+        `destinations` (in order of preference) that holds its snapshot."""
+        if not clip.snapshot_id or not destinations:
+            return None
+        marks = ",".join("?" * len(destinations))
+        rows = self._all(
+            f"SELECT destination, snapshot_id FROM locations WHERE camera = ? "
+            f"AND source_snapshot = ? AND destination IN ({marks})",
+            (clip.camera, clip.snapshot_id, *destinations),
+        )
+        found = {r["destination"]: r["snapshot_id"] for r in rows}
+        for name in destinations:
+            if name in found:
+                return name, found[name]
+        return None
+
+    def snapshot_usage(self, destination: str) -> list[dict[str, Any]]:
+        """Every snapshot on a destination with the footage it holds, for
+        quota: the sum of its clips' sizes (video doesn't compress, so this is
+        close to what the destination stores)."""
+        rows = self._all(
+            """
+            SELECT l.camera, l.snapshot_id, l.source_snapshot AS root, l.time,
+                   COALESCE(SUM(c.size), 0) AS bytes
+            FROM locations l
+            LEFT JOIN clips c ON c.camera = l.camera AND c.snapshot_id = l.source_snapshot
+                              AND c.state = 'backed_up'
+            WHERE l.destination = ?
+            GROUP BY l.camera, l.source_snapshot
+            """,
+            (destination,),
+        )
+        return [dict(r) for r in rows]
+
+    # -- run batches (the run detail page) --------------------------------
+
+    def add_batch(
+        self,
+        run_id: int,
+        snapshot_id: str,
+        clips: int,
+        size: int,
+        download_secs: float | None,
+        upload_secs: float,
+    ) -> None:
+        with self.tx() as c:
+            c.execute(
+                "INSERT INTO run_batches (run_id, snapshot_id, clips, bytes, download_secs, "
+                "upload_secs, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (run_id, snapshot_id, clips, size, download_secs, upload_secs, now_iso()),
+            )
+
+    def batches(self, run_id: int) -> list[dict[str, Any]]:
+        rows = self._all("SELECT * FROM run_batches WHERE run_id = ? ORDER BY id", (run_id,))
+        return [dict(r) for r in rows]
+
+    def get_clip(self, clip_id: int) -> Clip | None:
+        row = self._one(f"SELECT {_CLIP_COLS} FROM clips WHERE id = ?", (clip_id,))
+        return Clip(**dict(row)) if row else None
+
+    def clips_between(self, camera: str, start: datetime, end: datetime) -> list[Clip]:
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND start_utc >= ? AND start_utc < ? "
+            "ORDER BY start_utc",
+            (camera, iso(start), iso(end)),
+        )
+        return [Clip(**dict(r)) for r in rows]
+
+    def backlog(self, camera: str) -> tuple[int, int, str | None]:
+        """(pending count, pending bytes, oldest pending start)."""
+        row = self._one(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS b, MIN(start_utc) AS oldest "
+            "FROM clips WHERE camera = ? AND state = 'pending'",
+            (camera,),
+        )
+        assert row is not None
+        return int(row["n"]), int(row["b"]), row["oldest"]
+
+    def totals(self, camera: str) -> tuple[int, int]:
+        """(backed-up clips, backed-up bytes) for the current index."""
+        row = self._one(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS b FROM clips "
+            "WHERE camera = ? AND state = 'backed_up'",
+            (camera,),
+        )
+        assert row is not None
+        return int(row["n"]), int(row["b"])
+
+    def lost_since(self, camera: str, since: datetime) -> int:
+        row = self._one(
+            "SELECT COUNT(*) AS n FROM clips WHERE camera = ? AND state = 'lost' "
+            "AND last_attempt_at >= ?",
+            (camera, iso(since)),
+        )
+        return int(row["n"]) if row else 0
+
+    def failing(self, camera: str, min_attempts: int) -> list[Clip]:
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND state = 'pending' "
+            "AND attempts >= ? ORDER BY start_utc",
+            (camera, min_attempts),
+        )
+        return [Clip(**dict(r)) for r in rows]
+
+    def coverage_clips(
+        self, camera: str, start: datetime, end: datetime, buckets: int
+    ) -> dict[tuple[int, str], int]:
+        """(bucket, class) -> clips in `buckets` equal slices of start..end. The
+        class is backed_up, waiting, failing (tried `MAX_ATTEMPTS` times) or lost."""
+        from reovault.backup import MAX_ATTEMPTS  # backup imports db
+
+        rows = self._all(
+            "SELECT CAST((julianday(start_utc) - julianday(?)) * ? AS INTEGER) AS b, "
+            "CASE WHEN state = 'backed_up' THEN 'backed_up' WHEN state = 'lost' THEN 'lost' "
+            "WHEN attempts >= ? THEN 'failing' ELSE 'waiting' END AS cls, COUNT(*) AS n "
+            "FROM clips WHERE camera = ? AND start_utc >= ? AND start_utc < ? "
+            "AND state IN ('backed_up', 'pending', 'lost') GROUP BY b, cls",
+            (iso(start), _per_day(start, end, buckets), MAX_ATTEMPTS, camera, iso(start),
+             iso(end)),
+        )  # fmt: skip
+        return {(min(r["b"], buckets - 1), r["cls"]): r["n"] for r in rows}
+
+    def coverage_held(
+        self, camera: str, start: datetime, end: datetime, buckets: int
+    ) -> dict[tuple[int, str], int]:
+        """(bucket, destination) -> backed-up clips whose snapshot it holds."""
+        rows = self._all(
+            "SELECT CAST((julianday(c.start_utc) - julianday(?)) * ? AS INTEGER) AS b, "
+            "l.destination AS dest, COUNT(*) AS n FROM clips c JOIN locations l "
+            "ON l.camera = c.camera AND l.source_snapshot = c.snapshot_id "
+            "WHERE c.camera = ? AND c.state = 'backed_up' AND c.start_utc >= ? "
+            "AND c.start_utc < ? GROUP BY b, dest",
+            (iso(start), _per_day(start, end, buckets), camera, iso(start), iso(end)),
+        )
+        return {(min(r["b"], buckets - 1), r["dest"]): r["n"] for r in rows}
+
+    def clips_touched(self, camera: str, start: datetime, end: datetime, limit: int) -> list[Clip]:
+        """Clips a run (from `start` to `end`) backed up, failed or lost."""
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND "
+            "((backed_up_at >= ? AND backed_up_at <= ?) OR (last_attempt_at >= ? "
+            "AND last_attempt_at <= ?)) ORDER BY COALESCE(backed_up_at, last_attempt_at), id "
+            "LIMIT ?",
+            (camera, iso(start), iso(end), iso(start), iso(end), limit),
+        )
+        return [Clip(**dict(r)) for r in rows]
+
+    def get_run(self, run_id: int) -> Run | None:
+        row = self._one(f"SELECT {_RUN_COLS} FROM runs WHERE id = ?", (run_id,))
+        return Run(**dict(row)) if row else None
+
+    def lost_clips(self, camera: str, since: datetime) -> list[Clip]:
+        rows = self._all(
+            f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND state = 'lost' "
+            "AND last_attempt_at >= ? ORDER BY start_utc DESC",
+            (camera, iso(since)),
+        )
+        return [Clip(**dict(r)) for r in rows]
+
+    def throughput(self, camera: str, runs: int = 10) -> float | None:
+        """Bytes per second over the last finished runs that moved data."""
+        row = self._one(
+            """
+            SELECT SUM(bytes) AS b,
+                   SUM((julianday(finished_at) - julianday(started_at)) * 86400) AS s
+            FROM (SELECT bytes, started_at, finished_at FROM runs
+                  WHERE camera = ? AND finished_at IS NOT NULL AND bytes > 0
+                  ORDER BY started_at DESC LIMIT ?)
+            """,
+            (camera, runs),
+        )
+        if not row or not row["b"] or not row["s"]:
+            return None
+        return float(row["b"]) / max(float(row["s"]), 1.0)
+
+    def list_alerts(self) -> list[sqlite3.Row]:
+        return self._all("SELECT * FROM alert_state ORDER BY first_seen_at")
+
+    def open_alert(
+        self,
+        *,
+        key: str,
+        condition: str,
+        camera: str | None,
+        title: str,
+        message: str,
+        now: datetime,
+    ) -> None:
+        """A newly true condition; one already open only gets its text
+        refreshed, never its timestamps."""
+        with self.tx() as c:
+            c.execute(
+                """
+                INSERT INTO alert_state (key, condition, camera, title, message, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (key) DO UPDATE SET title = excluded.title, message = excluded.message
+                """,
+                (key, condition, camera, title, message, iso(now)),
+            )
+
+    def mark_alert_sent(self, key: str, now: datetime) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE alert_state SET last_sent_at = ? WHERE key = ?", (iso(now), key))
+
+    def delete_alert(self, key: str) -> None:
+        with self.tx() as c:
+            c.execute("DELETE FROM alert_state WHERE key = ?", (key,))
+
+    # -- runs ------------------------------------------------------------
+
+    def start_run(self, camera: str, trigger: str) -> int:
+        with self.tx() as c:
+            cur = c.execute(
+                "INSERT INTO runs (camera, trigger, started_at) VALUES (?, ?, ?)",
+                (camera, trigger, now_iso()),
+            )
+            return int(cur.lastrowid or 0)
+
+    def update_run(self, run_id: int, *, clips: int, bytes_: int, lost: int) -> None:
+        with self.tx() as c:
+            c.execute(
+                "UPDATE runs SET clips = ?, bytes = ?, lost = ? WHERE id = ?",
+                (clips, bytes_, lost, run_id),
+            )
+
+    def finish_run(self, run_id: int, outcome: str, error: str | None = None) -> None:
+        with self.tx() as c:
+            c.execute(
+                "UPDATE runs SET finished_at = ?, outcome = ?, error = ? WHERE id = ?",
+                (now_iso(), outcome, error, run_id),
+            )
+
+    def runs(
+        self, camera: str | None = None, limit: int = 50, *, finished: bool = False
+    ) -> list[Run]:
+        conds, params = (["camera = ?"], [camera]) if camera else ([], [])
+        if finished:
+            conds.append("finished_at IS NOT NULL")
+        where = f"WHERE {' AND '.join(conds)}" if conds else ""
+        rows = self._all(
+            f"SELECT {_RUN_COLS} FROM runs {where} ORDER BY started_at DESC, id DESC LIMIT ?",
+            (*params, limit),
+        )
+        return [Run(**dict(r)) for r in rows]
+
+    def abort_unfinished_runs(self) -> None:
+        """A run row still open at startup belongs to a process that died."""
+        with self.tx() as c:
+            c.execute(
+                "UPDATE runs SET finished_at = ?, outcome = 'stopped', "
+                "error = 'interrupted by a restart' WHERE finished_at IS NULL",
+                (now_iso(),),
+            )

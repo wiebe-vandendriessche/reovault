@@ -223,8 +223,12 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# ReoVault local dev state. Vault/staging/DB/master key never belong in git.
+# ReoVault local dev state: DB, staging, restic repository and passwords.
 /data/
+# Local Docker test stack against the real cameras (config, credentials, backups).
+/stack/
+# Pinned restic/rclone binaries for local dev and tests (see CONTRIBUTING.md).
+/.tools/
 /secrets/
 reovault.toml
 # Written next to reovault.toml by every dashboard settings save (see

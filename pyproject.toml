@@ -1,6 +1,6 @@
 [project]
 name = "reovault"
-version = "1.0.0"
+version = "2.0.0"
 description = "Local-first, self-hosted archiving of Reolink camera recordings."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,7 +13,6 @@ dependencies = [
     "pydantic-settings>=2.5",
     "cryptography>=43.0",
     "typer>=0.12",
-    "apscheduler>=3.10",
     "fastapi>=0.115",
     "uvicorn>=0.30",  # not [standard]: no websockets here, and its C extras lag new Pythons
     "structlog>=24.4",
@@ -28,10 +27,12 @@ reovault = "reovault.cli:app"
 dev = [
     "pytest>=8.3",
     "pytest-cov>=5.0",
-    "hypothesis>=6.112",
     "ruff>=0.6",
     "mypy>=1.11",
     "httpx2>=0.28",  # required by starlette.testclient (FastAPI's TestClient)
+    # Client only: the browser runs in mcr.microsoft.com/playwright, whose tag
+    # must match this version exactly (tests/e2e, scripts/screenshots.py).
+    "playwright==1.64.1",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -45,15 +46,16 @@ build-backend = "hatchling.build"
 packages = ["reovault"]
 # The built dashboard (`npm run build`, copied in by the Dockerfile) ships
 # inside the package; it is gitignored, so it must be listed explicitly.
-artifacts = ["reovault/db/migrations/*.sql", "reovault/web/dist/**"]
+artifacts = ["reovault/web/dist/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "contract: opt-in tests that hit a real doorbell; excluded from CI",
     "slow: opt-in tests that seed ~300k rows to measure query performance at scale",
+    "e2e: browser tests against a demo instance; need the Playwright container (CONTRIBUTING.md)",
 ]
-addopts = "-m 'not contract and not slow'"
+addopts = "-m 'not contract and not slow and not e2e'"
 
 [tool.ruff]
 line-length = 100
@@ -71,11 +73,3 @@ python_version = "3.12"
 warn_unused_ignores = true
 warn_redundant_casts = true
 
-[[tool.mypy.overrides]]
-module = ["reovault.crypto.*", "reovault.providers.*"]
-strict = true
-
-[[tool.mypy.overrides]]
-# No type stubs / py.typed marker shipped.
-module = ["apscheduler.*"]
-ignore_missing_imports = true

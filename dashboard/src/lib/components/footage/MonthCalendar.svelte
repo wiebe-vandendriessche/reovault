@@ -11,17 +11,17 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
 	let {
-		device,
+		camera,
 		selected,
 		onselect
-	}: { device: number; selected: string; onselect: (date: string) => void } = $props();
+	}: { camera: string; selected: string; onselect: (date: string) => void } = $props();
 
 	// Follows the selected day; prev/next month buttons override it locally.
 	let month = $derived(selected.slice(0, 7));
 
 	const cal = query(() => {
 		void live.activity;
-		return api<Calendar>('/calendar', { query: { device, month } });
+		return api<Calendar>('/clips/calendar', { query: { camera, month } });
 	});
 
 	function shift(delta: number) {
@@ -44,13 +44,16 @@
 		const first = new Date(Date.UTC(y, m - 1, 1));
 		const lead = (first.getUTCDay() + 6) % 7;
 		const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
-		const byDate = new Map((cal.data?.month === month ? cal.data.days : []).map((d) => [d.date, d]));
+		const list = cal.data?.month === month ? cal.data.days : [];
+		const byDate = new Map(list.map((d) => [d.day, d]));
+		const max = Math.max(1, ...list.map((d) => d.backed_up + d.pending));
 		const out: ({ date: string; day: number; count: number; problems: number; density: number } | null)[] =
 			Array(lead).fill(null);
 		for (let i = 1; i <= days; i++) {
 			const date = `${month}-${String(i).padStart(2, '0')}`;
 			const b = byDate.get(date);
-			out.push({ date, day: i, count: b?.count ?? 0, problems: b?.problems ?? 0, density: b?.density ?? 0 });
+			const n = b ? b.backed_up + b.pending : 0;
+			out.push({ date, day: i, count: n, problems: b?.lost ?? 0, density: n ? Math.ceil((n / max) * 4) : 0 });
 		}
 		return out;
 	});
@@ -101,7 +104,7 @@
 									disabled={future}
 									onclick={() => onselect(c.date)}
 									aria-pressed={c.date === selected}
-									aria-label="{spoken(c.date)}: {plural(c.count, 'clip')}{c.problems ? `, ${plural(c.problems, 'problem')}` : ''}"
+									aria-label="{spoken(c.date)}: {plural(c.count, 'clip')}{c.problems ? `, ${c.problems} lost` : ''}"
 									class={cn(
 										'hover:bg-muted relative flex aspect-square flex-col items-center justify-center gap-1 rounded-md text-sm tabular-nums transition-colors disabled:opacity-35',
 										c.date === selected && 'bg-muted ring-brand-text ring-2 ring-inset',
@@ -123,7 +126,7 @@
 							{:else if c.count}
 								<span class="flex gap-x-3">
 									<span>{plural(c.count, 'clip')}</span>
-									{#if c.problems}<span>{plural(c.problems, 'problem')}</span>{/if}
+									{#if c.problems}<span>{c.problems} lost</span>{/if}
 								</span>
 							{:else}
 								No clips

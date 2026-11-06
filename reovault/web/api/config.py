@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from tomlkit.toml_document import TOMLDocument
 
-from reovault.config import AlertRules, AlertsConfig, Settings, WebConfig
+from reovault.config import AlertRules, BackupConfig, Settings, WebConfig
 from reovault.config_store import (
     WEB_EDITABLE,
     ConfigConflictError,
@@ -35,16 +35,20 @@ Kind = Literal["bool", "int", "float", "str", "path", "list"]
 # `retention` and `alerts.rules` have their own forms and endpoints; they're
 # listed here too so the page can show sources and locks for them.
 SECTIONS: list[tuple[str, ...]] = [
-    ("schedule",),
-    ("retention",),
+    ("backup",),
     ("alerts",),
     ("alerts", "rules"),
     ("web",),
     ("storage",),
-    ("reolink_cli",),
+    ("tools",),
 ]
 # Never shown or written: a credential. (Alert secrets are file *paths*.)
 HIDDEN = {("web", "password_hash")}
+# Alert channels name secret *files* and where to send them: editable from
+# the browser, a stolen session could point a token file at the restic
+# password and send it anywhere. They change in reovault.toml only (still
+# applied live); the rules stay editable here.
+FILE_ONLY = {("alerts",)}
 
 
 class FieldOut(BaseModel):
@@ -110,7 +114,7 @@ def _model_at(settings: Settings, path: tuple[str, ...]) -> BaseModel:
     obj: Any = settings
     for key in path:
         obj = getattr(obj, key)
-    return obj  # type: ignore[no-any-return]
+    return obj
 
 
 def _in_file(doc: TOMLDocument, path: tuple[str, ...], key: str) -> bool:
@@ -155,7 +159,7 @@ def config_out(st: AppState) -> ConfigOut:
                     default=_jsonable(getattr(defaults, key)),
                     source=source,
                     env_var=env_var,
-                    editable=store.writable and not env_var and not infra,
+                    editable=store.writable and not env_var and not infra and path not in FILE_ONLY,
                     restart=infra,
                 )
             )
@@ -176,7 +180,7 @@ def get_config(st: State) -> ConfigOut:
 
 
 _MODELS: dict[str, tuple[tuple[str, ...], type[BaseModel]]] = {
-    "alerts": (("alerts",), AlertsConfig),
+    "backup": (("backup",), BackupConfig),
     "alerts.rules": (("alerts", "rules"), AlertRules),
     "web": (("web",), WebConfig),
 }

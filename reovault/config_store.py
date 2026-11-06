@@ -8,8 +8,8 @@ you back up and version, and the UI is just another editor of it.
 Precedence is unchanged: `REOVAULT_*` env vars beat the file, which beats the
 defaults. A field set by env is locked everywhere (`env_locked`).
 
-Infrastructure settings (storage paths, the web bind/proxy/cookie settings,
-the reolink-cli binary and gateway) are read once at startup: a change in the
+Infrastructure settings (storage paths, the external tools, the web
+bind/proxy/cookie settings) are read once at startup: a change in the
 file is reported as "restart required" instead of half-applied, and the
 dashboard shows them read-only (`INFRA`).
 
@@ -44,7 +44,7 @@ from reovault.logging import get_logger
 logger = get_logger(__name__)
 
 # Fields read once at startup and shown read-only in the dashboard.
-INFRA_SECTIONS = frozenset({"storage", "reolink_cli"})
+INFRA_SECTIONS = frozenset({"storage", "tools"})
 # The few [web] fields that are safe to change live from the browser; every
 # other [web] field (bind, port, cookies, proxy trust, login identity) can
 # lock you out, so it's infrastructure.
@@ -54,9 +54,13 @@ WEB_EDITABLE = frozenset(
         "login_max_attempts",
         "login_window_secs",
         "login_lockout_secs",
-        "page_size",
+        "update_check",
     }
 )
+# What a running app follows live. The login email is also live, but only the
+# setup screen and change-password may write it (both need the password), so
+# it is not in WEB_EDITABLE, which gates the generic settings endpoint.
+WEB_LIVE = WEB_EDITABLE | {"email"}
 
 Listener = Callable[[Settings, Settings], None]
 
@@ -74,7 +78,7 @@ class ConfigInvalidError(Exception):
 
 
 def is_infra(section: str, field: str | None = None) -> bool:
-    if section in INFRA_SECTIONS:
+    if section in INFRA_SECTIONS or (section, field) == ("backup", "password_file"):
         return True
     return section == "web" and field not in WEB_EDITABLE
 
@@ -171,11 +175,11 @@ class ConfigStore:
     def _effective(self, loaded: Settings) -> Settings:
         """`loaded`, with the infrastructure fields pinned to the startup
         values: those take effect only after a restart."""
-        web_live = {k: getattr(loaded.web, k) for k in WEB_EDITABLE}
+        web_live = {k: getattr(loaded.web, k) for k in WEB_LIVE}
         return loaded.model_copy(
             update={
                 "storage": self.startup.storage,
-                "reolink_cli": self.startup.reolink_cli,
+                "tools": self.startup.tools,
                 "web": self.startup.web.model_copy(update=web_live),
             }
         )
@@ -190,7 +194,7 @@ class ConfigStore:
         changed += [
             f"web.{k}"
             for k in type(loaded.web).model_fields
-            if k not in WEB_EDITABLE and getattr(loaded.web, k) != getattr(base.web, k)
+            if k not in WEB_LIVE and getattr(loaded.web, k) != getattr(base.web, k)
         ]
         self.restart_required = sorted(changed)
         self._notify(old, self._current)
@@ -244,7 +248,11 @@ class ConfigStore:
             mutate(doc)
             new_text = tomlkit.dumps(doc)
             tmp = self.path.with_name(f".{self.path.name}.tmp")
-            tmp.write_text(new_text, encoding="utf-8")
+            # Owner-only: the file holds the camera passwords.
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(new_text)
+            tmp.chmod(0o600)  # an existing tmp keeps its old mode otherwise
             try:
                 loaded = load_settings(tmp)
             except (tomllib.TOMLDecodeError, ValidationError) as exc:
@@ -253,8 +261,9 @@ class ConfigStore:
             with open(tmp, "rb") as fh:
                 os.fsync(fh.fileno())
             if self.path.exists():
-                shutil.copymode(self.path, tmp)
-                shutil.copyfile(self.path, self.path.with_name(self.path.name + ".bak"))
+                bak = self.path.with_name(self.path.name + ".bak")
+                shutil.copyfile(self.path, bak)
+                bak.chmod(0o600)
             os.replace(tmp, self.path)
             self.last_origin = "dashboard"
             self._apply(loaded, _hash(new_text))
@@ -271,8 +280,17 @@ class ConfigStore:
         path = self.path
 
         def run() -> None:
-            for changes in watchfiles.watch(path.parent, stop_event=stop, debounce=500):
-                if any(Path(p).resolve() == path for _change, p in changes):
+            # Only reovault.toml: its folder may also hold rclone.conf (rewritten
+            # on token refresh) or, in a dev setup, the database.
+            only_config = watchfiles.DefaultFilter()
+
+            def is_config(change: watchfiles.Change, p: str) -> bool:
+                return Path(p).resolve() == path and only_config(change, p)
+
+            for changes in watchfiles.watch(
+                path.parent, stop_event=stop, debounce=500, watch_filter=is_config
+            ):
+                if changes:
                     try:
                         self.reload()
                     except Exception as exc:  # noqa: BLE001 - the watcher must survive
@@ -305,7 +323,7 @@ def table_at(doc: TOMLDocument, *keys: str) -> Table:
         if key not in container:
             container[key] = tomlkit.table()
         container = container[key]
-    return container  # type: ignore[no-any-return]
+    return container
 
 
 def set_fields(table: Any, values: dict[str, Any], defaults: BaseModel | None = None) -> None:
@@ -321,117 +339,81 @@ def set_fields(table: Any, values: dict[str, Any], defaults: BaseModel | None = 
         table[key] = _tomlable(value)
 
 
-def device_entries(doc: TOMLDocument) -> AoT:
-    if "devices" not in doc:
-        doc["devices"] = tomlkit.aot()
-    entries: AoT = doc["devices"]
+def camera_entries(doc: TOMLDocument) -> AoT:
+    if "cameras" not in doc:
+        doc["cameras"] = tomlkit.aot()
+    entries: AoT = doc["cameras"]
     return entries
 
 
-def device_entry(doc: TOMLDocument, alias: str) -> Table | None:
-    for entry in device_entries(doc):
-        if entry.get("alias") == alias:
+def camera_entry(doc: TOMLDocument, cam_id: str) -> Table | None:
+    for entry in camera_entries(doc):
+        if entry.get("id") == cam_id:
             found: Table = entry
             return found
     return None
 
 
-def upsert_device_entry(doc: TOMLDocument, alias: str, **values: Any) -> Table:
-    entry = device_entry(doc, alias)
+def upsert_camera_entry(doc: TOMLDocument, cam_id: str, **values: Any) -> Table:
+    entry = camera_entry(doc, cam_id)
     if entry is None:
         entry = tomlkit.table()
-        entry["alias"] = alias
-        device_entries(doc).append(entry)
-        entry = device_entry(doc, alias)
+        entry["id"] = cam_id
+        camera_entries(doc).append(entry)
+        entry = camera_entry(doc, cam_id)
         assert entry is not None
-    from reovault.config import DeviceConfig
+    from reovault.config import CameraConfig
 
-    # Defaults (channel 0, enabled) aren't written unless already present.
-    set_fields(entry, values, DeviceConfig.model_construct())
+    # Defaults (enabled) aren't written unless already present.
+    set_fields(entry, values, CameraConfig.model_construct())
     return entry
 
 
-def set_device_schedule(doc: TOMLDocument, alias: str, schedule: BaseModel | None) -> None:
-    """A camera's own `[devices.schedule]`, or `None` to follow `[schedule]`."""
-    entry = device_entry(doc, alias)
+def remove_camera_entry(doc: TOMLDocument, cam_id: str) -> bool:
+    """Drops a camera's `[[cameras]]` entry. False when there was none."""
+    entries = camera_entries(doc)
+    for i, entry in enumerate(entries):
+        if entry.get("id") == cam_id:
+            del entries[i]
+            return True
+    return False
+
+
+def destination_entries(doc: TOMLDocument) -> AoT:
+    if "destinations" not in doc:
+        doc["destinations"] = tomlkit.aot()
+    entries: AoT = doc["destinations"]
+    return entries
+
+
+def destination_entry(doc: TOMLDocument, name: str) -> Table | None:
+    for entry in destination_entries(doc):
+        if entry.get("name") == name:
+            found: Table = entry
+            return found
+    return None
+
+
+def upsert_destination_entry(doc: TOMLDocument, name: str, **values: Any) -> Table:
+    """Adds or updates a `[[destinations]]` entry; a value of None removes the
+    key, and defaults (not primary, enabled, no limits) aren't written."""
+    entry = destination_entry(doc, name)
     if entry is None:
-        raise ConfigInvalidError(f"No [[devices]] entry for {alias!r} in reovault.toml.")
-    if schedule is None:
-        entry.pop("schedule", None)
-        return
-    # Only what differs from the built-in defaults, so the override reads as
-    # what's actually special about this camera. A blank line after it keeps
-    # the next [[devices]] entry visually separate.
-    defaults = type(schedule)()
-    table = tomlkit.table()
-    for key, value in schedule.model_dump().items():
-        if value is not None and value != getattr(defaults, key):
-            table[key] = value
-    table.add(tomlkit.nl())
-    entry["schedule"] = table
+        entry = tomlkit.table()
+        entry["name"] = name
+        destination_entries(doc).append(entry)
+        entry = destination_entry(doc, name)
+        assert entry is not None
+    from reovault.config import DestinationConfig
+
+    set_fields(entry, values, DestinationConfig.model_construct())
+    return entry
 
 
-def migrate_db_settings(store: ConfigStore, repository: Any) -> list[str]:
-    """One-time move of pre-0.4 dashboard state into reovault.toml: the
-    schedule (global and per camera), retention and alert rules that used to
-    live in `app_settings`, and cameras added from the dashboard that exist
-    only in the database. The database keys are deleted only after the file
-    was written. Returns what was migrated; does nothing (and keeps the old
-    keys) when the file can't be written."""
-    from reovault.config import AlertRules, RetentionConfig, ScheduleConfig
-
-    keys = [
-        k
-        for k in repository.setting_keys()
-        if k in ("schedule", "retention", "alert_rules") or k.startswith("schedule:")
-    ]
-    in_file = {(d.alias, d.channel) for d in store.current.devices}
-    rows = repository.list_devices()
-    orphans = [r for r in rows if (r.alias, r.channel) not in in_file]
-    disabled = [r for r in rows if (r.alias, r.channel) in in_file and not r.enabled]
-    if not (keys or orphans or disabled):
-        return []
-    if not store.writable:
-        logger.warning(
-            "config.migration_skipped",
-            reason="reovault.toml is read-only; mount its folder read-write to migrate",
-        )
-        return []
-
-    def mutate(doc: TOMLDocument) -> None:
-        for row in orphans:
-            upsert_device_entry(
-                doc,
-                row.alias,
-                channel=row.channel,
-                timezone=row.timezone,
-                name=row.name,
-                enabled=None if row.enabled else False,
-            )
-        for row in disabled:
-            upsert_device_entry(doc, row.alias, enabled=False)
-        for key in keys:
-            raw = repository.get_setting(key)
-            if raw is None:
-                continue
-            if key == "schedule" and not env_locked("schedule"):
-                schedule = ScheduleConfig.model_validate_json(raw)
-                set_fields(table_at(doc, "schedule"), schedule.model_dump(), ScheduleConfig())
-            elif key.startswith("schedule:") and not env_locked("schedule"):
-                row = repository.get_device(int(key.split(":", 1)[1]))
-                if row is not None:
-                    upsert_device_entry(doc, row.alias, channel=row.channel, timezone=row.timezone)
-                    set_device_schedule(doc, row.alias, ScheduleConfig.model_validate_json(raw))
-            elif key == "retention" and not env_locked("retention"):
-                policy = RetentionConfig.model_validate_json(raw)
-                set_fields(table_at(doc, "retention"), policy.model_dump(), RetentionConfig())
-            elif key == "alert_rules" and not env_locked("alerts", "rules"):
-                rules = AlertRules.model_validate_json(raw)
-                set_fields(table_at(doc, "alerts", "rules"), rules.model_dump(), AlertRules())
-
-    store.update(mutate)
-    for key in keys:
-        repository.delete_setting(key)
-    migrated = keys + [f"device:{r.alias}" for r in orphans]
-    logger.info("config.migrated_from_database", items=migrated)
-    return migrated
+def remove_destination_entry(doc: TOMLDocument, name: str) -> bool:
+    entries = destination_entries(doc)
+    for i, entry in enumerate(entries):
+        if entry.get("name") == name:
+            del entries[i]
+            return True
+    return False

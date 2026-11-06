@@ -4,7 +4,6 @@ login/logout/revocation behave, and failed logins are rate limited.
 """
 
 import time
-from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -27,10 +26,11 @@ _PUBLIC_ROUTES = {
     ("GET", "/healthz"),
     ("GET", "/api/v1/session"),
     ("POST", "/api/v1/login"),
+    ("POST", "/api/v1/setup"),  # open until the first login exists, then 409
     ("GET", "/{path:path}"),
 }
 
-_PATH_PARAM_FILLS = {"recording_id": "1", "run_id": "1", "device_id": "1", "rest": "x"}
+_PATH_PARAM_FILLS = {"clip_id": "1", "cam_id": "demo", "section": "web", "rest": "x"}
 
 _MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 
@@ -266,10 +266,11 @@ def test_logout_revokes_a_copied_cookie(env, web_settings, web_device, web_passw
 def test_no_password_configured_returns_503_but_healthz_still_ok(env, web_settings, web_device):
     client = TestClient(make_web_app(env, web_settings, web_device))  # no web_password_hash
 
-    for path in ("/api/v1/session", "/api/v1/runs"):
-        response = client.get(path)
-        assert response.status_code == 503, path
-        assert "set-password" in response.json()["detail"], path
+    response = client.get("/api/v1/runs")
+    assert response.status_code == 503
+    assert "setup code" in response.json()["detail"]
+    # Only the session (it says setup is needed) and the setup form are open.
+    assert client.get("/api/v1/session").json()["setup_needed"] is True
     assert client.get("/healthz").status_code == 200
 
 
@@ -316,8 +317,8 @@ def logged_in_client(app_and_client):
 def test_mutating_route_enumeration_is_not_empty(app_and_client):
     app, _client = app_and_client
     routes = _mutating_api_routes(app)
-    assert ("POST", "/api/v1/recordings/1/retry") in routes
-    assert ("PUT", "/api/v1/schedule") in routes
+    assert ("POST", "/api/v1/cameras/demo/run") in routes
+    assert ("PUT", "/api/v1/config/web") in routes
     assert len(routes) > 10
 
 
@@ -426,31 +427,18 @@ def test_anonymous_csrf_token_is_short_lived(app_and_client, monkeypatch):
 def test_mutating_route_with_correct_csrf_succeeds_and_has_a_real_effect(
     env, web_settings, web_device, web_password_hash
 ):
-    from reovault.models import ErrorClass, RemoteRecording
+    import tomllib
 
-    rec = RemoteRecording(
-        remote_name="a",
-        start_utc=datetime(2026, 1, 1, tzinfo=UTC),
-        end_utc=None,
-        duration_s=None,
-        rec_type="md",
-        stream="main",
-        remote_size=10,
-        raw_metadata={},
-    )
-    rid, _ = env.repository.discover_recording(device_id=env.device_id, channel=0, recording=rec)
-    env.repository.transition_downloading(rid)
-    env.repository.mark_failed(
-        rid, error="boom", error_class=ErrorClass.NETWORK, next_attempt_at=None
-    )
     client = login(TestClient(make_web_app(env, web_settings, web_device)))
 
-    response = client.post(f"/api/v1/recordings/{rid}/retry")
+    response = client.put(
+        "/api/v1/cameras/demo",
+        json={"name": "Porch", "timezone": "Europe/Brussels", "enabled": False},
+    )
 
-    assert response.status_code == 200
-    row = env.repository.get(rid)
-    assert row.state == "failed"
-    assert row.attempts == 0  # the actual side effect, not just a 200
+    assert response.status_code == 200, response.text
+    camera = tomllib.loads(env.toml.read_text())["cameras"][0]
+    assert (camera["name"], camera["enabled"]) == ("Porch", False)  # the real side effect
 
 
 def test_chunked_body_is_refused_before_it_is_read(client):

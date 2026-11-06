@@ -1,110 +1,164 @@
-"""Global, rolling retention: keeps the vault under an age limit and/or a
-size cap by pruning the oldest archived clips first, across every device.
+"""Which snapshots to forget: `keep_days` and the size quota, per destination.
 
-A pruned clip keeps its DB row in state `pruned` (see
-`Repository.mark_pruned`): dedup is the row alone, so deleting it would let
-the next scan or backfill re-download a clip still on the SD card.
+ReoVault chooses the snapshot ids itself (restic's `--keep-within` can't know
+about copies), under three rules:
+- a camera's newest snapshot is never forgotten: it carries the index;
+- on the primary, a snapshot is released only when every copy destination that
+  should hold it already does, so a clip is never left with no other copy;
+- a copy only takes snapshots its own `keep_days` and floor still want, or it
+  would copy what its retention forgets the next day, forever.
 
-The policy is `reovault.toml`'s `[retention]` table, editable from the
-dashboard (which writes the file back, see `reovault.config_store`) unless a
-`REOVAULT_RETENTION__*` env var pins it.
+Pure functions over small records, so every rule has a plain unit test.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
-from reovault.config import RetentionConfig, Settings
-from reovault.db.repository import RecordingRow, Repository, parse_iso_utc
-from reovault.logging import get_logger
-from reovault.storage.vault import EncryptedFsVault
-
-logger = get_logger(__name__)
-
-RETENTION_SETTING_KEY = "retention"  # pre-0.4 app_settings key, migrated by config_store
-_RETENTION_ENV_PREFIX = "REOVAULT_RETENTION__"
-_BATCH = 500
-GB = 1024**3
+GB = 1_000_000_000  # decimal, as disks and cloud plans count
+QUOTA_HIGH = 0.90  # start cutting above this share of the cap ...
+QUOTA_LOW = 0.85  # ... until back under this one (covers the index, the config
+# repository and prune's unused space)
 
 
-def archiver_hook(
-    current_settings: Callable[[], Settings], repository: Repository, vault: EncryptedFsVault
-) -> Callable[[], PruneResult]:
-    """The `Archiver.retention` callable. Reads the live policy on every
-    call, so an edit (dashboard or file) applies from the next clip on."""
-    return lambda: enforce(repository, vault, current_settings().retention)
+@dataclass(frozen=True, slots=True)
+class Snap:
+    """One snapshot on one destination."""
+
+    camera: str
+    id: str  # its own id in that repository
+    root: str  # the id it had where it was first made
+    time: datetime
+    bytes: int = 0  # the footage it holds (sum of clip sizes)
 
 
-def is_retention_env_pinned() -> bool:
-    return any(k.startswith(_RETENTION_ENV_PREFIX) for k in os.environ)
+@dataclass(frozen=True, slots=True)
+class CopyView:
+    """What a primary needs to know about a copy destination."""
+
+    name: str
+    keep_days: int
+    floor: datetime | None  # never copy snapshots older than this
+    roots: dict[str, frozenset[str]] = field(default_factory=dict)  # camera -> roots held
 
 
-@dataclass
-class PruneResult:
-    count: int = 0
-    bytes: int = 0
+@dataclass(frozen=True, slots=True)
+class Cut:
+    ids: list[str]  # to forget now (own ids in the repository being pruned)
+    short: bool = False  # the quota forced a cut into snapshots still inside keep_days
+    too_small: bool = False  # still over the cap with only the newest snapshots left
+    blocked: int = 0  # releasable by policy but a copy doesn't have them yet
+    floor: datetime | None = None  # the newest snapshot the quota forgot: never copy older
 
 
-def _over_limit(
-    repository: Repository, policy: RetentionConfig, now: datetime
-) -> Iterator[RecordingRow]:
-    """Archived rows the policy wants gone, oldest first. Stops at the first
-    row that is both young enough and fits under the cap: rows are ordered
-    by `start_utc`, so nothing after it can be over either limit. Keyset
-    paging makes this correct whether or not the caller prunes as it goes,
-    which is what lets `preview` reuse it."""
-    if policy.max_age_days is None and policy.max_vault_gb is None:
-        return
-    cutoff = now - timedelta(days=policy.max_age_days) if policy.max_age_days else None
-    cap = int(policy.max_vault_gb * GB) if policy.max_vault_gb else None
-    remaining = repository.archived_ciphertext_total()
-    after: tuple[str, int] | None = None
-    while True:
-        rows = repository.oldest_archived(limit=_BATCH, after=after)
-        if not rows:
-            return
-        for row in rows:
-            too_old = cutoff is not None and parse_iso_utc(row.start_utc) < cutoff
-            too_big = cap is not None and remaining > cap
-            if not (too_old or too_big):
-                return
-            remaining -= row.ciphertext_size or 0
-            yield row
-        after = (rows[-1].start_utc, rows[-1].id)
+def newest_by_camera(snaps: list[Snap]) -> dict[str, Snap]:
+    return {s.camera: s for s in sorted(snaps, key=lambda s: s.time)}
 
 
-def preview(
-    repository: Repository, policy: RetentionConfig, now: datetime | None = None
-) -> PruneResult:
-    """What `enforce` would delete right now, without deleting anything."""
-    result = PruneResult()
-    for row in _over_limit(repository, policy, now or datetime.now(UTC)):
-        result.count += 1
-        result.bytes += row.ciphertext_size or 0
-    return result
+def wants(keep_days: int, floor: datetime | None, snap: Snap, newest: Snap) -> bool:
+    """Would a destination with this policy keep `snap`?"""
+    if floor is not None and snap.time < floor:
+        return False
+    return keep_days == 0 or snap.time >= newest.time - timedelta(days=keep_days)
 
 
-def enforce(
-    repository: Repository,
-    vault: EncryptedFsVault,
-    policy: RetentionConfig,
-    now: datetime | None = None,
-) -> PruneResult:
-    """Prune until the policy holds. File first, then row: a crash in
-    between leaves an `archived` row with no file, which the next call
-    picks up again (it is still the oldest) and `vault.delete` tolerates.
-    The other order would leave an orphan file that reconciliation could
-    mistake for an interrupted archive."""
-    result = PruneResult()
-    for row in _over_limit(repository, policy, now or datetime.now(UTC)):
-        if row.vault_path is not None:
-            vault.delete(row.vault_path)
-        repository.mark_pruned(row.id)
-        result.count += 1
-        result.bytes += row.ciphertext_size or 0
-    if result.count:
-        logger.info("retention.pruned", count=result.count, bytes=result.bytes)
-    return result
+def age_cut(snaps: list[Snap], keep_days: int) -> list[Snap]:
+    """Snapshots older than `keep_days` before their camera's newest one, which
+    itself is never cut (restic's `--keep-within` counts the same way, so an
+    outage doesn't delete history)."""
+    newest = newest_by_camera(snaps)
+    return [
+        s
+        for s in snaps
+        if keep_days and s != newest[s.camera] and not wants(keep_days, None, s, newest[s.camera])
+    ]
+
+
+def quota_cut(
+    usage: list[Snap], keep_days: int, max_gb: int, skip: set[str]
+) -> tuple[list[Snap], bool, bool]:
+    """(snapshots to forget, `short`, `too_small`). `usage` is every snapshot on
+    the destination across cameras; `skip` are ids already being forgotten for
+    age. Oldest first, until under the low-water mark."""
+    if not max_gb:
+        return [], False, False
+    cap = max_gb * GB
+    used = sum(s.bytes for s in usage if s.id not in skip)
+    if used <= cap * QUOTA_HIGH:
+        return [], False, False
+    newest = newest_by_camera(usage)
+    forget: list[Snap] = []
+    for s in sorted(usage, key=lambda x: x.time):
+        if used <= cap * QUOTA_LOW:
+            break
+        if s.id in skip or s == newest[s.camera]:
+            continue
+        forget.append(s)
+        used -= s.bytes
+    short = any(wants(keep_days, None, s, newest[s.camera]) for s in forget)
+    return forget, short, used > cap
+
+
+def _lacks(copy: CopyView, s: Snap, newest: Snap) -> bool:
+    """`copy` should hold `s` but doesn't yet."""
+    return s.root not in copy.roots.get(s.camera, frozenset()) and wants(
+        copy.keep_days, copy.floor, s, newest
+    )
+
+
+def copy_candidates(primary: list[Snap], copy: CopyView) -> list[Snap]:
+    """Primary snapshots this copy still lacks and wants, newest first (the
+    freshest footage is protected first, and the newest carries the index)."""
+    newest = newest_by_camera(primary)
+    return sorted(
+        (s for s in primary if _lacks(copy, s, newest[s.camera])),
+        key=lambda x: x.time,
+        reverse=True,
+    )
+
+
+def release(
+    forget: list[Snap], all_snaps: list[Snap], copies: list[CopyView]
+) -> tuple[list[Snap], int]:
+    """Drops from `forget` what a copy should still receive. Returns (the
+    snapshots that may go, how many were held back)."""
+    newest = newest_by_camera(all_snaps)
+    ok, held = [], 0
+    for s in forget:
+        if any(_lacks(c, s, newest[s.camera]) for c in copies):
+            held += 1
+        else:
+            ok.append(s)
+    return ok, held
+
+
+def decide(
+    *,
+    camera: str,
+    snaps: list[Snap],
+    usage: list[Snap],
+    keep_days: int,
+    max_gb: int,
+    copies: list[CopyView] | None = None,
+) -> Cut:
+    """The cut for one camera's repository on one destination. `snaps` are that
+    repository's snapshots, `usage` every camera's snapshots on the destination
+    (for the quota), `copies` the destinations that must hold a snapshot first
+    (only for the primary)."""
+    aged = age_cut(snaps, keep_days)
+    skip = {s.id for s in aged}
+    quota, short, too_small = quota_cut(usage, keep_days, max_gb, skip)
+    floor = max((s.time for s in quota), default=None)
+    mine = {s.id for s in snaps}
+    wanted = aged + [s for s in quota if s.camera == camera and s.id in mine]
+    blocked = 0
+    if copies:
+        wanted, blocked = release(wanted, snaps, copies)
+    return Cut(
+        ids=[s.id for s in wanted],
+        short=short,
+        too_small=too_small,
+        blocked=blocked,
+        floor=floor,
+    )

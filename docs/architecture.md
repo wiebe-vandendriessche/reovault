@@ -1,176 +1,203 @@
 # Architecture
 
-## Provider/adapter boundary
-
-Camera-specific behavior is isolated behind two small interfaces in
-`reovault/providers/base.py`:
-
-* **`CameraProvider`**: camera I/O: list recordings in a time window
-  (`vod search`), download one (`vod download`), report SD card storage
-  status. Talks to the camera through the `reolink-gateway` sidecar.
-* **`CameraRegistry`**: camera *management*: discover cameras on the LAN,
-  add/list registered cameras, fetch device info (model/firmware/name).
-  Works from local config files plus a LAN broadcast; never needs the
-  gateway except for `device_info`.
-
-Today's implementation of both (`ReolinkCliProvider`,
-`ReolinkCliRegistry`) shells out to the official
-[`reolink-cli`](https://github.com/reolink/reolink-cli) binary rather than
-reimplementing the Reolink protocol. Exit codes map onto typed exceptions
-(`InputError`/`NetworkError`/`AuthError`/`DeviceError`/`ProtocolError`), so
-the archiver's retry/backoff logic never has to guess what kind of failure
-it's looking at. A second camera integration would implement the same two
-interfaces without touching the archiver, scheduler, storage, or dashboard.
-
-`ReolinkCliProvider` searches one camera-local day per `vod search` call,
-never a whole window at once. Search time grows with the number of clips on
-the card, and one multi-day search on a busy camera outruns `reolink-cli`'s
-fixed 60 s gateway read budget. A `vod download` that reports the recording
-as not found on the card (loop recording overwrote it after it was listed)
-is quarantined on the first failure rather than retried every run.
-`reolink-cli` 0.19.0 reports that case as a retryable `NETWORK_ERROR`, so
-the provider recognizes it by its message text. Both behaviors were verified
-against a D340W.
-
-Each archive run also records the card's oldest clip. Any recording that was
-never archived and starts before that clip is marked `lost`: the card has
-overwritten it, so it leaves the Problems count and gets no retry. The
-oldest-clip scan stops at a gap of empty days, so it can be wrong. A `lost`
-recording that the camera lists again goes back to `discovered` and is
-archived normally. The user dismisses lost clips from the Problems page.
-
-`reolink-cli` itself manages camera credentials in its own encrypted
-`aliases.toml` (AES-GCM, decrypted by a `credentials.key` beside it, file
-mode 0600). ReoVault never stores the camera password: it passes through
-the process once, on stdin, on its way into that registry.
-
-## Archiving state machine
-
-`Archiver.run()` (`reovault/archiver.py`) drives each recording through:
-discover → stage a download → verify size/hash → encrypt into the vault →
-finalize (atomic rename) → mark archived in the database. A crash at any
-step leaves the recording in a well-defined intermediate state; `reconcile`
-(run manually or automatically) sweeps orphaned staging files and
-adopts/deletes unreferenced vault files left behind. A recording is never
-marked archived before verification and finalization both succeed, and a
-successfully archived recording is never re-downloaded.
-
-Retention (`reovault/retention.py`, see `[retention]` in the configuration
-docs) is the only path that deletes archived footage, and only when the
-operator has set an age or size limit. It deletes the oldest vault files
-first and marks their rows `pruned` instead of removing them, because
-dedup lives entirely in the database: a deleted row would let the next scan
-re-download the clip from the SD card.
-
-## Storage: the vault
-
-`EncryptedFsVault` (`reovault/storage/vault.py`) lays out ciphertext on disk
-as:
+ReoVault does one thing: it copies the clips on each camera's SD card into a
+[restic](https://restic.net/) backup, before the card's loop recording
+overwrites them. Everything that makes a backup trustworthy (encryption,
+deduplication, integrity checks, pruning) is restic's job, not ReoVault's.
+ReoVault only decides *which* snapshots retention may forget, because that
+depends on the copies and size limits restic doesn't know about.
 
 ```
-<device-alias>/<YYYY>/<MM>/<DD>/<start>_<remote-name>.enc
-                                <start>_<remote-name>.enc.json
+camera SD card --reolink-cli vod download--> local batch --restic backup--> primary destination
+                                             (at most two batches)          (a local disk, ideally)
+                                                                                  |
+                                                            restic copy (own threads; see "pause" below)
+                                                                                  v
+                                                              copy destinations (Nextcloud, OneDrive, S3, ... via rclone)
 ```
 
-The `.json` sidecar (plaintext SHA-256, sizes, algorithm, format version,
-created-at) is redundant with the SQLite database on purpose. The vault
-stays self-describing even if the database is ever lost. Files are only
-ever written by encrypt-then-atomic-rename, so nothing observing the
-directory (including an external backup tool) can ever capture a
-partially-written file.
+## Modules
 
-## Encryption and key management
+| Module | Job |
+|---|---|
+| `camera.py` | Talks to cameras through the official `reolink-cli`: search a card, batch-download clips, read the card's status, discover cameras and check a login. Every call passes the camera's host and user, the password on stdin. Also `DemoCamera`, a pretend camera for trying ReoVault without hardware. |
+| `restic.py` | A thin wrapper around the pinned `restic` binary: open/init a repository, back up, list snapshots, `forget`, `check`, `dump`. |
+| `backup.py` | One camera's backup run, below. The core. |
+| `worker.py` | One thread per enabled camera: runs on its interval, plus that camera's retention on the primary (daily; with a size limit, hourly and after every batch) and weekly check. |
+| `destinations.py`, `retention.py` | The 3-2-1 side: one thread per copy destination (`restic copy`, its own retention and size limit, weekly check), and the pure functions that choose which snapshots to forget. |
+| `rclone.py` | Connects rclone remotes from the dashboard through `rclone config create`; ReoVault never parses `rclone.conf`. |
+| `configbackup.py` | Backs up ReoVault's own config (`reovault.toml` with the cameras, and `rclone.conf`) into each destination. |
+| `updates.py` | The optional daily "is there a newer release" check. |
+| `status.py` | One plain verdict per camera: up to date, catching up, at risk, failing, offline, no SD card, no backup yet, and each camera's coverage (where its footage of the last days is: card, primary, copies). |
+| `alerts.py` | ntfy, webhook and email, driven by what's wrong right now. |
+| `db.py` | SQLite: the clip index and the run history. |
+| `config.py`, `config_store.py` | `reovault.toml`, written back by the dashboard with comments kept. |
+| `runtime.py` | Wires it all together for the daemon and the API, and computes the alert conditions. |
+| `tools.py`, `cli.py` | Running the pinned external tools; the `reovault` command. |
+| `web/` | The `/api/v1` JSON API and the built dashboard. |
 
-Each recording is encrypted with AES-GCM. A single master key, generated by
-`reovault key init`, is itself wrapped by a user-supplied passphrase
-(`$REOVAULT_MASTER_PASSPHRASE` or a Docker secret file). The passphrase is
-never stored, only the wrapped key file (`crypto/keyring.py`, mode 0600).
-Losing both the key file and the passphrase makes every archived recording
-permanently unrecoverable; there is no recovery path by design. The key
-file must live outside `storage.vault_dir`, enforced by a startup check;
-otherwise a backup/retention tool that treats the vault as its source would
-replicate the key alongside the ciphertext it unlocks, collapsing the
-security boundary.
+## A backup run
 
-Integrity is checked two ways: every read verifies the AES-GCM tag, and a
-scheduled `integrity_scan` re-reads a rotating sample of archived files
-(default 5%/week) to catch bit rot before it's the only copy left.
+`backup.py` runs one camera, in that camera's thread:
 
-## Scheduler
+1. **Open the repository.** Each camera has its own restic repository at
+   `<destination>/<id>`. A missing repository is created only if this
+   camera never backed anything up there before. If it did, a missing
+   repository means a disk isn't mounted or the path is wrong, and the run
+   stops with that message instead of starting a fresh, empty backup.
+2. **Catch the index up** if the repository has snapshots the database
+   doesn't know (see [The index](#the-index)).
+3. **Recover.** Half-finished downloads from a crash are deleted. Clips that
+   were downloaded and verified but not yet uploaded are uploaded first.
+4. **List the card.** On the first run, once a day and after an error, the
+   whole card is read, one camera-local day at a time, going back until three
+   empty days in a row. Otherwise only the last couple of hours are searched.
+5. **Batches**, until nothing is left:
+   * **Pick** up to 2 GB of clips: the newest first (recorded since the last
+     run), then the oldest, because the oldest is what the card overwrites
+     next. A first run on a full card works through the backlog oldest-first
+     while new clips still go out within the hour.
+   * **Download** them into `<staging>/<id>/incoming/` with one
+     `reolink-cli vod download` call, which shares one camera connection.
+     This happens while the previous batch uploads (see below). If the whole
+     call fails while the camera still answers, the batch is downloaded one
+     clip at a time, so a single bad clip can't hold up the rest.
+   * **Verify** each file's size against what the card reported. A short file
+     gets one retry after a pause (a D340W quirk); a clip that keeps failing
+     moves to the back and is retried once a day.
+   * **Wait** for the previous batch's upload, then **stage** the verified
+     files in `<staging>/<id>/batch/<date>/`.
+   * **Upload** with `restic backup` on a background thread, while the next
+     batch downloads. Only when restic exits 0 with a snapshot id are the
+     clips marked backed up, and only then are the local files deleted.
+   * If an upload fails, the next batch is still staged next to it and the
+     run stops: nothing more is downloaded until the destination is back.
+     The next run uploads both in one snapshot. Local disk holds at most two
+     batches (one uploading, one downloading), about 4.3 GB per camera. The
+     clips wait on the SD card.
 
-`reovault daemon` runs an APScheduler instance with per-device jobs
-(`reovault/scheduler.py`): a scheduled archive run, a periodic deep
-backfill, a reconcile pass, and the integrity scan, each independently
-configurable per device or globally via `[schedule]`/`REOVAULT_SCHEDULE__*`.
-Cron expressions evaluate in each device's own configured timezone unless a
-global override is set.
+Overlapping the two cuts a first backup of a full card by about a third:
+download (about 4 to 6 MB/s) and upload no longer take turns.
 
-After every archive run the scheduler samples the camera's SD card
-(capacity, free space, mounted, and the oldest clip still on it).
-`reovault/health.py`'s `card_status` turns that sample plus the
-`recordings` table into one verdict per card, which the dashboard, the
-`coverage` alert and `/healthz?verbose=1` all share:
+**The invariant:** a clip counts as backed up only after its size matched,
+restic confirmed a snapshot, and the database recorded it. A crash anywhere
+before that just means the next run uploads the same files again; restic
+stores the data once.
 
-* **Waiting**: clips on the card that aren't archived yet.
-* **Lost**: unarchived clips older than the card's oldest clip, so the card
-  has already overwritten them. Counted, never alarmed on: nothing can
-  bring them back.
-* **At risk**: the card is nearly full (under 10% free, so it's looping)
-  and the oldest waiting clip will be overwritten within 20% of the card's
-  window. Time left is `oldest waiting clip + window - now`, where the
-  window is how much footage the card holds (`now - oldest clip on the
-  card`, or capacity divided by the recent daily recording rate when the
-  oldest clip isn't known).
-* **Not mounted**: the camera reports no mounted card.
+**Lost clips:** when a download fails, ReoVault searches that day and the next
+on the card again. A clip counts as lost only with proof: the card no longer
+lists it *and* it is older than the oldest clip the card still has (cards
+overwrite oldest first). It's then counted and never retried. An empty or
+truncated listing proves nothing, so that clip is retried. The decision never
+depends on error wording, which differs between models and reolink-cli
+versions.
 
-## Web dashboard
+**Clips without a size** (the card may list a clip that is still recording)
+wait until the card reports one: without it a download can't be verified.
 
-Two halves, one process, one origin:
+## Snapshots and retention
 
-* **The API** (`reovault/web/`): a JSON API under `/api/v1`, one FastAPI
-  router per area in `reovault/web/api/`, with typed Pydantic models. Its
-  OpenAPI schema is exported to `dashboard/openapi.json` and turned into
-  TypeScript types, so the dashboard compiles against the real API.
-* **The dashboard** (`dashboard/`): a SvelteKit single-page app (Svelte 5,
-  Tailwind v4, shadcn-svelte components), built to static files in the
-  image's Node build stage. FastAPI serves those files and returns
-  `index.html` for every client-side route. There is no Node at runtime.
+Every batch becomes one restic snapshot of the same folder,
+`<staging>/<id>/batch`, with the host name fixed to `reovault`. Because the
+path and host never change, all of a camera's snapshots form one group.
 
-The home page (**Overview**, `GET /api/v1/overview`) is fleet-wide: the
-archive's disk and one SD card tile per camera, built only from stored
-samples so loading it never calls a camera. Every other page (Health,
-Footage, Runs, Problems) is scoped to the camera picked in the header with
-`?device=`.
+Retention counts back from the camera's newest snapshot, not from today. If
+backups stop for two weeks, nothing old is deleted in the meantime. After
+a snapshot is forgotten, clips whose snapshot is gone are marked expired in the index, so
+they are never downloaded again even if they're still on the card.
 
-Password-protected single-user login: Argon2id-hashed password, a signed
-session cookie that logout revokes server-side, and a CSRF token the
-dashboard sends as `X-CSRF-Token` on every mutating request. Installable as
-a PWA; the service worker caches only the app shell, never `/api`.
+Weekly, each repository is checked with `restic check --read-data-subset 500M`,
+which reads a slice of the stored data back to catch bit rot early.
 
-**Live updates** come from one Server-Sent Events stream,
-`GET /api/v1/events`. Scheduler jobs and actions publish small hints
-("camera 3's activity changed") onto an in-process bus; the dashboard
-refetches whatever the hint concerns, and refetches everything after a
-reconnect, so a dropped event is never fatal. Nothing polls.
+## Destinations, copies and quotas
 
-**Alerts** (`reovault/notify.py`) are evaluated once a minute on their own
-scheduler executor, so a long archive run never delays them. Evaluation is
-state-based: what is wrong right now is diffed against the `alert_state`
-table, which opens, re-notifies and resolves alerts and survives restarts
-without losing or repeating one.
+Cameras back up into the **primary** only. Every other destination is a
+**copy**: after each commit its thread wakes and copies the new snapshots with
+`restic copy`, one snapshot per call, so progress is recorded and retention can
+run in between. A copy repository is created with `init --copy-chunker-params`
+(so deduplication works across both), and never where the camera already has
+history, for the same dropped-mount reason as the primary. Seeding a new
+destination with a whole history runs in its own thread for as long as it takes.
 
-**Export** streams a zip of decrypted clips straight from the vault, with no
-temp files; recordings play the same way over HTTP `Range` requests. Only
-the bytes actually being watched, seeked to or exported are ever decrypted.
+`locations(camera, source_snapshot, destination, snapshot_id)` records where
+each snapshot lives. restic gives a copied snapshot a new id but keeps the
+original in its `original` field, which is how the copy is matched back to the
+clip's snapshot. A clip is **expired** only when no destination holds its
+snapshot, and a download reads from the primary, then any local destination,
+then the rest.
 
-Behind a reverse proxy, bind `host = "0.0.0.0"` (loopback inside a container
-is unreachable from the proxy) and set `forwarded_allow_ips` to the proxy's
-own address. See [Configuration](configuration.md#web) and
-[Security](security.md).
+**Retention is chosen by ReoVault**, which runs `forget <ids> --prune` (not
+`--keep-within`), because a destination's `keep_days` and `max_gb` differ:
 
-## Data model
+* the primary may forget a snapshot only when every copy that wants it has it;
+* a camera's newest snapshot is never forgotten (it carries the clip list);
+* a copy only takes snapshots inside its own `keep_days`, and above a floor that
+  rises whenever its quota forgets there, so copying and retention never loop;
+* a size limit estimates use as the sum of the clip sizes in the snapshots,
+  trims the oldest at 90% down to 85% (headroom for manifests and prune), and
+  alerts when it had to cut younger than `keep_days`, when even the newest
+  backups don't fit, or when copies it is waiting for block it.
 
-SQLite (`reovault/db/`), single-writer, embedded, no extra infrastructure. A
-small migration runner applies numbered `.sql` files from
-`db/migrations/` in order. `reconcile` and `verify` operate directly against
-the vault and the database's `recordings` table.
+**The pause.** A size-limited primary is trimmed after every committed batch,
+not just once a day, so a first run on a full card can't fill a small disk.
+When it is at its limit and can't trim (its copies don't have the old
+snapshots yet), the camera's run stops before the next batch with "backups
+wait for the copies", rather than grow past `max_gb`. The clips wait on the SD
+card, and the next run continues once the copies have caught up.
+
+## The index
+
+SQLite remembers every clip a card ever listed and what became of it:
+waiting, backed up (with its repository, snapshot and path), lost or
+expired. It exists so that:
+
+* the dashboard never has to ask a remote destination anything to show a
+  calendar or an overview;
+* a clip is never downloaded twice.
+
+restic stays the source of truth. A download uses the snapshot and path
+stored in the index, so it keeps working after the destination changes.
+
+**Every snapshot carries the index.** Before each upload, ReoVault writes
+`batch/.reovault/index.json` into the batch: the camera's whole index (every
+backed-up clip with its snapshot, every lost and expired clip, detection types
+included). If the database is lost, restored from an older copy, or a crash
+left a snapshot unrecorded, the next run notices restic has snapshots the
+database doesn't know, reads the newest snapshot's index (two restic calls),
+and carries on. Nothing is downloaded again and old backups stay visible. Its
+own clips are only trusted if they really are in that snapshot, because a
+`restic backup` that exits 3 (a file unreadable) still writes one.
+
+## Downloads
+
+A clip is downloaded with `restic dump`, streamed straight to the browser. A
+range (an hour to several days, one or more cameras, all clips or only some
+detection types) downloads as one zip with a folder per camera, built while
+streaming. Neither uses temporary files. `dump` runs without a repository lock: the weekly `check` holds an
+exclusive one for as long as it reads, and a download must not wait hours for
+it.
+
+## Concurrency
+
+Each camera has one thread, and everything that touches that camera's
+*primary* repository (backups, `forget`, `check`) happens in it, one step after
+another; the only helper is the upload thread of the run in progress, joined
+before the run ends. Each copy destination has its own thread and only writes
+to its own repositories, reading the primary with `restic copy`. Lock-taking
+restic commands pass `--retry-lock 10m`, so the two sides wait for each other
+instead of failing. Cameras run in parallel; a camera never does. `reovault run` shares
+the same per-camera lock file as the daemon.
+
+## Why these tools
+
+* **reolink-cli** is Reolink's own, official tool. It downloads over the
+  camera's native protocol: on a D340W about 1.7 MB/s, against about 0.8 MB/s
+  for the camera's HTTPS API. See [Compatible devices](compatibility.md).
+* **restic** turns "copy files somewhere" into a verified, encrypted,
+  deduplicated backup with retention and integrity checks, and anyone can
+  restore it without ReoVault: see [Restore without ReoVault](restore-without-reovault.md).
+* **rclone** gives restic every cloud and home-server destination
+  (Nextcloud, OneDrive, Google Drive, S3, SFTP, ...) from one `rclone.conf`.
+
+All three are pinned and checksum-verified in the image, and ReoVault refuses
+to start against a different version.

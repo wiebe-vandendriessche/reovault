@@ -12,8 +12,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 _DASHBOARD_SRC = _ROOT / "dashboard" / "src"
 _API_STRING_SOURCES = [
     *sorted((_ROOT / "reovault" / "web").rglob("*.py")),
-    _ROOT / "reovault" / "notify.py",
-    _ROOT / "reovault" / "health.py",
+    # Modules whose strings reach the dashboard or an alert.
+    *(_ROOT / "reovault" / f for f in ("alerts.py", "status.py", "runtime.py", "backup.py")),
 ]
 
 

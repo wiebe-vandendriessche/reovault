@@ -7,4 +7,21 @@
 #   - vulnerability: CVE-2024-NNNNN
 #     reason: "No fix available upstream as of <date>; not reachable in ReoVault's usage. Re-check on next release."
 
-ignore: []
+# restic 0.19.1 (the latest release) was built with Go 1.26.4; these are Go
+# standard library / x/net findings in that binary only, scoped to it by
+# package so the same IDs elsewhere still fail the gate. Reviewed 2026-11-06.
+# Remove when a restic release built with Go >= 1.26.9 is pinned.
+ignore:
+  # HTTP/2 *server* flow control. ReoVault never runs restic as an HTTP/2
+  # server; restic only talks to `rclone serve restic --stdio` as a client over
+  # a local pipe.
+  - vulnerability: GO-2026-6612
+    package:
+      location: /usr/local/bin/restic
+  - vulnerability: CVE-2026-78663
+    package:
+      location: /usr/local/bin/restic
+  # os.Root.Mkdir following a junction: Windows only; the image is Linux.
+  - vulnerability: GO-2026-6604
+    package:
+      location: /usr/local/bin/restic

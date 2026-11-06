@@ -4,96 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/actions/backfill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Action Backfill */
-        post: operations["action_backfill_api_v1_actions_backfill_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/actions/reconcile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Action Reconcile */
-        post: operations["action_reconcile_api_v1_actions_reconcile_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/actions/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Action Run */
-        post: operations["action_run_api_v1_actions_run_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/actions/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Action Stop
-         * @description Cooperative: the Archiver checks the flag between recordings, so a
-         *     fetch or encrypt in flight finishes or fails on its own rather than
-         *     being torn down mid-write. The run then closes out as `aborted`.
-         */
-        post: operations["action_stop_api_v1_actions_stop_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Activity */
-        get: operations["get_activity_api_v1_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -145,15 +55,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/calendar": {
+    "/api/v1/cameras": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Calendar */
-        get: operations["get_calendar_api_v1_calendar_get"];
+        /** List Cameras */
+        get: operations["list_cameras_api_v1_cameras_get"];
+        put?: never;
+        /** Add Camera */
+        post: operations["add_camera_api_v1_cameras_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discover */
+        post: operations["discover_api_v1_cameras_discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Camera */
+        put: operations["edit_camera_api_v1_cameras__cam_id__put"];
+        post?: never;
+        /**
+         * Remove Camera
+         * @description Stops backing a camera up and drops it (with its password) from
+         *     reovault.toml. What is already backed up stays in every destination, and
+         *     adding a camera with the same id again brings it all back.
+         */
+        delete: operations["remove_camera_api_v1_cameras__cam_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Device
+         * @description The camera itself: model, firmware and the SD card, asked live (cached
+         *     for 10 minutes, so opening the page doesn't keep calling the camera).
+         */
+        get: operations["device_api_v1_cameras__cam_id__device_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Now */
+        post: operations["run_now_api_v1_cameras__cam_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop
+         * @description Stops after the batch in flight; nothing finished is undone.
+         */
+        post: operations["stop_api_v1_cameras__cam_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clips/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar */
+        get: operations["calendar_api_v1_clips_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clips/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Day */
+        get: operations["day_api_v1_clips_day_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clips/{clip_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download */
+        get: operations["download_api_v1_clips__clip_id__download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -201,7 +261,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/day": {
+    "/api/v1/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Destinations */
+        get: operations["list_destinations_api_v1_destinations_get"];
+        put?: never;
+        /**
+         * Connect
+         * @description Connect a destination. It joins as a copy (or as the primary when it's the
+         *     first); `Make primary` is a separate, confirmed step.
+         */
+        post: operations["connect_api_v1_destinations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/destinations/kinds": {
         parameters: {
             query?: never;
             header?: never;
@@ -209,11 +291,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Day
-         * @description `date_` defaults to the camera's own local today, so the dashboard
-         *     can open Footage without first knowing the camera's timezone.
+         * Kinds
+         * @description What the "connect" form offers, so the dashboard doesn't hard-code it.
          */
-        get: operations["get_day_api_v1_day_get"];
+        get: operations["kinds_api_v1_destinations_kinds_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -222,42 +303,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/day/hour": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Day Hour */
-        get: operations["get_day_hour_api_v1_day_hour_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Devices */
-        get: operations["list_devices_api_v1_devices_get"];
-        put?: never;
-        /** Add Device */
-        post: operations["add_device_api_v1_devices_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/discover": {
+    "/api/v1/destinations/{name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -265,46 +311,34 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
-        /** Discover */
-        post: operations["discover_api_v1_devices_discover_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/enabled": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Enabled */
-        get: operations["list_enabled_api_v1_devices_enabled_get"];
-        put?: never;
+        /** Edit */
+        put: operations["edit_api_v1_destinations__name__put"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/{device_id}/enabled": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
         /**
-         * Set Enabled
-         * @description Writes `enabled` on the camera's `[[devices]]` entry; the config
-         *     listener then adds it to or removes it from the fleet and scheduler.
+         * Disconnect
+         * @description Stop using a destination. Its backups are NOT deleted, and ReoVault keeps
+         *     remembering what is on it, so connecting it again picks up where it was.
          */
-        put: operations["set_enabled_api_v1_devices__device_id__enabled_put"];
+        delete: operations["disconnect_api_v1_destinations__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/destinations/{name}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview
+         * @description What the next retention pass would delete under these limits, from what
+         *     the index knows (no destination is contacted).
+         */
+        get: operations["preview_api_v1_destinations__name__preview_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -312,7 +346,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/devices/{device_id}/settings": {
+    "/api/v1/destinations/{name}/primary": {
         parameters: {
             query?: never;
             header?: never;
@@ -320,8 +354,49 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Device Settings */
-        put: operations["put_device_settings_api_v1_devices__device_id__settings_put"];
+        put?: never;
+        /**
+         * Make Primary
+         * @description Backups continue on this destination. It must already hold every
+         *     snapshot the current primary holds, or footage would have no copy.
+         */
+        post: operations["make_primary_api_v1_destinations__name__primary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview
+         * @description How much a download would hold, so the dialog can show it first.
+         */
+        get: operations["preview_api_v1_download_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Zip */
+        get: operations["download_zip_api_v1_download_zip_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -338,74 +413,6 @@ export interface paths {
         };
         /** Events */
         get: operations["events_api_v1_events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Export */
-        get: operations["export_api_v1_export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/export/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Preview */
-        get: operations["preview_api_v1_export_preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/growth": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Growth */
-        get: operations["get_growth_api_v1_growth_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Health */
-        get: operations["get_health_api_v1_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -460,11 +467,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Overview
-         * @description The fleet home page: the archive's volume plus every enabled camera's
-         *     SD card. Reads stored samples only, so a page load never calls a camera.
+         * Overview
+         * @description Read from the index and memory only: loading it never calls a camera
+         *     or the destination. `span` is how far back each camera's coverage looks:
+         *     `card` (since its SD card starts), `all` (everything ReoVault knows), or a
+         *     number of days.
          */
-        get: operations["get_overview_api_v1_overview_get"];
+        get: operations["overview_api_v1_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -473,58 +482,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/problems": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Problems */
-        get: operations["list_problems_api_v1_problems_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/problems/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Problems Count */
-        get: operations["get_problems_count_api_v1_problems_count_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/problems/lost": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Lost */
-        get: operations["get_lost_api_v1_problems_lost_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/problems/lost/dismiss": {
+    "/api/v1/password": {
         parameters: {
             query?: never;
             header?: never;
@@ -534,18 +492,36 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Dismiss Lost
-         * @description Acknowledges this camera's lost clips: nothing can bring them back,
-         *     so they stop counting as an open issue.
+         * Change Password
+         * @description Change the login password and/or email. Needs the current password even
+         *     though the caller is signed in: a stolen session mustn't be able to take
+         *     the account over. Signs every other session out.
          */
-        post: operations["dismiss_lost_api_v1_problems_lost_dismiss_post"];
+        post: operations["change_password_api_v1_password_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/problems/retry": {
+    "/api/v1/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recovery */
+        get: operations["recovery_api_v1_recovery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recovery/confirm": {
         parameters: {
             query?: never;
             header?: never;
@@ -555,100 +531,26 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Retry All Problems
-         * @description Re-queues every failed or quarantined recording of this camera for
-         *     the next run, the bulk form of `POST /recordings/{id}/retry`.
+         * Confirm
+         * @description The user says they stored the restic password somewhere other than here.
          */
-        post: operations["retry_all_problems_api_v1_problems_retry_post"];
+        post: operations["confirm_api_v1_recovery_confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/recordings/{recording_id}": {
+    "/api/v1/recovery/sheet": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Recording */
-        get: operations["get_recording_api_v1_recordings__recording_id__get"];
+        /** Sheet */
+        get: operations["sheet_api_v1_recovery_sheet_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recordings/{recording_id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Retry Recording
-         * @description Makes a failed recording eligible for the next run's pickup; it is
-         *     not re-downloaded on the spot (see Repository.retry_recording).
-         */
-        post: operations["retry_recording_api_v1_recordings__recording_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recordings/{recording_id}/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Stream Recording */
-        get: operations["stream_recording_api_v1_recordings__recording_id__stream_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recordings/{recording_id}/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify Recording */
-        post: operations["verify_recording_api_v1_recordings__recording_id__verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/retention": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Retention */
-        get: operations["get_retention_api_v1_retention_get"];
-        /** Put Retention */
-        put: operations["put_retention_api_v1_retention_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -663,8 +565,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Runs */
-        get: operations["list_runs_api_v1_runs_get"];
+        /**
+         * Activity
+         * @description Recent runs, clips that keep failing, and clips lost in the last week.
+         */
+        get: operations["activity_api_v1_runs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -680,53 +585,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Run */
-        get: operations["get_run_api_v1_runs__run_id__get"];
+        /**
+         * Run Detail
+         * @description One backup run: the batches it uploaded, and each clip it backed up,
+         *     failed on or found lost. Read from the index (no destination contacted).
+         */
+        get: operations["run_detail_api_v1_runs__run_id__get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/schedule": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Schedule */
-        get: operations["get_schedule_api_v1_schedule_get"];
-        /**
-         * Put Schedule
-         * @description This camera's own `[devices.schedule]` in reovault.toml, or with
-         *     `inherit`, none (back to the default). The change is applied to the
-         *     scheduler by the config listener, like a hand edit of the file.
-         */
-        put: operations["put_schedule_api_v1_schedule_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/schedule/default": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Default Schedule
-         * @description The global `[schedule]` every camera follows unless it has its own.
-         */
-        get: operations["get_default_schedule_api_v1_schedule_default_get"];
-        /** Put Default Schedule */
-        put: operations["put_default_schedule_api_v1_schedule_default_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -751,20 +616,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stats/types": {
+    "/api/v1/setup": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Type Stats
-         * @description Clips per day per detection type, for the Health page's chart.
-         */
-        get: operations["get_type_stats_api_v1_stats_types_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Setup
+         * @description First run: the one-time code from the server log creates the login.
+         */
+        post: operations["setup_api_v1_setup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -780,10 +645,7 @@ export interface paths {
         };
         /**
          * Healthz
-         * @description Public, for the Docker healthcheck, which only needs the status
-         *     code. `?verbose=1` adds gateway state, per-device coverage alarms
-         *     and database error text, so it needs a logged-in session: behind a
-         *     reverse-proxy hostname that detail would otherwise be public.
+         * @description Public, for the Docker healthcheck: the status code is the answer.
          */
         get: operations["healthz_healthz_get"];
         put?: never;
@@ -798,109 +660,55 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ActivityEventOut */
-        ActivityEventOut: {
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
-            /** Detail */
-            detail: string | null;
-            /** Job Id */
-            job_id: string;
-            /** Kind */
-            kind: string;
-        };
         /** ActivityOut */
         ActivityOut: {
-            /** Default From */
-            default_from: string;
-            /** Default To */
-            default_to: string;
-            /** Events */
-            events: components["schemas"]["ActivityEventOut"][];
-            /** Max Backfill Days */
-            max_backfill_days: number;
-            /** Queued */
-            queued: number;
-            running: components["schemas"]["RunOut"] | null;
-            /** Scheduler Available */
-            scheduler_available: boolean;
-            /** Timezone */
-            timezone: string;
+            /** Failing */
+            failing: components["schemas"]["ClipOut"][];
+            /** Lost */
+            lost: components["schemas"]["ClipOut"][];
+            /** Runs */
+            runs: components["schemas"]["RunOut"][];
         };
-        /**
-         * AddDeviceIn
-         * @description Password is `SecretStr` so an accidental `repr()` anywhere, including
-         *     a structlog kwarg, renders `**********` instead of the plaintext.
-         */
-        AddDeviceIn: {
-            /** Alias */
-            alias: string;
-            /** Channel */
-            channel?: number | null;
+        /** AddCameraIn */
+        AddCameraIn: {
+            /**
+             * Demo
+             * @default false
+             */
+            demo: boolean;
             /** Host */
-            host: string;
+            host?: string | null;
+            /** Id */
+            id: string;
             /** Name */
             name?: string | null;
-            /**
-             * Password
-             * Format: password
-             */
-            password: string;
+            /** Password */
+            password?: string | null;
             /** Timezone */
             timezone: string;
-            /** User */
+            /**
+             * User
+             * @default admin
+             */
             user: string;
         };
-        /**
-         * AlertRules
-         * @description What to alert on. Seeded from `[alerts.rules]` and editable from the
-         *     dashboard, unless a `REOVAULT_ALERTS__RULES__*` env var pins it (same
-         *     scheme as retention).
-         */
+        /** AlertRules */
         AlertRules: {
-            /**
-             * Coverage
-             * @default true
-             */
-            coverage: boolean;
             /**
              * Enabled
              * @default true
              */
             enabled: boolean;
             /**
-             * Gateway Down
-             * @default true
-             */
-            gateway_down: boolean;
-            /**
-             * Gateway Down Minutes
-             * @default 15
-             */
-            gateway_down_minutes: number;
-            /**
              * Notify On Resolve
              * @default true
              */
             notify_on_resolve: boolean;
             /**
-             * Problems
-             * @default true
-             */
-            problems: boolean;
-            /**
              * Renotify Hours
              * @default 24
              */
             renotify_hours: number;
-            /**
-             * Run Failed
-             * @default true
-             */
-            run_failed: boolean;
         };
         /** AlertsOut */
         AlertsOut: {
@@ -912,35 +720,37 @@ export interface components {
             open: components["schemas"]["OpenAlertOut"][];
             rules: components["schemas"]["AlertRules"];
         };
-        /** BackfillIn */
-        BackfillIn: {
-            /** From Local */
-            from_local: string;
-            /** To Local */
-            to_local: string;
-        };
-        /** BannerOut */
-        BannerOut: {
+        /** BatchOut */
+        BatchOut: {
+            /** Bytes */
+            bytes: number;
+            /** Clips */
+            clips: number;
+            /** Download Secs */
+            download_secs: number | null;
             /**
-             * Level
-             * @enum {string}
+             * Finished At
+             * Format: date-time
              */
-            level: "warn" | "bad";
-            /** Link */
-            link?: "problems" | null;
-            /** Text */
-            text: string;
+            finished_at: string;
+            /** Snapshot */
+            snapshot: string;
+            /** Upload Secs */
+            upload_secs: number | null;
         };
         /** CalendarDayOut */
         CalendarDayOut: {
-            /** Count */
-            count: number;
-            /** Date */
-            date: string;
-            /** Density */
-            density: number;
-            /** Problems */
-            problems: number;
+            /** Backed Up */
+            backed_up: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Lost */
+            lost: number;
+            /** Pending */
+            pending: number;
         };
         /** CalendarOut */
         CalendarOut: {
@@ -948,68 +758,69 @@ export interface components {
             days: components["schemas"]["CalendarDayOut"][];
             /** Month */
             month: string;
-            /** Today */
+            /**
+             * Today
+             * Format: date
+             */
             today: string;
         };
-        /** CameraScheduleBody */
-        CameraScheduleBody: {
-            /** Archive Enabled */
-            archive_enabled: boolean;
-            /** Archive Overlap Hours */
-            archive_overlap_hours: number;
-            /** Archive Time */
-            archive_time: string;
-            /** Backfill Days */
-            backfill_days: number;
-            /** Backfill Dow */
-            backfill_dow: number;
-            /** Backfill Enabled */
-            backfill_enabled: boolean;
-            /** Backfill Time */
-            backfill_time: string;
-            /**
-             * Inherit
-             * @default false
-             */
-            inherit: boolean;
-            /** Integrity Scan Enabled */
-            integrity_scan_enabled: boolean;
-            /** Integrity Scan Sample Pct */
-            integrity_scan_sample_pct: number;
-            /** Reconcile Enabled */
-            reconcile_enabled: boolean;
-            /** Reconcile Interval Hours */
-            reconcile_interval_hours: number;
+        /** CameraOut */
+        CameraOut: {
+            /** Backed Up Bytes */
+            backed_up_bytes: number;
+            /** Backed Up Clips */
+            backed_up_clips: number;
+            card: components["schemas"]["CardOut"] | null;
+            coverage?: components["schemas"]["CoverageOut"] | null;
+            /** Demo */
+            demo: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Eta Seconds */
+            eta_seconds: number | null;
+            /** Failing Clips */
+            failing_clips: number;
+            /** Host */
+            host: string | null;
+            /** Id */
+            id: string;
+            last_run: components["schemas"]["RunOut"] | null;
+            /** Lost 7D */
+            lost_7d: number;
+            /** Name */
+            name: string | null;
+            /** Next Run At */
+            next_run_at: string | null;
+            /** Oldest On Card Utc */
+            oldest_on_card_utc: string | null;
+            /** Oldest Pending Utc */
+            oldest_pending_utc: string | null;
+            /** Pending */
+            pending: number;
+            /** Pending Bytes */
+            pending_bytes: number;
+            /** Running */
+            running: boolean;
+            /** Text */
+            text: string;
             /** Timezone */
-            timezone?: string | null;
-        };
-        /**
-         * CardOut
-         * @description One camera's SD card, as `health.card_status` sees it, plus clip
-         *     counts across the card's window for the timeline strip.
-         */
-        CardOut: {
-            /** Lost Count */
-            lost_count: number;
-            /** Oldest Waiting Utc */
-            oldest_waiting_utc: string | null;
-            /** Safe For Seconds */
-            safe_for_seconds: number | null;
+            timezone: string;
+            /** User */
+            user: string;
             /**
-             * State
+             * Verdict
              * @enum {string}
              */
-            state: "not_mounted" | "at_risk" | "waiting" | "all_archived" | "unknown";
-            /** Timeline */
-            timeline: components["schemas"]["TimelineBucketOut"][];
-            /** Used Fraction */
-            used_fraction: number | null;
-            /** Waiting Count */
-            waiting_count: number;
-            /** Window Estimated */
-            window_estimated: boolean;
-            /** Window Start Utc */
-            window_start_utc: string | null;
+            verdict: "up_to_date" | "catching_up" | "at_risk" | "failing" | "offline" | "not_mounted" | "unknown";
+        };
+        /** CardOut */
+        CardOut: {
+            /** Free Gb */
+            free_gb: number | null;
+            /** Mounted */
+            mounted: boolean | null;
+            /** Total Gb */
+            total_gb: number | null;
         };
         /** ChannelOut */
         ChannelOut: {
@@ -1017,6 +828,32 @@ export interface components {
             configured: boolean;
             /** Name */
             name: string;
+        };
+        /** ClipOut */
+        ClipOut: {
+            /** Attempts */
+            attempts: number;
+            /** Camera */
+            camera: string;
+            /** End */
+            end: string | null;
+            /** Id */
+            id: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Name */
+            name: string;
+            /** Rec Type */
+            rec_type: string | null;
+            /** Size */
+            size: number | null;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** State */
+            state: string;
         };
         /** ConfigOut */
         ConfigOut: {
@@ -1042,138 +879,183 @@ export interface components {
             /** Version */
             version: string;
         };
-        /** ConfirmOut */
-        ConfirmOut: {
-            /** Bytes */
-            bytes: number;
-            /** Count */
-            count: number;
-            /** Token */
-            token: string;
+        /** ConfirmIn */
+        ConfirmIn: {
+            /** Confirm Password */
+            confirm_password?: string | null;
         };
-        /** CountOut */
-        CountOut: {
-            /** Count */
-            count: number;
+        /** ConnectIn */
+        ConnectIn: {
+            /**
+             * Keep Days
+             * @default 0
+             */
+            keep_days: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Max Gb
+             * @default 0
+             */
+            max_gb: number;
+            /** Name */
+            name: string;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Values */
+            values?: {
+                [key: string]: string;
+            };
+        };
+        /** CoverageOut */
+        CoverageOut: {
+            /** Buckets */
+            buckets: number;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Rows */
+            rows: components["schemas"]["CoverageRowOut"][];
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+        };
+        /** CoverageRowOut */
+        CoverageRowOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "card" | "primary" | "copy";
+            /** Marker */
+            marker: number | null;
+            /** Name */
+            name: string;
+            /** Runs */
+            runs: components["schemas"]["RunSegOut"][];
         };
         /** DayOut */
         DayOut: {
-            /** Available Types */
-            available_types: string[];
-            /** Date */
-            date: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
             /** Hours */
             hours: components["schemas"]["HourOut"][];
-            /** Latest */
-            latest: string | null;
-            /** Today */
+            /**
+             * Today
+             * Format: date
+             */
             today: string;
-            /** Total */
-            total: number;
-            /** Total Bytes */
-            total_bytes: number;
+            /** Types */
+            types: string[];
+        };
+        /** DestinationOut */
+        DestinationOut: {
+            /** Behind */
+            behind: boolean;
+            /** Error */
+            error: string | null;
+            /** Held Back */
+            held_back: number;
+            /** Keep Days */
+            keep_days: number;
+            /** Last Ok */
+            last_ok: string | null;
+            /** Max Gb */
+            max_gb: number;
+            /** Name */
+            name: string;
+            /** Quota Short */
+            quota_short: boolean;
+            /** Quota Too Small */
+            quota_too_small: boolean;
+            /** Repository */
+            repository: string;
+            /** Role */
+            role: string;
+            /** Seeding */
+            seeding: components["schemas"]["SeedingOut"][];
+            /** Snapshots */
+            snapshots: number;
+            /** Used Bytes */
+            used_bytes: number;
         };
         /** DeviceOut */
         DeviceOut: {
-            /** Alias */
-            alias: string;
-            /** Archived Bytes */
-            archived_bytes: number;
-            /** Archived Count */
-            archived_count: number;
+            card: components["schemas"]["CardOut"] | null;
             /**
-             * Card State
-             * @enum {string}
+             * Checked At
+             * Format: date-time
              */
-            card_state: "not_mounted" | "at_risk" | "waiting" | "all_archived" | "unknown";
-            /** Enabled */
-            enabled: boolean;
-            /** Gateway Down */
-            gateway_down: boolean | null;
-            /** Has Own Schedule */
-            has_own_schedule: boolean;
-            /** Host */
-            host: string | null;
-            /** Id */
-            id: number;
-            last_run: components["schemas"]["RunOut"] | null;
+            checked_at: string;
+            /** Error */
+            error: string | null;
+            /** Firmware */
+            firmware: string | null;
+            /** Hardware */
+            hardware: string | null;
             /** Model */
             model: string | null;
-            /** Name */
-            name: string | null;
-            /** Problems Count */
-            problems_count: number;
-            /** Safe For Seconds */
-            safe_for_seconds: number | null;
-            sample: components["schemas"]["StorageSampleOut"] | null;
-            sd: components["schemas"]["SdBarOut"] | null;
-            /** Timezone */
-            timezone: string;
-            /** Waiting Count */
-            waiting_count: number;
-        };
-        /**
-         * DeviceSettingsIn
-         * @description The editable part of a camera's `[[devices]]` entry. Alias and channel
-         *     are its identity (reolink-cli's and the database's), so not editable.
-         */
-        DeviceSettingsIn: {
-            /** Name */
-            name?: string | null;
-            /** Timezone */
-            timezone: string;
-        };
-        /**
-         * DeviceSummaryOut
-         * @description The navbar device switcher's row: cheap, no camera calls.
-         */
-        DeviceSummaryOut: {
-            /** Alias */
-            alias: string;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string | null;
-            /** Problems */
-            problems: number;
-            /** Timezone */
-            timezone: string;
-        };
-        /** DevicesOut */
-        DevicesOut: {
-            /** Devices */
-            devices: components["schemas"]["DeviceOut"][];
-            /** Registry Available */
-            registry_available: boolean;
         };
         /** DiscoveredOut */
         DiscoveredOut: {
-            /** Already Registered */
-            already_registered: boolean;
+            /** Added */
+            added: boolean;
             /** Host */
             host: string;
-            /** Mac */
-            mac: string | null;
             /** Model */
             model: string | null;
             /** Name */
             name: string | null;
-            /** Protocol */
-            protocol: string | null;
             /** Uid */
             uid: string | null;
         };
-        /** EnabledIn */
-        EnabledIn: {
-            /** Enabled */
-            enabled: boolean;
-        };
-        /** ExportPreviewOut */
-        ExportPreviewOut: {
+        /** DownloadPreviewOut */
+        DownloadPreviewOut: {
             /** Bytes */
             bytes: number;
-            /** Count */
-            count: number;
+            /** Cameras */
+            cameras: components["schemas"]["PickOut"][];
+            /** Clips */
+            clips: number;
+        };
+        /** EditCameraIn */
+        EditCameraIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Host */
+            host?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Password */
+            password?: string | null;
+            /** Timezone */
+            timezone: string;
+            /** User */
+            user?: string | null;
+        };
+        /** EditIn */
+        EditIn: {
+            /** Confirm Password */
+            confirm_password?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Keep Days */
+            keep_days: number;
+            /** Max Gb */
+            max_gb: number;
         };
         /** FieldOut */
         FieldOut: {
@@ -1200,109 +1082,46 @@ export interface components {
             /** Value */
             value: unknown;
         };
-        /** FleetCardOut */
-        FleetCardOut: {
-            /** Alias */
-            alias: string;
-            card: components["schemas"]["CardOut"];
-            /** Device Id */
-            device_id: number;
-            /** Enabled */
-            enabled: boolean;
-            /** Gateway Down */
-            gateway_down: boolean;
-            last_run: components["schemas"]["RunOut"] | null;
-            /** Name */
-            name: string | null;
-            /** Next Archive Utc */
-            next_archive_utc: string | null;
-            /** Problems Count */
-            problems_count: number;
-            /** Running */
-            running: boolean;
-            sample: components["schemas"]["StorageSampleOut"] | null;
-        };
-        /** GrowthDayOut */
-        GrowthDayOut: {
-            /** Bytes */
-            bytes: number;
-            /** Clips */
-            clips: number;
-            /** Day */
-            day: string;
-        };
-        /**
-         * GrowthOut
-         * @description One camera's archived footage over the last N local days, by the day
-         *     it was *recorded* (not the day a run fetched it, so a backfill doesn't
-         *     pile a week into one bar). The vault's disk lives on `/overview`.
-         */
-        GrowthOut: {
-            /** Avg Per Day */
-            avg_per_day: number;
-            /** Days */
-            days: components["schemas"]["GrowthDayOut"][];
-            /** Total Bytes */
-            total_bytes: number;
-            /** Total Clips */
-            total_clips: number;
-            /** Yearly Projection */
-            yearly_projection: number;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** HealthOut */
-        HealthOut: {
-            banner: components["schemas"]["BannerOut"] | null;
-            card: components["schemas"]["CardOut"];
-            /** Gateway Down */
-            gateway_down: boolean;
-            last_run: components["schemas"]["RunOut"] | null;
-            /** Next Archive Utc */
-            next_archive_utc: string | null;
-            /** Problems Count */
-            problems_count: number;
-            running: components["schemas"]["RunOut"] | null;
-            sample: components["schemas"]["StorageSampleOut"] | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "ok" | "warn" | "bad" | "idle";
-            today: components["schemas"]["TodayOut"];
-        };
         /** HourOut */
         HourOut: {
-            /** Bytes */
-            bytes: number;
+            /** Clips */
+            clips: components["schemas"]["ClipOut"][];
             /** Hour */
             hour: number;
-            /** Total */
-            total: number;
         };
-        /**
-         * IssueOut
-         * @description One open condition on one camera, for the Overview's "needs
-         *     attention" list. `link` is the page that resolves it.
-         */
+        /** IssueOut */
         IssueOut: {
-            /** Device Id */
-            device_id: number | null;
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "warn" | "bad";
-            /**
-             * Link
-             * @enum {string}
-             */
-            link: "problems" | "health" | "settings";
-            /** Text */
-            text: string;
+            /** Camera */
+            camera: string | null;
+            /** Message */
+            message: string;
+            /** Title */
+            title: string;
+        };
+        /** KindOut */
+        KindOut: {
+            /** Fields */
+            fields: components["schemas"]["RemoteFieldOut"][];
+            /** Help */
+            help: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Paste */
+            paste: boolean;
+        };
+        /** LimitPreviewOut */
+        LimitPreviewOut: {
+            /** Bytes */
+            bytes: number;
+            /** Snapshots */
+            snapshots: number;
         };
         /** LoginIn */
         LoginIn: {
@@ -1311,24 +1130,12 @@ export interface components {
             /** Password */
             password: string;
         };
-        /**
-         * LostOut
-         * @description Undismissed clips the card overwrote before they were archived.
-         */
-        LostOut: {
-            /** Count */
-            count: number;
-            /** First Utc */
-            first_utc: string | null;
-            /** Last Utc */
-            last_utc: string | null;
-        };
         /** OpenAlertOut */
         OpenAlertOut: {
+            /** Camera */
+            camera: string | null;
             /** Condition */
             condition: string;
-            /** Device Id */
-            device_id: number | null;
             /**
              * First Seen At
              * Format: date-time
@@ -1343,125 +1150,136 @@ export interface components {
         };
         /** OverviewOut */
         OverviewOut: {
-            /** Cards */
-            cards: components["schemas"]["FleetCardOut"][];
+            /** Cameras */
+            cameras: components["schemas"]["CameraOut"][];
+            /** Destinations */
+            destinations: components["schemas"]["DestinationOut"][];
             /** Issues */
             issues: components["schemas"]["IssueOut"][];
-            vault: components["schemas"]["VaultOut"];
+            /** Notices */
+            notices: components["schemas"]["IssueOut"][];
+            /** Oldest Backup */
+            oldest_backup: string | null;
         };
-        /** Page[RecordingOut] */
-        Page_RecordingOut_: {
-            /** Items */
-            items: components["schemas"]["RecordingOut"][];
-            /** Next */
-            next: string | null;
+        /** PasswordIn */
+        PasswordIn: {
+            /** Current */
+            current: string;
+            /** Email */
+            email?: string | null;
+            /** Password */
+            password?: string | null;
         };
-        /** RecordingOut */
-        RecordingOut: {
-            /** Archived At */
-            archived_at: string | null;
+        /** PickOut */
+        PickOut: {
+            /** Bytes */
+            bytes: number;
+            /** Camera */
+            camera: string;
+            /** Clips */
+            clips: number;
+            /** On Slow Destination */
+            on_slow_destination: number;
+            /** On Unconnected Destination */
+            on_unconnected_destination: number;
+        };
+        /** RecoveryDestinationOut */
+        RecoveryDestinationOut: {
+            /** Config Backed Up At */
+            config_backed_up_at: string | null;
+            /** Config Error */
+            config_error: string | null;
+            /** Name */
+            name: string;
+            /** Repository */
+            repository: string;
+            /** Role */
+            role: string;
+        };
+        /** RecoveryOut */
+        RecoveryOut: {
+            /** Cameras */
+            cameras: string[];
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Destinations */
+            destinations: components["schemas"]["RecoveryDestinationOut"][];
+            /** Password File */
+            password_file: string | null;
+            /** Password File Found */
+            password_file_found: boolean;
+        };
+        /** RemoteFieldOut */
+        RemoteFieldOut: {
+            /** Default */
+            default: string;
+            /** Help */
+            help: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Required */
+            required: boolean;
+            /** Secret */
+            secret: boolean;
+        };
+        /** RunClipOut */
+        RunClipOut: {
             /** Attempts */
             attempts: number;
-            /** Ciphertext Size */
-            ciphertext_size: number | null;
-            /** Device Id */
-            device_id: number;
-            /** Duration S */
-            duration_s: number | null;
+            /** Camera */
+            camera: string;
+            /** End */
+            end: string | null;
             /** Id */
             id: number;
             /** Last Error */
             last_error: string | null;
-            /** Last Error Class */
-            last_error_class: string | null;
-            /** Last Error Class Text */
-            last_error_class_text: string | null;
-            /** Last Error Detail */
-            last_error_detail: string | null;
-            /** Local Datetime */
-            local_datetime: string;
-            /** Local Time */
-            local_time: string;
-            /** Next Attempt At */
-            next_attempt_at: string | null;
-            /** Plaintext Sha256 */
-            plaintext_sha256: string | null;
-            /** Plaintext Size */
-            plaintext_size: number | null;
-            /** Remote Name */
-            remote_name: string;
-            /** Remote Size */
-            remote_size: number | null;
+            /** Name */
+            name: string;
+            /** Outcome */
+            outcome: string;
+            /** Rec Type */
+            rec_type: string | null;
+            /** Size */
+            size: number | null;
             /**
-             * Start Utc
+             * Start
              * Format: date-time
              */
-            start_utc: string;
+            start: string;
             /** State */
             state: string;
-            /** Types */
-            types: string[];
-        };
-        /** RetentionBody */
-        RetentionBody: {
-            /** Confirm */
-            confirm?: string | null;
-            /** Max Age Days */
-            max_age_days?: number | null;
-            /** Max Vault Gb */
-            max_vault_gb?: number | null;
-        };
-        /** RetentionOut */
-        RetentionOut: {
-            /** Env Pinned */
-            env_pinned: boolean;
-            /** Max Age Days */
-            max_age_days: number | null;
-            /** Max Vault Gb */
-            max_vault_gb: number | null;
-            /** Vault Used Bytes */
-            vault_used_bytes: number;
-        };
-        /** RetentionSaveOut */
-        RetentionSaveOut: {
-            confirm: components["schemas"]["ConfirmOut"] | null;
-            retention: components["schemas"]["RetentionOut"];
-            /** Saved */
-            saved: boolean;
-        };
-        /** RetriedOut */
-        RetriedOut: {
-            /** Count */
-            count: number;
         };
         /** RunDetailOut */
         RunDetailOut: {
+            /** Batches */
+            batches: components["schemas"]["BatchOut"][];
+            /** Clips */
+            clips: components["schemas"]["RunClipOut"][];
             run: components["schemas"]["RunOut"];
-            /** Timezone */
-            timezone: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /** RunOut */
         RunOut: {
-            /** Bytes Archived */
-            bytes_archived: number;
-            /** Device Id */
-            device_id: number | null;
-            /** Discovered */
-            discovered: number;
-            /** Downloaded */
-            downloaded: number;
+            /** Bytes */
+            bytes: number;
+            /** Camera */
+            camera: string;
+            /** Clips */
+            clips: number;
             /** Error */
             error: string | null;
-            /** Failed */
-            failed: number;
             /** Finished At */
             finished_at: string | null;
             /** Id */
             id: number;
+            /** Lost */
+            lost: number;
             /** Outcome */
             outcome: string | null;
-            /** Skipped Dup */
-            skipped_dup: number;
             /**
              * Started At
              * Format: date-time
@@ -1469,107 +1287,20 @@ export interface components {
             started_at: string;
             /** Trigger */
             trigger: string;
-            /** Window From Utc */
-            window_from_utc: string | null;
-            /** Window To Utc */
-            window_to_utc: string | null;
         };
-        /** RunsOut */
-        RunsOut: {
-            /** Items */
-            items: components["schemas"]["RunOut"][];
-            /** Next */
-            next: string | null;
-            /** Scheduled */
-            scheduled: components["schemas"]["ScheduledRunOut"][];
-            /** Timezone */
-            timezone: string;
-        };
-        /** ScheduleBody */
-        ScheduleBody: {
-            /** Archive Enabled */
-            archive_enabled: boolean;
-            /** Archive Overlap Hours */
-            archive_overlap_hours: number;
-            /** Archive Time */
-            archive_time: string;
-            /** Backfill Days */
-            backfill_days: number;
-            /** Backfill Dow */
-            backfill_dow: number;
-            /** Backfill Enabled */
-            backfill_enabled: boolean;
-            /** Backfill Time */
-            backfill_time: string;
-            /** Integrity Scan Enabled */
-            integrity_scan_enabled: boolean;
-            /** Integrity Scan Sample Pct */
-            integrity_scan_sample_pct: number;
-            /** Reconcile Enabled */
-            reconcile_enabled: boolean;
-            /** Reconcile Interval Hours */
-            reconcile_interval_hours: number;
-            /** Timezone */
-            timezone?: string | null;
-        };
-        /** ScheduleOut */
-        ScheduleOut: {
-            /** Archive Enabled */
-            archive_enabled: boolean;
-            /** Archive Overlap Hours */
-            archive_overlap_hours: number;
-            /** Archive Time */
-            archive_time: string;
-            /** Backfill Days */
-            backfill_days: number;
-            /** Backfill Dow */
-            backfill_dow: number;
-            /** Backfill Enabled */
-            backfill_enabled: boolean;
-            /** Backfill Time */
-            backfill_time: string;
-            /** Env Pinned */
-            env_pinned: boolean;
+        /** RunSegOut */
+        RunSegOut: {
+            /** Clips */
+            clips: number;
+            /** Length */
+            length: number;
+            /** Start */
+            start: number;
             /**
-             * Inherits
-             * @default true
+             * State
+             * @enum {string}
              */
-            inherits: boolean;
-            /** Integrity Scan Enabled */
-            integrity_scan_enabled: boolean;
-            /** Integrity Scan Sample Pct */
-            integrity_scan_sample_pct: number;
-            /** Reconcile Enabled */
-            reconcile_enabled: boolean;
-            /** Reconcile Interval Hours */
-            reconcile_interval_hours: number;
-            /** Timezone */
-            timezone?: string | null;
-        };
-        /** ScheduledRunOut */
-        ScheduledRunOut: {
-            /** Job */
-            job: string;
-            /** Label */
-            label: string;
-            /** Next Run Utc */
-            next_run_utc: string | null;
-        };
-        /**
-         * SdBarOut
-         * @description GiB, all on the camera's own binary scale (see `sd_bar`).
-         */
-        SdBarOut: {
-            /** Archived Gb */
-            archived_gb: number;
-            /** Free Gb */
-            free_gb: number;
-            /** Other Gb */
-            other_gb: number;
-            /** Total Gb */
-            total_gb: number;
-            /** Used Gb */
-            used_gb: number;
+            state: "none" | "safe" | "waiting" | "lost" | "failing";
         };
         /** SectionOut */
         SectionOut: {
@@ -1577,6 +1308,15 @@ export interface components {
             fields: components["schemas"]["FieldOut"][];
             /** Path */
             path: string[];
+        };
+        /** SeedingOut */
+        SeedingOut: {
+            /** Camera */
+            camera: string;
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
         };
         /** SessionOut */
         SessionOut: {
@@ -1586,24 +1326,26 @@ export interface components {
             csrf_token: string;
             /** Pinned Cli Version */
             pinned_cli_version: string;
+            /** Setup Email */
+            setup_email?: string | null;
+            /**
+             * Setup Needed
+             * @default false
+             */
+            setup_needed: boolean;
+            /** Update Available */
+            update_available?: string | null;
             /** Version */
             version: string;
         };
-        /** StorageSampleOut */
-        StorageSampleOut: {
-            /** Formatted */
-            formatted: boolean | null;
-            /** Mounted */
-            mounted: boolean | null;
-            /** Remain Gb */
-            remain_gb: number | null;
-            /**
-             * Sampled At
-             * Format: date-time
-             */
-            sampled_at: string;
-            /** Total Gb */
-            total_gb: number | null;
+        /** SetupIn */
+        SetupIn: {
+            /** Code */
+            code: string;
+            /** Email */
+            email?: string | null;
+            /** Password */
+            password: string;
         };
         /** TestResultOut */
         TestResultOut: {
@@ -1613,45 +1355,6 @@ export interface components {
             error: string | null;
             /** Ok */
             ok: boolean;
-        };
-        /** TimelineBucketOut */
-        TimelineBucketOut: {
-            /** Archived */
-            archived: number;
-            /** Quarantined */
-            quarantined: number;
-            /**
-             * Start Utc
-             * Format: date-time
-             */
-            start_utc: string;
-            /** Waiting */
-            waiting: number;
-        };
-        /** TodayOut */
-        TodayOut: {
-            /** Archived Bytes */
-            archived_bytes: number;
-            /** Count */
-            count: number;
-            /** Date */
-            date: string;
-        };
-        /** TypeDayOut */
-        TypeDayOut: {
-            /** Counts */
-            counts: {
-                [key: string]: number;
-            };
-            /** Day */
-            day: string;
-        };
-        /** TypeStatsOut */
-        TypeStatsOut: {
-            /** Days */
-            days: components["schemas"]["TypeDayOut"][];
-            /** Types */
-            types: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1666,42 +1369,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * VaultOut
-         * @description The archive's volume (the disk/mount `vault_dir` lives on).
-         */
-        VaultOut: {
-            /** Archive Bytes */
-            archive_bytes: number;
-            /** Avg Per Day */
-            avg_per_day: number;
-            /** Cap Bytes */
-            cap_bytes: number | null;
-            /** Clip Bytes */
-            clip_bytes: number;
-            /** Clip Count */
-            clip_count: number;
-            /** Days Headroom */
-            days_headroom: number | null;
-            /** First Start Utc */
-            first_start_utc: string | null;
-            /** Free Bytes */
-            free_bytes: number | null;
-            /** Last Start Utc */
-            last_start_utc: string | null;
-            /** Max Age Days */
-            max_age_days: number | null;
-            /** Total Bytes */
-            total_bytes: number | null;
-            /** Used Bytes */
-            used_bytes: number | null;
-        };
-        /** VerifyOut */
-        VerifyOut: {
-            /** Ok */
-            ok: boolean;
-            recording: components["schemas"]["RecordingOut"];
-        };
     };
     responses: never;
     parameters: never;
@@ -1711,165 +1378,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    action_backfill_api_v1_actions_backfill_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BackfillIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    action_reconcile_api_v1_actions_reconcile_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    action_run_api_v1_actions_run_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    action_stop_api_v1_actions_stop_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_activity_api_v1_activity_get: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_alerts_api_v1_alerts_get: {
         parameters: {
             query?: never;
@@ -1957,11 +1465,309 @@ export interface operations {
             };
         };
     };
-    get_calendar_api_v1_calendar_get: {
+    list_cameras_api_v1_cameras_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"][];
+                };
+            };
+        };
+    };
+    add_camera_api_v1_cameras_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCameraIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"][];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    discover_api_v1_cameras_discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveredOut"][];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    edit_camera_api_v1_cameras__cam_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditCameraIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"][];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_camera_api_v1_cameras__cam_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    device_api_v1_cameras__cam_id__device_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_now_api_v1_cameras__cam_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_api_v1_cameras__cam_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_api_v1_clips_calendar_get: {
         parameters: {
             query: {
+                camera: string;
                 month: string;
-                device?: number | null;
             };
             header?: never;
             path?: never;
@@ -1977,6 +1783,68 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CalendarOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    day_api_v1_clips_day_get: {
+        parameters: {
+            query: {
+                camera: string;
+                date_?: string | null;
+                types?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_v1_clips__clip_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                clip_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2049,75 +1917,7 @@ export interface operations {
             };
         };
     };
-    get_day_api_v1_day_get: {
-        parameters: {
-            query?: {
-                date_?: string | null;
-                types?: string;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DayOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_day_hour_api_v1_day_hour_get: {
-        parameters: {
-            query: {
-                date_: string;
-                hour: number;
-                types?: string;
-                after?: string;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_RecordingOut_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_devices_api_v1_devices_get: {
+    list_destinations_api_v1_destinations_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2132,12 +1932,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevicesOut"];
+                    "application/json": components["schemas"]["DestinationOut"][];
                 };
             };
         };
     };
-    add_device_api_v1_devices_post: {
+    connect_api_v1_destinations_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2146,7 +1946,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AddDeviceIn"];
+                "application/json": components["schemas"]["ConnectIn"];
             };
         };
         responses: {
@@ -2156,7 +1956,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevicesOut"];
+                    "application/json": components["schemas"]["DestinationOut"][];
                 };
             };
             /** @description Conflict */
@@ -2180,16 +1980,9 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
-    discover_api_v1_devices_discover_post: {
+    kinds_api_v1_destinations_kinds_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2204,57 +1997,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiscoveredOut"][];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_enabled_api_v1_devices_enabled_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceSummaryOut"][];
+                    "application/json": components["schemas"]["KindOut"][];
                 };
             };
         };
     };
-    set_enabled_api_v1_devices__device_id__enabled_put: {
+    edit_api_v1_destinations__name__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                device_id: number;
+                name: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EnabledIn"];
+                "application/json": components["schemas"]["EditIn"];
             };
         };
         responses: {
@@ -2264,7 +2023,104 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevicesOut"];
+                    "application/json": components["schemas"]["DestinationOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_destinations__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ConfirmIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_destinations__name__preview_get: {
+        parameters: {
+            query: {
+                keep_days: number;
+                max_gb: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimitPreviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -2278,18 +2134,18 @@ export interface operations {
             };
         };
     };
-    put_device_settings_api_v1_devices__device_id__settings_put: {
+    make_primary_api_v1_destinations__name__primary_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                device_id: number;
+                name: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DeviceSettingsIn"];
+                "application/json": components["schemas"]["ConfirmIn"];
             };
         };
         responses: {
@@ -2299,8 +2155,88 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevicesOut"];
+                    "application/json": components["schemas"]["DestinationOut"][];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_download_preview_get: {
+        parameters: {
+            query: {
+                cameras: string;
+                start: string;
+                end: string;
+                types?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_zip_api_v1_download_zip_get: {
+        parameters: {
+            query: {
+                cameras: string;
+                start: string;
+                end: string;
+                types?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conflict */
             409: {
@@ -2333,140 +2269,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    export_api_v1_export_get: {
-        parameters: {
-            query: {
-                from_: string;
-                to: string;
-                types?: string;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    preview_api_v1_export_preview_get: {
-        parameters: {
-            query: {
-                from_: string;
-                to: string;
-                types?: string;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExportPreviewOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_growth_api_v1_growth_get: {
-        parameters: {
-            query?: {
-                days?: number;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GrowthOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_health_api_v1_health_get: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -2537,9 +2339,11 @@ export interface operations {
             };
         };
     };
-    get_overview_api_v1_overview_get: {
+    overview_api_v1_overview_get: {
         parameters: {
-            query?: never;
+            query?: {
+                span?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2555,309 +2359,16 @@ export interface operations {
                     "application/json": components["schemas"]["OverviewOut"];
                 };
             };
-        };
-    };
-    list_problems_api_v1_problems_get: {
-        parameters: {
-            query?: {
-                after?: string;
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_RecordingOut_"];
-                };
-            };
-            /** @description Validation Error */
+            /** @description Unprocessable Content */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_problems_count_api_v1_problems_count_get: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CountOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_lost_api_v1_problems_lost_get: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LostOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dismiss_lost_api_v1_problems_lost_dismiss_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RetriedOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retry_all_problems_api_v1_problems_retry_post: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RetriedOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_recording_api_v1_recordings__recording_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recording_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecordingOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retry_recording_api_v1_recordings__recording_id__retry_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recording_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecordingOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    stream_recording_api_v1_recordings__recording_id__stream_get: {
-        parameters: {
-            query?: {
-                download?: number;
-            };
-            header?: never;
-            path: {
-                recording_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
-    verify_recording_api_v1_recordings__recording_id__verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recording_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VerifyOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_retention_api_v1_retention_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RetentionOut"];
-                };
-            };
-        };
-    };
-    put_retention_api_v1_retention_put: {
+    change_password_api_v1_password_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2866,7 +2377,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RetentionBody"];
+                "application/json": components["schemas"]["PasswordIn"];
             };
         };
         responses: {
@@ -2876,8 +2387,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RetentionSaveOut"];
+                    "application/json": components["schemas"]["SessionOut"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conflict */
             409: {
@@ -2886,23 +2404,86 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recovery_api_v1_recovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RecoveryOut"];
                 };
             };
         };
     };
-    list_runs_api_v1_runs_get: {
+    confirm_api_v1_recovery_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryOut"];
+                };
+            };
+        };
+    };
+    sheet_api_v1_recovery_sheet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    activity_api_v1_runs_get: {
         parameters: {
             query?: {
-                before_id?: number | null;
-                failures_only?: boolean;
-                device?: number | null;
+                camera?: string | null;
             };
             header?: never;
             path?: never;
@@ -2916,7 +2497,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunsOut"];
+                    "application/json": components["schemas"]["ActivityOut"];
                 };
             };
             /** @description Validation Error */
@@ -2930,7 +2511,7 @@ export interface operations {
             };
         };
     };
-    get_run_api_v1_runs__run_id__get: {
+    run_detail_api_v1_runs__run_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2950,134 +2531,8 @@ export interface operations {
                     "application/json": components["schemas"]["RunDetailOut"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_schedule_api_v1_schedule_get: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_schedule_api_v1_schedule_put: {
-        parameters: {
-            query?: {
-                device?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CameraScheduleBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_default_schedule_api_v1_schedule_default_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleOut"];
-                };
-            };
-        };
-    };
-    put_default_schedule_api_v1_schedule_default_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ScheduleBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3114,17 +2569,18 @@ export interface operations {
             };
         };
     };
-    get_type_stats_api_v1_stats_types_get: {
+    setup_api_v1_setup_post: {
         parameters: {
-            query?: {
-                days?: number;
-                device?: number | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3132,25 +2588,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TypeStatsOut"];
+                    "application/json": components["schemas"]["SessionOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
     healthz_healthz_get: {
         parameters: {
-            query?: {
-                verbose?: boolean;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -3164,15 +2637,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

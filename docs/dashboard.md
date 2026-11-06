@@ -2,108 +2,103 @@
 
 The container serves the dashboard on port 8080: a single-page app on a typed
 JSON API, updated live over Server-Sent Events, and installable as a PWA (Add
-to Home Screen) on a phone. Log in with the `[web] email` and the password set
-by `reovault web set-password`.
-
-**Overview** and **Devices** cover every camera. The other pages (Health,
-Footage, Runs, Problems) show the camera picked in the header; the choice is
-kept in the URL as `?device=`, so a link opens on the same camera.
+to Home Screen) on a phone. Log in with the email and password you chose on
+the first-run screen (its one-time setup code is in the container log).
+Change either under Settings, Web.
 
 ## Overview
 
-The home page. The archive's disk (ReoVault's share, free space, how long the
-room left lasts at the current rate, and the retention policy), then one tile
-per camera's SD card: how full it is, a timeline of what's on it coloured by
-archived, waiting or failed, and a verdict:
+The home page answers one question: is every SD card backed up? First
+"Nothing needs attention", or a list of what does. Then one tile per camera:
 
-* **All archived**: nothing on the card is waiting.
-* **Waiting**: clips on the card that aren't archived yet. Normal between runs.
-* **At risk**: the card is looping and the oldest waiting clip will be
-  overwritten soon. This is the same condition the `coverage` alert fires on.
-* **Not mounted**: the camera reports no SD card.
-* **No data yet**: no archive run has sampled the card yet.
+* **Up to date**: every clip on the card is backed up.
+* **Catching up**: clips are waiting, with how much and about how long.
+* **At risk**: the oldest waiting clip is close to being overwritten by the
+  card's loop recording. This is also an alert.
+* **Failing**: the last backup failed, with the reason.
+* **Offline**: the camera isn't answering (powered off, or off the network).
+  Nothing is wrong with any clip; the tile says since when.
+* **No SD card**: the camera reports none.
+* **No backup yet**: nothing has finished for this camera so far.
 
-Clips the card overwrote before they were archived are reported as a warning
-on top of the verdict (see [Problems](#problems)).
-[Architecture](architecture.md#scheduler) has the exact thresholds. The
-Overview is built only from stored samples, so loading it never contacts a
-camera. A card's sample is refreshed after every archive run.
+Under the verdict, each tile shows **where that camera's footage is**, one
+row per place on the same time axis. The list above the tiles picks how far
+back it looks: since the SD card starts (the default), the last week, month,
+3 or 6 months, year or 2 years (only as far back as you have backups), or
+everything ReoVault has kept:
 
-## Health
+* **SD card**: what the card holds now, from its oldest clip (a thin line marks
+  where the card starts) to now. Green is already backed up, blue still waiting,
+  red keeps failing to download, orange was lost (overwritten before it could be
+  backed up, so it sits just before the card's start).
+* **The primary destination**: green is what it holds, blue what still has to
+  come from the card. A gap is footage it no longer keeps (its keep-days or size
+  limit), or time when nothing was recorded.
+* **Each copy destination**: the same, where blue also means footage the primary
+  has that this copy wants but hasn't copied yet.
 
-One camera in detail: its SD card, recent runs, today's footage, footage
-archived and detections per type over the last 30 days, and projected growth.
-
-The manual actions live here:
-
-* **Run now** archives the last 48 hours, the same window as a scheduled run.
-* **Backfill** archives a time range you pick, in the camera's own timezone,
-  up to 90 days at once. Clips already archived are skipped.
-* **Check vault** runs a reconcile pass (see `reovault reconcile` in the
-  [CLI reference](cli-reference.md)).
-* **Stop** ends a run in progress after the clip it is working on. Clips not
-  reached yet are picked up by the next run.
-
-A run in progress shows live progress.
+Next to each row a few words say what needs attention, each in its own
+colour ("3 lost, 6615 waiting"), or "all backed up"; screen readers get the
+same text. Hover a stretch for its times and how many clips it holds. The footer has the
+last and next backup, with **Back up now** and **Stop**. Last come the
+destinations: role, size against its limit, and whether a copy is still
+seeding.
 
 ## Footage
 
-Date-first browsing: a month calendar shows activity per day and drills into a
-day, with clips grouped by hour and filterable by detection type. The left and
-right arrow keys step through days. On a phone, clips open in a bottom-sheet
-player that steps through the hour.
+Pick a day on the month calendar (the bar under each day shows how busy it
+was, a red dot means clips were lost) and its clips appear grouped by hour,
+filterable by detection type. The left and right arrow keys step through
+days. **Download** on a clip gets that clip out of the backup, and each hour
+has **Download this hour**. The **Download** button in the header gets a range
+as one zip with a folder per camera: this day, the last 3 or 7 days, or your
+own from/until, from one or several cameras, every clip or only the detection
+types you pick. A preview says how many clips and how big before you start.
+All of it streams straight out of restic, from the primary destination when
+it still holds the clip, otherwise from a local one, otherwise from a cloud
+copy.
 
-Clips play straight from the encrypted vault over HTTP `Range` requests, so
-only what is being watched or seeked to is decrypted. **Export** downloads a
-date range as one zip, up to 31 days and 5000 clips, one export at a time.
+There is no player: clips still on the SD card play in the Reolink app, and
+this page is for what the card no longer has.
 
-## Runs
+## Activity
 
-Every archive run of the camera, newest first, with what it found, archived
-and failed, and the next scheduled runs under **Coming up**. **Only runs with
-failures** hides the clean ones. Open a run for its per-recording detail.
+Every backup run with what it backed up, and two short lists when there's
+something to explain: clips that keep failing to download (still on the card,
+retried once a day), and clips lost this week (overwritten before they could
+be backed up). Click a run's start time for its detail: each batch (size,
+download and upload time, snapshot) and what happened to each clip. A run cut
+off by a restart shows as **Stopped**, not failed: the next run carries on.
 
-## Problems
+## Cameras
 
-Recordings that failed or were quarantined. **Retry** queues one recording for
-the next run, **Retry all** does the same for every problem recording of the
-camera.
-
-Above the list, a **lost** summary counts clips the SD card overwrote before
-they could be archived. Nothing can bring those back, so they are never
-retried and never alerted on. **Dismiss** acknowledges them so they stop
-counting as an open issue. If the camera ever lists a lost clip again, it is
-archived normally.
-
-## Devices
-
-Every camera ReoVault knows about, with its status, archive totals, last run
-and SD card usage. From here you can:
-
-* **Add a camera** from LAN discovery. The camera password goes straight into
-  `reolink-cli`'s own encrypted registry and is never stored by ReoVault (see
-  [Security](security.md#credentials)). The camera is appended to
-  `[[devices]]` in `reovault.toml`.
-* **Turn archiving off or on** (`enabled`). A camera that is off keeps its
-  footage.
-* **Edit** its name, timezone and, optionally, its own schedule
-  (`[devices.schedule]`). Its `alias` and `channel` can't be changed here,
-  since they match the camera to its archive.
+Every camera as a device: its model and firmware (asked from the camera, at
+most every 10 minutes), address and user, and how full its SD card is and how
+many days it holds. How its backups are doing is on the Overview. **Add camera** finds cameras on your
+network; ReoVault logs in once to check, then saves the camera, password
+included, in `reovault.toml` (it is never shown again). A demo camera needs no
+hardware. The switch turns backups off or on (backups already made stay).
+**Edit** changes the name, timezone, address and login: a new address or user
+needs the camera password again, and is checked with the camera before it's
+saved. **Remove this camera** takes it (and its password) out of
+`reovault.toml`; its backups stay, and adding a camera with the same id brings
+them back.
 
 ## Settings
 
-The app-wide part of `reovault.toml`. Every save is written back into the file
-(see [Configuration](configuration.md#the-file-is-the-source-of-truth)).
+* **Destinations**: connect, limit and disconnect destinations, and pick the
+  primary. Anything that could delete or orphan backups (a tighter keep-days or
+  size limit, turning one off, a new primary, disconnecting) asks for your
+  dashboard password again. **Limits** shows how much a new limit would delete;
+  **Disconnect** never deletes anything on the destination.
+* **Schedule**: how often cameras are backed up.
+* **Recovery**: where the restic password lives, the recovery sheet, and the
+  state of the config backup in each destination.
+* **Alerts**: the channels, what's open right now, the rules, and **Send test**.
+* **Web**: change the password or email, session length, login limits and the
+  update check; the rest is read-only.
+* **System**: storage paths and tool versions, read-only.
 
-* **Schedule**: the default `[schedule]` every camera follows unless it has
-  its own.
-* **Retention**: `[retention]`. A policy that would delete footage right away
-  asks for confirmation first, showing how much would go.
-* **Alerts**: the channels, the alerts open right now, which conditions alert
-  (`[alerts.rules]`), and a **Send test** button.
-* **Web**: `[web]`. Only the session length, login attempt limits and page
-  size can be changed here; the rest is shown read-only.
-* **System**: `[storage]` and `[reolink_cli]`, read-only.
-
-A field set by a `REOVAULT_*` environment variable shows a lock and can't be
-changed from the dashboard.
+Every save is written into `reovault.toml`, except the login password, which
+lives in its own file in `data/`. A field set by an environment variable shows
+a lock.

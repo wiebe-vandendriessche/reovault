@@ -9,17 +9,18 @@
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 	import PageHeader from '#lib/components/app/PageHeader.svelte';
 	import ErrorAlert from '#lib/components/app/ErrorAlert.svelte';
-	import ScheduleForm from '#lib/components/settings/ScheduleForm.svelte';
-	import RetentionForm from '#lib/components/settings/RetentionForm.svelte';
+	import DestinationsForm from '#lib/components/settings/DestinationsForm.svelte';
+	import RecoveryForm from '#lib/components/settings/RecoveryForm.svelte';
 	import AlertsForm from '#lib/components/settings/AlertsForm.svelte';
 	import ConfigSection from '#lib/components/settings/ConfigSection.svelte';
+	import PasswordForm from '#lib/components/settings/PasswordForm.svelte';
 	import { toast } from 'svelte-sonner';
 	import FileWarning from '@lucide/svelte/icons/file-warning';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Lock from '@lucide/svelte/icons/lock';
 
-	const tabs = ['schedule', 'retention', 'alerts', 'web', 'system'] as const;
-	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'schedule');
+	const tabs = ['destinations', 'backup', 'recovery', 'alerts', 'web', 'system'] as const;
+	const tab = $derived(tabs.find((t) => t === page.url.searchParams.get('tab')) ?? 'destinations');
 
 	// The whole of reovault.toml; refetched when the file changes, whoever
 	// changed it. Edits made to the file itself are announced.
@@ -53,7 +54,7 @@
 
 <PageHeader
 	title="Settings"
-	description="App-wide settings from reovault.toml: changes are written to the file, and edits to the file show up here. Per-camera settings live on Devices."
+	description="Settings from reovault.toml: changes are written to the file, and edits to the file show up here. Cameras have their own page."
 />
 
 {#if config.error}
@@ -93,44 +94,48 @@
 
 	<Tabs.Root value={tab} onValueChange={(v) => goto(`?tab=${v}`, { replace: true, reset: false })}>
 		<Tabs.List class="mb-4 flex-wrap">
-			<Tabs.Trigger value="schedule">Schedule</Tabs.Trigger>
-			<Tabs.Trigger value="retention">Retention</Tabs.Trigger>
+			<Tabs.Trigger value="destinations">Destinations</Tabs.Trigger>
+			<Tabs.Trigger value="backup">Schedule</Tabs.Trigger>
+			<Tabs.Trigger value="recovery">Recovery</Tabs.Trigger>
 			<Tabs.Trigger value="alerts">Alerts</Tabs.Trigger>
 			<Tabs.Trigger value="web">Web</Tabs.Trigger>
 			<Tabs.Trigger value="system">System</Tabs.Trigger>
 		</Tabs.List>
 
-		<Tabs.Content value="schedule" class="flex flex-col gap-3">
-			<ScheduleForm device={null} label="all cameras" />
-			<p class="text-muted-foreground text-sm">
-				A camera can have a schedule of its own:
-				<a href="/devices" class="text-brand-text underline-offset-4 hover:underline">Devices</a>,
-				then Edit on that camera.
-			</p>
+		<Tabs.Content value="destinations"><DestinationsForm writable={c.writable} /></Tabs.Content>
+		<Tabs.Content value="backup">
+			<ConfigSection
+				config={c}
+				path={['backup']}
+				section="backup"
+				title="Schedule"
+				description="How often each camera's SD card is read and new clips are backed up. A run that takes longer simply continues."
+				labels={{ interval_minutes: 'Back up every', password_file: 'Restic password file' }}
+				{onsaved}
+			/>
 		</Tabs.Content>
-
-		<Tabs.Content value="retention"><RetentionForm /></Tabs.Content>
+		<Tabs.Content value="recovery"><RecoveryForm /></Tabs.Content>
 
 		<Tabs.Content value="alerts" class="flex flex-col gap-4">
 			<AlertsForm />
 			<ConfigSection
 				config={c}
 				path={['alerts']}
-				section="alerts"
 				title="Alert channels"
-				description="Point the *_file fields at files holding the secret (Docker secrets); the secrets themselves never go in reovault.toml."
+				description="Set these in reovault.toml (applied without a restart). The *_file fields point at files holding the secret, e.g. next to reovault.toml; they are read-only here so a stolen session can't redirect a secret."
 				labels={alertLabels}
 				{onsaved}
 			/>
 		</Tabs.Content>
 
-		<Tabs.Content value="web">
+		<Tabs.Content value="web" class="flex flex-col gap-4">
+			<PasswordForm />
 			<ConfigSection
 				config={c}
 				path={['web']}
 				section="web"
 				title="Web"
-				description="Session length, login limits and paging apply right away. Locked fields can lock you out, so they change in reovault.toml only."
+				description="Session length, login limits and the daily update check apply right away. Locked fields can lock you out, so they change in reovault.toml only."
 				{onsaved}
 			/>
 		</Tabs.Content>
@@ -140,14 +145,14 @@
 				config={c}
 				path={['storage']}
 				title="Storage"
-				description="Where ReoVault keeps its database, key and vault. Change these in reovault.toml, then restart."
+				description="Where ReoVault keeps its database and the batch waiting for upload. Change these in reovault.toml, then restart."
 				{onsaved}
 			/>
 			<ConfigSection
 				config={c}
-				path={['reolink_cli']}
-				title="reolink-cli"
-				description="The camera tool and its gateway. Change these in reovault.toml, then restart."
+				path={['tools']}
+				title="Tools"
+				description="The pinned reolink-cli, restic and rclone this release was verified with. Change these in reovault.toml, then restart."
 				{onsaved}
 			/>
 			<p class="text-subtle text-xs">Config file: <span class="font-mono">{c.path ?? 'none'}</span></p>

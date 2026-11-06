@@ -2,8 +2,7 @@
 
 No new dependency for any of this:
 
-- Argon2id comes from `cryptography`, already a dependency and already used
-  by `crypto/keyring.py` for the master key passphrase. `derive_phc_encoded`
+- Argon2id comes from `cryptography`, already a dependency. `derive_phc_encoded`
   / `verify_phc_encoded` produce and check standard `$argon2id$...` strings.
 - The session cookie is a signed dict, hand-rolled with stdlib `hmac` +
   `base64` + `json`. Starlette's `SessionMiddleware` (which needs

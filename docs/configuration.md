@@ -1,218 +1,123 @@
 # Configuration
 
-ReoVault reads `reovault.toml` (or the path in `$REOVAULT_CONFIG_FILE`,
-default `./reovault.toml`), merged with `REOVAULT_*` environment variables.
-**Env always wins over the file.** Nested keys use a double underscore:
-`REOVAULT_WEB__PORT=9090` sets `[web] port`.
-
-Start from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/reovault/blob/main/reovault.example.toml).
-
-The path defaults below apply when running from a source checkout (a
-development setup). In Docker, the image points every path at its volumes (`/config`, `/vault`, `/staging`) through env vars,
-and `compose.yaml` mounts the folder holding your `reovault.toml` at
-`/etc/reovault`, so leave the path fields out of it there.
+Everything lives in one file, `reovault.toml`, next to `compose.yaml`
+(`/config/reovault.toml` in the container; another path with
+`REOVAULT_CONFIG_FILE`). You don't have to write it: the first-run screen,
+Settings and Cameras create and fill it. To write it by hand instead, start
+from [`reovault.example.toml`](https://github.com/wiebe-vandendriessche/reovault/blob/main/reovault.example.toml).
+It holds the camera passwords, so it stays owner-only (0600); ReoVault writes
+it that way.
 
 ## The file is the source of truth
 
-Every setting lives in `reovault.toml`, and the dashboard's Settings page is
-just another editor of it:
+The dashboard's Cameras and Settings pages write their changes back into the
+file, keeping your comments and layout, and edits you make to the file show
+up in the dashboard within seconds. A write is validated in full and replaces
+the file atomically; the previous version is kept as `reovault.toml.bak`. A
+hand edit that doesn't validate keeps ReoVault on its last good settings until
+it's fixed.
 
-* **Dashboard to file.** Saving a setting rewrites the file with your
-  comments and layout intact. The whole new file is validated first and
-  replaces the old one atomically; the previous version is kept as
-  `reovault.toml.bak`. If the file changed on disk since the page loaded,
-  the save is refused instead of overwriting that edit.
-* **File to dashboard.** Edits to the file are picked up within about a
-  second, no restart needed, and open dashboards refresh. A file that
-  doesn't validate is reported on the Settings page while ReoVault keeps
-  running on the last valid settings.
-* **Precedence.** `REOVAULT_*` env vars win over the file, which wins over
-  the defaults. A field set by an env var shows a lock in the dashboard.
-* **Restart-only settings.** `[storage]`, `[reolink_cli]` and the `[web]`
-  bind, port, cookie, origin, proxy and login-identity fields are read once
-  at startup and shown read-only in the dashboard; a change to them in the
-  file is flagged "restart required". Only `[web]`'s session length, login
-  attempt limits and page size apply live.
+Any setting can also come from an environment variable,
+`REOVAULT_<SECTION>__<FIELD>` (e.g. `REOVAULT_BACKUP__INTERVAL_MINUTES=30`).
+Environment variables win over the file and show as locked in the dashboard.
 
-Nothing in config is a secret by itself. `REOVAULT_MASTER_PASSPHRASE` and the
-camera password are deliberately not config fields. See
-[Security](security.md).
+What the dashboard may change: cameras, destinations, `[backup]
+interval_minutes`, `[alerts.rules]` and the `[web]` session, login-limit and
+update-check fields. Everything else changes in the file only: the alert
+channels (so a stolen session can't redirect a secret), `[backup]
+password_file`, `[storage]`, `[tools]` and the other `[web]` fields. Of those,
+`[storage]`, `[tools]` and `[web]` are read at startup: restart after an edit.
 
-## `[[devices]]`
+## `[[cameras]]`
 
-One entry per camera. A list, so multi-camera setups just add more entries.
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `alias` | string | required | Must match a `reolink-cli device add <alias> ...` alias. |
-| `channel` | int | `0` | Camera channel (multi-channel NVR-style devices). |
-| `timezone` | string | required | IANA tz name the camera's clock runs in, e.g. `America/New_York`. |
-| `name` | string | none | Display name shown in the dashboard instead of `alias`; auto-backfilled from the camera's own name once discovered if left unset. |
-| `enabled` | bool | `true` | `false` stops archiving this camera; its archived footage stays browsable. |
-| `schedule` | table | none | The camera's own `[devices.schedule]` (same fields as `[schedule]`); unset means it follows `[schedule]`. |
-| `provider` | `"reolink-cli"` or `"fake"` | `"reolink-cli"` | `"fake"` replaces the camera with a built-in pretend one, for trying the dashboard with several cameras. See below. |
-
-The `[[devices]]` list is the set of cameras. Adding a camera on the Devices
-page appends an entry, and turning one off writes `enabled = false`. A
-camera removed from the file is disabled, never deleted, so its footage
-stays. Cameras are matched to their archive by `alias` and `channel`, which
-is why those two can't be changed from the dashboard.
-
-A `provider = "fake"` entry needs no `reolink-cli` alias. Its "SD card" is
-a nearly full card holding a sliding week of tiny clips, one every 15
-minutes, so new clips appear and old ones roll off like on a real camera.
-About one clip in a hundred "rotates off" before it can be archived, so the
-at-risk and lost states have something to show. Its clips go through the
-real download, verification and encryption into your vault; removing the
-entry stops it, and what it archived stays like any other camera's footage.
-
-```toml
-[[devices]]
-alias = "fake"
-provider = "fake"
-timezone = "Europe/Brussels"
-name = "Test cam"
-```
-
-## `[reolink_cli]`
-
-| Field | Type | Default |
+| Field | Default | |
 |---|---|---|
-| `binary` | string | `reolink-cli` |
-| `pinned_version` | string | `0.19.0` |
-| `gateway_addr` | string | `127.0.0.1:9000` |
-| `search_timeout_secs` | int | `30` |
-| `download_timeout_secs` | int | `300` |
-| `registry_dir` | path | `$HOME/.config/reolink-cli` |
+| `id` | required | Names the camera's restic repository (`<repository>/<id>`). Letters, digits, `-` and `_`; `reovault-config` is reserved. Never changes. |
+| `name` | id | Shown in the dashboard. |
+| `timezone` | required | The IANA zone the camera's clock runs in, e.g. `Europe/Brussels`. |
+| `host` | required | The camera's IP address (a `:port` suffix is allowed). Give the camera a DHCP reservation. |
+| `user` | `admin` | The camera login. |
+| `password` | none | The camera password. Keep `reovault.toml` private (0600); ReoVault writes it that way. |
+| `enabled` | `true` | `false` stops backing it up; its backups stay. |
+| `demo` | `false` | A pretend camera with a sliding week of tiny clips, for trying ReoVault without hardware. |
 
-`registry_dir` must match `reolink-cli`'s own actual config directory. It's
-used only so `reovault doctor` can preflight that the directory is writable.
+## `[backup]`
 
-## `[storage]`
-
-| Field | Type | Default |
+| Field | Default | |
 |---|---|---|
-| `config_dir` | path | `./data/config` |
-| `vault_dir` | path | `./data/vault` |
-| `staging_dir` | path | `./data/staging` |
-| `db_path` | path | `./data/config/reovault.db` |
-| `master_key_path` | path | `./data/config/master.key` |
+| `password_file` | `$RESTIC_PASSWORD_FILE` | The restic password. The image reads `restic-password` next to `compose.yaml`. |
+| `interval_minutes` | `60` | Time between backup runs. A run that takes longer just continues. |
 
-`staging_dir` and `vault_dir` must share a filesystem (archiving finalizes a
-download with an atomic rename); `reovault doctor` asserts this at startup.
-`master_key_path` must live outside `vault_dir`, or a downstream backup tool
-that treats the vault as its source would replicate the key alongside the
-ciphertext it unlocks.
+## `[[destinations]]`
 
-## `[schedule]`
+Where backups go. Each camera gets its own restic repository,
+`<repository>/<id>`, in every destination. One destination is the
+**primary**: cameras back up to it first. Every other one receives **copies**
+of the new snapshots (`restic copy`), so a dead disk or a lost cloud account
+never holds the only copy. Copies run in their own threads, so a slow or
+offline copy destination doesn't delay backups, with one exception: a primary
+with `max_gb` that is full and can't delete anything (its copies don't have
+the old snapshots yet) pauses backups until the copies catch up, rather than
+grow past its limit. The Destinations tab in Settings edits all of this, and
+connecting an rclone destination there writes the remote into `rclone.conf`
+for you.
 
-| Field | Type | Default |
+| Field | Default | |
 |---|---|---|
-| `archive_cron` | cron string | `0 5 * * *` |
-| `archive_enabled` | bool | `true` |
-| `archive_overlap_hours` | int | `48` |
-| `backfill_cron` | cron string | `0 4 * * 0` |
-| `backfill_enabled` | bool | `true` |
-| `backfill_days` | int | `30` |
-| `reconcile_interval_hours` | int | `6` |
-| `reconcile_enabled` | bool | `true` |
-| `integrity_scan_sample_pct` | float | `5.0` |
-| `integrity_scan_enabled` | bool | `true` |
-| `timezone` | string or unset | unset |
+| `name` | required | Shown in the dashboard. Unique, and never changes: ReoVault remembers what is on a destination by this name. |
+| `repository` | required | A local path (`/backups`), or an rclone remote: `rclone:<remote>:<folder>`. Remotes the dashboard creates are called `reovault-<name>`, e.g. `rclone:reovault-cloud:reovault`. |
+| `primary` | see below | Exactly one enabled destination is primary. With a single destination it is implied. |
+| `keep_days` | `0` | Delete backups older than this, counted from the newest backup. `0` keeps everything. Keep the primary's longer than your SD cards hold (about 7 days on a busy 256 GB camera). |
+| `max_gb` | `0` | A size limit for this destination, in GB (10^9 bytes, as disks and cloud plans count). At 90% of it the oldest backups go, down to 85%; this is checked after every batch. `0` is no limit. |
+| `enabled` | `true` | `false` stops using it; its backups stay. |
 
-`timezone` unset (the default) means each device's cron jobs evaluate in
-that device's own `[[devices]] timezone`. Setting it forces every device
-onto one timezone. This table is the default every camera follows unless it has its own
-`[devices.schedule]`. Setting any `REOVAULT_SCHEDULE__*` env var instead pins
-this schedule for every camera and makes the dashboard's schedule form
-read-only.
+Retention is chosen by ReoVault, not by `restic forget --keep-within`: the
+primary never forgets a snapshot a copy still needs and doesn't have yet, and a
+camera's newest snapshot is never forgotten. When the size limit forces a
+destination to delete backups younger than `keep_days`, an alert says so. All
+destinations share the one restic password.
 
-## `[retention]`
-
-| Field | Type | Default |
-|---|---|---|
-| `max_age_days` | int >= 1 or unset | unset (no age limit) |
-| `max_vault_gb` | float >= 1 or unset | unset (no size cap) |
-
-One global policy for the whole vault, all cameras together. When either
-limit is exceeded, the oldest archived clips (by recording start time,
-across every camera) are deleted from the vault until both limits hold
-again. The size cap is measured against the encrypted bytes ReoVault has
-archived, not the disk's free space, so other data on the same disk does
-not change how much footage is kept. Leave some headroom on the disk for
-the database, staging downloads and anything else that lives there.
-
-Retention runs before each archive run and after every clip it archives,
-so even a long backfill overshoots the cap by at most one clip. A pruned
-clip keeps its database row in state `pruned` and is never downloaded
-again, even while it is still on the camera's SD card.
-
-The Retention tab under Settings edits this table. Saving a policy that would delete footage right away asks for confirmation first,
-showing how many clips and bytes would go. Setting any
-`REOVAULT_RETENTION__*` env var pins the policy and makes the tab
-read-only.
+A copy destination only takes snapshots younger than its own `keep_days`, so a
+14-day cloud copy of a 30-day local disk holds the last 14 days.
 
 ## `[alerts]`
 
-Where alerts go. A webhook URL or an ntfy token is a credential, so anything
-secret is read from a file (mount it as a Docker secret) and the config only
-holds the file's path. Settings, Alerts can edit these fields, which apply
-live; the secrets themselves are never written to the file or the database.
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `ntfy_url` | string or unset | unset | Full topic URL, e.g. `https://ntfy.sh/my-reovault`. Choose an unguessable topic on a public server. |
-| `ntfy_token_file` | path or unset | unset | Access token for a protected topic, sent as a Bearer token. |
-| `webhook_url_file` | path or unset | unset | File holding the URL. Receives a JSON POST with `title`, `message`, `resolved`, plus `text` and `content` so Slack and Discord incoming webhooks work as-is. |
-| `smtp_host` | string or unset | unset | Email is sent only when this and `smtp_to` are set. |
-| `smtp_port` | int | `587` | `465` uses implicit TLS; any other port uses STARTTLS when `smtp_starttls` is on. |
-| `smtp_starttls` | bool | `true` | |
-| `smtp_user` | string or unset | unset | |
-| `smtp_password_file` | path or unset | unset | |
-| `smtp_from` | string or unset | `smtp_user` | |
-| `smtp_to` | list of strings | `[]` | |
+`ntfy_url`, `ntfy_token_file`, `webhook_url_file`, `smtp_host`, `smtp_port`
+(587), `smtp_starttls` (true), `smtp_user`, `smtp_password_file`,
+`smtp_from`, `smtp_to`. Every secret is a file path, never the secret itself.
 
 ### `[alerts.rules]`
 
-| Field | Type | Default |
+| Field | Default | |
 |---|---|---|
-| `enabled` | bool | `true` |
-| `run_failed` | bool | `true` |
-| `problems` | bool | `true` |
-| `coverage` | bool | `true` |
-| `gateway_down` | bool | `true` |
-| `gateway_down_minutes` | int, 1 to 1440 | `15` |
-| `renotify_hours` | int, 1 to 720 | `24` |
-| `notify_on_resolve` | bool | `true` |
-
-What to alert on: a run that failed or was stopped, recordings that failed
-or were quarantined, clips at risk of being overwritten on a camera's SD
-card before they're archived (the same "At risk" state its SD card shows
-on the Overview and Health pages), and the camera gateway staying down longer
-than `gateway_down_minutes`. An open alert is sent once, repeated every
-`renotify_hours` while it stays open, and followed by a "Resolved" message
-when it clears. A send that fails on every channel is retried on the next
-evaluation, once a minute. Settings, Alerts edits this table and the
-channel fields above; any `REOVAULT_ALERTS__RULES__*` env var pins the
-rules.
+| `enabled` | `true` | Turn alerting off entirely. |
+| `renotify_hours` | `24` | Remind about an alert that's still open. |
+| `notify_on_resolve` | `true` | Say when it's fixed. |
 
 ## `[web]`
 
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `host` | string | `127.0.0.1` | Bind `0.0.0.0` in a container. Loopback there is the container's own namespace, unreachable from a reverse proxy. |
-| `port` | int | `8080` | |
-| `password_hash` | string or unset | unset | Set via `REOVAULT_WEB__PASSWORD_HASH` (Docker secret) or the `password_file` below. App still starts and `/healthz` still works if unset; the API answers 503 until set. |
-| `email` | string or unset | unset | Login identity field (password-manager autofill, not an authorization boundary). `reovault web set-password` refuses to run without it. |
-| `password_file` | path | `./data/config/web_password` | |
-| `session_key_path` | path | `./data/config/web_session.key` | |
-| `session_max_age_days` | int | `30` | |
-| `cookie_secure` | bool | `true` | Set to `false` only for a direct-port, plain-HTTP deployment. The browser silently drops a `Secure` cookie sent over HTTP, which breaks login. Leave `true` behind a reverse proxy terminating TLS. See [Security](security.md#deployment-modes). |
-| `cookie_samesite` | string | `lax` | |
-| `check_origin` | bool | `true` | Compares the `Origin` header's netloc against `Host` on mutating requests, as CSRF defense-in-depth. A proxy preserves both headers, so this is safe to leave on in either deployment mode. |
-| `login_max_attempts` | int | `5` | |
-| `login_window_secs` | int | `900` | |
-| `login_lockout_secs` | int | `300` | |
-| `forwarded_allow_ips` | string | `127.0.0.1` | Uvicorn only trusts `X-Forwarded-*` from these addresses. Behind a reverse proxy in Docker, set this to the proxy's own container IP/subnet, never `"*"` unless the port is genuinely unreachable except through the proxy. |
-| `stream_chunk_bytes` | int | `1048576` | |
-| `page_size` | int | `100` | |
+| Field | Default | |
+|---|---|---|
+| `host`, `port` | `127.0.0.1`, `8080` | The image sets `0.0.0.0`. |
+| `email` | none | The login name. Set by the first-run screen and by Change password. |
+| `password_file` | `./data/web_password` | The login's password hash (the image uses `/data/web_password`). Never in `reovault.toml`. |
+| `password_hash` | none | The hash itself, for setting it by environment variable only (`REOVAULT_WEB__PASSWORD_HASH`). |
+| `session_key_path` | `./data/web_session.key` | The key that signs sessions. |
+| `update_check` | `true` | Once a day, ask GitHub whether a newer release exists, and say so in the dashboard footer. Nothing else is sent. |
+| `cookie_secure` | `true` | `false` for a plain-HTTP direct port. |
+| `cookie_samesite` | `lax` | The session cookie's SameSite attribute. |
+| `check_origin` | `true` | Refuse changes whose Origin header isn't this site. |
+| `forwarded_allow_ips` | `127.0.0.1` | The reverse proxy's address; never `*`. |
+| `session_max_age_days` | `30` | |
+| `login_max_attempts`, `login_window_secs`, `login_lockout_secs` | `5`, `900`, `300` | Login rate limit. |
+
+## `[storage]`
+
+`data_dir` (database, session key, restic cache) and `staging_dir` (the clips
+waiting for upload, at most two batches per camera). The image uses `/data` and `/data/staging`.
+
+## `[tools]`
+
+The `reolink-cli`, `restic` and `rclone` binaries and the versions this
+release was verified with, plus `gateway_addr` for reolink-cli's local
+gateway. ReoVault refuses to start against a different version.
