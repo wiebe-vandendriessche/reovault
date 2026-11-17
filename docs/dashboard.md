@@ -44,6 +44,30 @@ last and next backup, with **Back up now** and **Stop**. Last come the
 destinations: role, size against its limit, and whether a copy is still
 seeding.
 
+### Problems and how they clear
+
+Every problem on the overview either clears by itself once its cause is gone,
+or comes with the button or link that resolves it. None stays forever.
+
+| Problem | Clears | From the dashboard |
+|---|---|---|
+| Backups are failing (two in a row) | on the next good backup | **Back up now** |
+| No backup since ... (6 hours, or 3 intervals) | on the next good backup | **Back up now** |
+| Backups are waiting (size limit) | once the copies catch up | **Open destinations** |
+| Camera unreachable | when it answers | |
+| Clips at risk | when they are backed up | **Back up now** |
+| Clips keep failing | when they back up, or the card overwrites them | **Retry clips**, **Give up on them** (also per clip on Activity) |
+| Check found damage (twice in a row) | after a clean check | **Check again** |
+| Upkeep is failing (retention or check) | on the next good pass | **Check again** |
+| Size limit cut backups short | a week after the last such cut, or at once when you change the limit or keep-days | **Open destinations** |
+| Size limit too small, over its size limit, copy is behind, can't be reached | when the cause is gone | **Open destinations** |
+| Alerts have nowhere to go | when a channel is set up | **Open alert settings** |
+| Settings backup failing | on the next good settings backup | **Open recovery** |
+
+A repository lock left behind by a restic that died (a timeout, a restart, a
+destination that hung) is removed by ReoVault itself; it never needs a hand.
+**Give up** marks clips as lost: they are never downloaded again.
+
 ## Footage
 
 Pick a day on the month calendar (the bar under each day shows how busy it

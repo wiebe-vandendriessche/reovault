@@ -106,8 +106,19 @@ backups stop for two weeks, nothing old is deleted in the meantime. After
 a snapshot is forgotten, clips whose snapshot is gone are marked expired in the index, so
 they are never downloaded again even if they're still on the card.
 
+A snapshot's age, for retention and the size limit, is the start of the newest
+clip it holds, not when it was made: a first run, a backlog after an outage or
+a clip retried for days puts old footage in a new snapshot.
+
 Weekly, each repository is checked with `restic check --read-data-subset 500M`,
-which reads a slice of the stored data back to catch bit rot early.
+which reads a slice of the stored data back to catch bit rot early. Only
+restic's own verdict "repository contains errors" counts, and only when a
+second check an hour later agrees: a backend that drops reads makes restic
+count errors in a healthy repository, and with `--json` restic reports one
+error for *any* failure, a lock or a timeout included. A check that can't
+finish is a maintenance problem, retried after 6 hours. The check never runs
+inside a backup run (it holds an exclusive lock for as long as it reads), and
+**Check again** in the dashboard asks for one at once.
 
 ## Destinations, copies and quotas
 
@@ -136,7 +147,13 @@ then the rest.
 * a size limit estimates use as the sum of the clip sizes in the snapshots,
   trims the oldest at 90% down to 85% (headroom for manifests and prune), and
   alerts when it had to cut younger than `keep_days`, when even the newest
-  backups don't fit, or when copies it is waiting for block it.
+  backups don't fit, or when copies it is waiting for block it;
+* the size limit is shared by every camera, but each camera's thread forgets
+  only its own snapshots, so a cut is remembered for a few hours as a footage
+  age (`quota_floor:<destination>`) that every camera trims up to: the oldest
+  footage goes first, whichever camera noticed;
+* a copy at its limit trims its oldest snapshots to make room for a newer one,
+  instead of skipping new footage.
 
 **The pause.** A size-limited primary is trimmed after every committed batch,
 not just once a day, so a first run on a full card can't fill a small disk.
@@ -185,7 +202,15 @@ another; the only helper is the upload thread of the run in progress, joined
 before the run ends. Each copy destination has its own thread and only writes
 to its own repositories, reading the primary with `restic copy`. Lock-taking
 restic commands pass `--retry-lock 10m`, so the two sides wait for each other
-instead of failing. Cameras run in parallel; a camera never does. `reovault run` shares
+instead of failing. Cameras run in parallel; a camera never does.
+
+**Stale locks.** restic never ignores a lock whose process is gone, so one left
+behind blocks every later command. Any restic command that finds the
+repository locked runs `restic unlock` (which removes only locks whose process
+is gone) and tries once more. A timeout interrupts restic with SIGINT before it
+is killed, so it can remove its own lock. This is what kept production from
+backing up for three days in November 2026: a check couldn't delete its lock
+while the destination hung, and ReoVault only unlocked at startup. `reovault run` shares
 the same per-camera lock file as the daemon.
 
 ## Why these tools

@@ -10,6 +10,19 @@ table below tracks what's actually been run against real hardware.
 | Reolink Video Doorbell D340W | Verified | Verified (reolink-cli 0.20.0, 2026-11-05, login by host and password from `reovault.toml`): search, batch download and storage status through the gateway. Test fixtures come from this device. |
 | Reolink E1 Outdoor Pro | Verified | Verified (reolink-cli 0.20.0, 2026-11-05, login by host and password from `reovault.toml`): 2 GB batches backed up to a local repository and copied to Nextcloud. |
 
+## When the clocks go back (verified 2026-11-17)
+
+On the E1 Outdoor Pro (driveway, Europe/Brussels), the card lists both passes
+through the repeated hour (02:00 to 03:00 on 2026-10-25) by local time only, in
+one sorted list, with no field that tells them apart. Two clips can then share
+a name, and `vod download` by that name always returns the same one of them.
+ReoVault takes clips in that hour as the first pass, except a second clip with
+the same name and start, which it places in the second pass; it backs up the
+one the camera hands out and closes the other as lost, with the reason. Clips
+of the second pass that don't collide show one hour early. reolink-cli's
+`vod download --from/--to` (a cut, not the original file) can still fetch that
+footage by hand.
+
 ## Measured (2026-10-28)
 
 Nothing else was using the cameras during these runs.
