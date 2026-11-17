@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from reovault import tools
 from reovault import updates as updates_mod
 from reovault.alerts import Condition, Notifier, channel_status
 from reovault.camera import Gateway
@@ -373,6 +374,7 @@ class Runtime:
 
     def stop(self, stop: threading.Event) -> None:
         stop.set()
+        tools.interrupt_all()  # restic removes its locks, the workers' calls return
         self.workers.shutdown()
         self.destinations.shutdown()
         self.config_backup.shutdown()

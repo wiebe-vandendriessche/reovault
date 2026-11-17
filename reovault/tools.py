@@ -4,9 +4,24 @@ from __future__ import annotations
 
 import signal
 import subprocess
+import threading
 from collections.abc import Mapping, Sequence
 
 INTERRUPT_GRACE_SECS = 30  # after a timeout's SIGINT, before SIGKILL
+
+_running: set[subprocess.Popen[str]] = set()
+_running_lock = threading.Lock()
+
+
+def interrupt_all() -> None:
+    """At shutdown: ask every tool still running to stop (SIGINT). restic then
+    removes its repository lock; killed along with the process (a container's
+    stop), it would leave the lock behind."""
+    with _running_lock:
+        procs = list(_running)
+    for proc in procs:
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
 
 
 class ToolError(Exception):
@@ -67,6 +82,8 @@ def run(
         )
     except FileNotFoundError as exc:
         raise ToolError(f"{cmd[0]} is not installed or not on PATH") from exc
+    with _running_lock:
+        _running.add(proc)
     try:
         out, err = proc.communicate(stdin, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
@@ -85,6 +102,9 @@ def run(
         proc.kill()
         proc.communicate()
         raise
+    finally:
+        with _running_lock:
+            _running.discard(proc)
     return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
 
 

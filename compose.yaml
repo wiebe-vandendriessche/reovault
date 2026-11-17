@@ -21,6 +21,9 @@ services:
     # To build from a source checkout instead:
     # build: .
     restart: unless-stopped
+    # On stop, ReoVault interrupts restic so it removes its repository locks;
+    # Docker's default 10 s can cut that short on a slow destination.
+    stop_grace_period: 30s
     # restic groups retention by host name, and Docker gives every recreated
     # container a new one: keep it fixed.
     hostname: reovault
