@@ -205,3 +205,65 @@ def test_info_reads_model_firmware_and_hardware(tmp_path):
         "v3.0.0.6460_2605271708",
         "DB_566128M5MP_W",
     )
+
+
+def test_dst_twins_both_survive_the_search_one_hour_apart(tmp_path):
+    """The real driveway card on 2026-10-25: both passes through 02:00-03:00
+    listed by local time only, and two clips named 0120261025024413."""
+    fixture = (FIXTURES / "vod_search_dst_fold.json").read_text()
+    cam = _camera(_stub(tmp_path, f"print({fixture!r})\n"))
+    clips = cam.search(
+        datetime(2026, 10, 24, 22, tzinfo=UTC), datetime(2026, 10, 25, 3, tzinfo=UTC)
+    )
+    twins = sorted((c for c in clips if c.name == "0120261025024413"), key=lambda c: c.start_utc)
+    assert [(c.start_utc.hour, c.start_utc.minute, c.size) for c in twins] == [
+        (0, 44, 16267696),  # 02:44:13 CEST
+        (1, 44, 17302558),  # 02:44:13 CET, the second pass
+    ]
+    assert all(c.end_utc and c.end_utc > c.start_utc for c in clips)
+    crossing = next(c for c in clips if c.name == "0120261025025941")
+    assert crossing.end_utc == datetime(2026, 10, 25, 2, 0, 1, tzinfo=UTC)  # ends 03:00:01 CET
+
+
+def test_a_search_inside_the_repeated_hour_still_asks_the_camera(tmp_path):
+    calls = tmp_path / "calls"
+    script = (
+        f"with open({str(calls)!r}, 'a') as f: f.write(' '.join(sys.argv[1:]) + '\\n')\n"
+        "print(json.dumps({'ok': True, 'data': {'items': []}}))\n"
+    )
+    cam = _camera(_stub(tmp_path, script))
+    now = datetime(2026, 10, 25, 1, 30, tzinfo=UTC)  # 02:30 CET, second pass
+    from datetime import timedelta
+
+    cam.search(now - timedelta(hours=1), now)  # 02:30 CEST .. 02:30 CET
+    assert calls.exists(), "the window looked empty in wall time and no call was made"
+
+
+def test_a_clip_name_that_could_be_an_option_or_a_path_is_skipped(tmp_path):
+    payload = {
+        "ok": True,
+        "data": {
+            "items": [
+                {"name": n, "startTime": "2026-04-17T09:53:27", "fileSize": 1}
+                for n in ("0120260417095327", "--file=/etc/x", "../escape")
+            ]
+        },
+    }
+    cam = _camera(_stub(tmp_path, f"print(json.dumps({payload!r}))\n"))
+    clips = cam.search(datetime(2026, 4, 17, 0, tzinfo=UTC), datetime(2026, 4, 17, 12, tzinfo=UTC))
+    assert [c.name for c in clips] == ["0120260417095327"]
+
+
+def test_the_card_scan_walks_past_a_quiet_week_to_where_the_card_started():
+    from datetime import timedelta
+
+    from reovault.camera import scan_card
+    from tests.fake_camera import FakeCamera
+
+    cam = FakeCamera(timezone="Europe/Brussels")
+    now = datetime(2026, 11, 17, 12, tzinfo=UTC)
+    cam.add(now - timedelta(days=1))
+    behind_gap = cam.add(now - timedelta(days=20))  # 18 empty days in between
+    found, oldest = scan_card(cam, now, known_start=now - timedelta(days=20))
+    assert behind_gap in [c.name for c in found]
+    assert oldest == now - timedelta(days=20)

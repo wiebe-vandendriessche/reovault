@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import io
 import re
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Generator
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import anyio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import iterate_in_threadpool
 
 from reovault.backup import MAX_ATTEMPTS
 from reovault.db import Clip, local_day_bounds, parse_iso
@@ -165,7 +167,7 @@ def locate(st: AppState, clip: Clip) -> tuple[Restic, str] | None:
     return restic_for(st.settings, clip.camera, dest), found[1]
 
 
-def _dump(st: AppState, clip: Clip) -> Iterator[bytes]:
+def _dump(st: AppState, clip: Clip) -> Generator[bytes]:
     """The clip's bytes from restic, or an aborted response: a broken dump
     must never look like a complete download."""
     assert clip.snapshot_id and clip.path
@@ -187,6 +189,18 @@ def _dump(st: AppState, clip: Clip) -> Iterator[bytes]:
         proc.wait()
 
 
+async def closing_stream(chunks: Generator[bytes]) -> AsyncIterator[bytes]:
+    """`chunks` read in a worker thread, as Starlette does for a sync body, but
+    always closed, which runs its `finally` (restic killed, locks released).
+    Starlette never closes a sync body when the client disconnects."""
+    try:
+        async for chunk in iterate_in_threadpool(chunks):
+            yield chunk
+    finally:
+        with anyio.CancelScope(shield=True):
+            await anyio.to_thread.run_sync(chunks.close)
+
+
 def _backed_up(st: AppState, clip_id: int) -> Clip:
     clip = st.db.get_clip(clip_id)
     if clip is None or clip.state != "backed_up" or not clip.snapshot_id or not clip.path:
@@ -206,7 +220,9 @@ def download(clip_id: int, st: State) -> StreamingResponse:
     }
     if clip.size is not None:
         headers["Content-Length"] = str(clip.size)
-    return StreamingResponse(_dump(st, clip), media_type="video/mp4", headers=headers)
+    return StreamingResponse(
+        closing_stream(_dump(st, clip)), media_type="video/mp4", headers=headers
+    )
 
 
 class _Sink(io.RawIOBase):

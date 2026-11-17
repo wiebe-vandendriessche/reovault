@@ -149,3 +149,63 @@ def test_the_watcher_picks_up_an_edit(store, toml_path):
             time.sleep(0.1)
     finally:
         stop.set()
+
+
+@pytest.mark.parametrize(
+    "ids", [["doorbell", "doorbell"], ["doorbell", "Doorbell"], ["reovault-config"]]
+)
+def test_camera_ids_must_be_unique_and_not_reserved(tmp_path, ids):
+    from pydantic import ValidationError
+
+    path = tmp_path / "reovault.toml"
+    path.write_text(
+        "".join(f'[[cameras]]\nid = "{i}"\ntimezone = "UTC"\ndemo = true\n' for i in ids)
+    )
+    with pytest.raises(ValidationError):
+        load_settings(path)
+
+
+def test_web_limits_must_be_positive(tmp_path):
+    from pydantic import ValidationError
+
+    path = tmp_path / "reovault.toml"
+    path.write_text("[web]\nlogin_max_attempts = 0\n")
+    with pytest.raises(ValidationError):
+        load_settings(path)
+
+
+def test_a_broken_hand_edit_makes_writes_fail_with_the_file_and_line(store, toml_path):
+    toml_path.write_text(COMMENTED + "\n[]\n")  # empty table name
+    with pytest.raises(ConfigInvalidError, match=r"reovault\.toml.*line 12"):
+        store.update(_keep(30))
+
+
+def test_the_watcher_is_not_recursive_and_survives_a_crash(store, monkeypatch):
+    import watchfiles
+
+    from reovault import config_store
+
+    calls = []
+    stop = threading.Event()
+
+    def fake_watch(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise OSError("inotify watch limit reached")
+        stop.set()
+        return iter(())
+
+    monkeypatch.setattr(watchfiles, "watch", fake_watch)
+    monkeypatch.setattr(config_store, "WATCH_RETRY_SECS", 0)
+    store.watch(stop).join(5)
+    assert len(calls) == 2
+    assert calls[0]["recursive"] is False
+
+
+def test_the_backup_copy_is_created_owner_only(store, toml_path, monkeypatch):
+    """Never briefly readable by others: no chmod after the fact."""
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "chmod", lambda *a, **k: None)
+    store.update(_keep(30))
+    assert oct((toml_path.parent / "reovault.toml.bak").stat().st_mode & 0o777) == "0o600"

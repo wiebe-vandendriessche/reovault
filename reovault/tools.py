@@ -6,6 +6,8 @@ import signal
 import subprocess
 from collections.abc import Mapping, Sequence
 
+INTERRUPT_GRACE_SECS = 30  # after a timeout's SIGINT, before SIGKILL
+
 
 class ToolError(Exception):
     """A tool failed. `message` is a short plain sentence for the dashboard
@@ -49,19 +51,41 @@ def run(
     stdin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `cmd` to completion. A missing binary or a timeout raises
-    `ToolError`; a non-zero exit is the caller's to interpret."""
+    `ToolError`; a non-zero exit is the caller's to interpret.
+
+    On timeout the tool is interrupted first and killed only if it ignores
+    that: restic removes its repository lock on SIGINT, while a killed restic
+    leaves the lock behind for every later command to trip over."""
     try:
-        return subprocess.run(
-            list(cmd), capture_output=True, text=True, timeout=timeout, env=env, input=stdin
+        proc = subprocess.Popen(
+            list(cmd),
+            stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise ToolError(f"{cmd[0]} is not installed or not on PATH") from exc
+    try:
+        out, err = proc.communicate(stdin, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.communicate(timeout=INTERRUPT_GRACE_SECS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
         raise ToolError(
             f"{cmd[0]} {cmd[1] if len(cmd) > 1 else ''} timed out after {timeout:.0f}s".strip(),
             detail=" ".join(cmd),
             timed_out=True,
         ) from exc
+    except BaseException:
+        proc.kill()
+        proc.communicate()
+        raise
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
 
 
 def assert_version(version_cmd: Sequence[str], version: str) -> None:

@@ -193,9 +193,10 @@ def test_only_one_destination_may_be_primary(api, tmp_path):
 
 def test_the_preview_says_what_a_limit_would_delete(api):
     rt, client, _env = api
-    rt.db.upsert_clips("demo", [("c1", T, None, 1000, "md")])
-    (clip,) = rt.db.clips_by_name("demo", ["c1"]).values()
     old = datetime(2026, 9, 1, tzinfo=UTC)
+    # Retention ages a snapshot by the footage it holds, so the clip is old too.
+    rt.db.upsert_clips("demo", [("c1", old, None, 1000, "md")])
+    (clip,) = rt.db.clips_by_name("demo", ["c1"]).values()
     rt.db.mark_backed_up("demo", "local", "s-old", old, {clip.id: "/b/c1.mp4"})
     rt.db.upsert_clips("demo", [("c2", T, None, 500, "md")])
     (c2,) = rt.db.clips_by_name("demo", ["c2"]).values()
@@ -259,3 +260,31 @@ def test_turning_an_old_primary_back_on_does_not_make_two(api, tmp_path):
     )
     assert r.status_code == 200, r.text
     assert sum(d.primary and d.enabled for d in load_settings(env.toml).destinations) <= 1
+
+
+def test_a_cloud_destination_can_be_connected_again_after_a_disconnect(api, monkeypatch, tmp_path):
+    """Disconnecting keeps the `reovault-<name>` remote in rclone.conf."""
+    import shutil
+
+    rt, client, _env = api
+    conf = tmp_path / "rclone.conf"
+    conf.write_text("[reovault-cloud]\ntype = webdav\nurl = https://old.example/\n")
+    monkeypatch.setenv("RCLONE_CONFIG", str(conf))
+    monkeypatch.setattr(rt.config.current.tools, "rclone", shutil.which("rclone") or "rclone")
+    monkeypatch.setattr(rclone, "check", lambda *a: None)
+    values = {"url": "https://new.example/", "user": "u", "pass": "p", "vendor": "other"}
+    r = client.post(
+        "/api/v1/destinations", json={"name": "cloud", "kind": "nextcloud", "values": values}
+    )
+    assert r.status_code == 201, r.text
+    assert "new.example" in conf.read_text() and "old.example" not in conf.read_text()
+
+
+def test_a_copy_lacking_a_day_old_snapshot_is_behind_like_the_alert_says(api, tmp_path):
+    rt, client, _env = api
+    folder = tmp_path / "disk2"
+    folder.mkdir()
+    client.post("/api/v1/destinations", json={"name": "usb", "kind": "local", "path": str(folder)})
+    rt.db.set_locations("demo", "local", [("s1", "s1", T)])  # never copied, no failures
+    usb = next(d for d in client.get("/api/v1/destinations").json() if d["name"] == "usb")
+    assert usb["behind"] is True

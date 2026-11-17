@@ -25,9 +25,47 @@ from typing import Any, Literal
 from reovault.tools import ToolError, describe_exit, run
 
 HOST = "reovault"  # fixed: Docker gives a recreated container a new hostname
-MISSING, WRONG_PASSWORD = 10, 12
+MISSING, LOCKED, WRONG_PASSWORD = 10, 11, 12
 
 RepoState = Literal["ok", "missing", "wrong_password"]
+
+
+@dataclass(frozen=True, slots=True)
+class CheckResult:
+    """`errors`: restic reported damage in the repository. `failed`: the
+    check couldn't do its job (locked, unreachable, timed out), which says
+    nothing about the data. restic's `--json` summary can't tell the two
+    apart: it reports `num_errors = 1` for any failure (verified in 0.19.1's
+    cmd_check.go)."""
+
+    outcome: Literal["ok", "errors", "failed"]
+    errors: int = 0
+    broken_packs: tuple[str, ...] = ()
+    message: str = ""
+
+
+def _readable(line: str) -> str:
+    """restic's `--json` mode reports fatal errors as a JSON line."""
+    if line.startswith("{"):
+        try:
+            return str(json.loads(line).get("message") or line)
+        except ValueError:
+            return line
+    return line
+
+
+def failure_message(stderr: str) -> str | None:
+    """The line of restic's stderr that says what went wrong. The last line
+    is often only a hint ("the `unlock` command can be used ..."), which hid
+    who held a lock for days."""
+    lines = [_readable(x.strip()) for x in stderr.strip().splitlines() if x.strip()]
+    for line in lines:
+        if "is already locked" in line:
+            created = next((x for x in lines if x.startswith("lock was created at")), "")
+            return f"{line}; {created}" if created else line
+    fatal = [x for x in lines if x.startswith("Fatal:")]
+    found = fatal or lines
+    return found[-1] if found else None
 
 
 LOCK_WAIT = "10m"
@@ -68,22 +106,39 @@ class Restic:
         return cls(binary, f"{base.rstrip('/')}/{cam_id}", {**os.environ, **env})
 
     def _run(
-        self, *args: str, timeout: float = 600, wait_lock: bool = False
+        self,
+        *args: str,
+        timeout: float = 600,
+        wait_lock: bool = False,
+        also_unlock: Restic | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """`wait_lock`: the command takes a lock another ReoVault thread may hold
         (backup, copy, forget, or a listing during a prune): wait for it instead
-        of failing, and don't let the timeout cut the wait short."""
+        of failing, and don't let the timeout cut the wait short.
+
+        A command that finds the repository locked (exit 11) removes stale
+        locks and tries once more. restic never ignores a stale lock itself,
+        so one left by a process that died (a timeout, a restart, a backend
+        that hung while restic removed it) would otherwise block every later
+        command until someone ran `restic unlock` by hand. `unlock` only
+        removes locks whose process is gone: a live one stays."""
         wait = ["--retry-lock", LOCK_WAIT] if wait_lock else []
-        return run(
-            [self.binary, "-r", self.repository, *wait, *args],
-            timeout=timeout + (LOCK_WAIT_SECS if wait_lock else 0),
-            env=self.env,
-        )
+        cmd = [self.binary, "-r", self.repository, *wait, *args]
+        limit = timeout + (LOCK_WAIT_SECS if wait_lock else 0)
+        proc = run(cmd, timeout=limit, env=self.env)
+        if proc.returncode == LOCKED and args[:1] != ("unlock",):
+            self.unlock()
+            if also_unlock is not None:
+                also_unlock.unlock()
+            proc = run(cmd, timeout=limit, env=self.env)
+        return proc
 
     def _fail(self, what: str, proc: subprocess.CompletedProcess[str]) -> ToolError:
-        last = proc.stderr.strip().splitlines()[-1:] or [describe_exit("restic", proc.returncode)]
+        message = failure_message(proc.stderr) or describe_exit("restic", proc.returncode)
+        if proc.returncode == LOCKED:
+            message = f"the repository is locked by another restic process: {message}"
         return ToolError(
-            f"restic {what} failed: {last[0]}", code=proc.returncode, detail=proc.stderr[-4000:]
+            f"restic {what} failed: {message}", code=proc.returncode, detail=proc.stderr[-4000:]
         )
 
     def state(self) -> RepoState:
@@ -136,6 +191,7 @@ class Restic:
             snapshot_id,
             timeout=timeout,
             wait_lock=True,
+            also_unlock=source,
         )
         if proc.returncode != 0:
             raise self._fail("copy", proc)
@@ -210,15 +266,39 @@ class Restic:
         if proc.returncode != 0:
             raise self._fail("forget", proc)
 
-    def check(self, subset: str) -> int:
-        """Number of errors found reading a `subset` (e.g. "500M") of the data."""
-        proc = self._run("check", "--read-data-subset", subset, "--json", timeout=6 * 3600)
-        summary = next(
-            (json.loads(line) for line in proc.stdout.splitlines() if '"summary"' in line), None
+    def check(self, subset: str) -> CheckResult:
+        """Reads a `subset` (e.g. "500M") of the data back. Only restic's own
+        verdict "repository contains errors" counts as damage; anything else
+        that stops the check is a failed check, never a corruption alarm.
+        Pack reads can still fail on a flaky backend and count as errors, so
+        callers confirm `errors` with a second check before alerting."""
+        try:
+            proc = self._run(
+                "check", "--read-data-subset", subset, "--json", timeout=6 * 3600, wait_lock=True
+            )
+        except ToolError as exc:  # timed out
+            return CheckResult("failed", message=str(exc))
+        if proc.returncode == 0:
+            return CheckResult("ok")
+        summary: dict[str, Any] = next(
+            (
+                msg
+                for line in proc.stdout.splitlines()
+                if line.startswith("{")
+                for msg in [json.loads(line)]
+                if msg.get("message_type") == "summary"
+            ),
+            {},
         )
-        if summary is None:
-            raise self._fail("check", proc)
-        return int(summary.get("num_errors", 0))
+        message = str(self._fail("check", proc))
+        if "repository contains errors" in proc.stderr:
+            return CheckResult(
+                "errors",
+                errors=max(int(summary.get("num_errors") or 0), 1),
+                broken_packs=tuple(summary.get("broken_packs") or ()),
+                message=message,
+            )
+        return CheckResult("failed", message=message)
 
     def dump(self, snapshot_id: str, path: str) -> subprocess.Popen[bytes]:
         """Streams one file out of a snapshot on stdout. Without a lock: the

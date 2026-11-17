@@ -37,6 +37,8 @@ async def events(request: Request, st: State) -> StreamingResponse:
                     # write.
                     yield ": ping\n\n"
                     continue
+                if event.type == "closing":  # server shutdown; the client reconnects
+                    return
                 yield f"event: {event.type}\ndata: {json.dumps(event.data)}\n\n"
         finally:
             st.bus.unsubscribe(queue)

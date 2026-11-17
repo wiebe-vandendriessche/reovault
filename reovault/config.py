@@ -107,11 +107,11 @@ class WebConfig(BaseModel):
     email: str | None = None
     password_file: Path = Path("./data/web_password")
     session_key_path: Path = Path("./data/web_session.key")
-    session_max_age_days: int = 30
+    session_max_age_days: int = Field(default=30, ge=1)
     cookie_secure: bool = True
     cookie_samesite: str = "lax"
     check_origin: bool = True
-    login_max_attempts: int = 5
+    login_max_attempts: int = Field(default=5, ge=1)
     login_window_secs: int = 900
     login_lockout_secs: int = 300
     # A daily look at GitHub's releases for a newer ReoVault; only the version
@@ -153,6 +153,18 @@ class Settings(BaseSettings):
 
     def camera(self, cam_id: str) -> CameraConfig | None:
         return next((c for c in self.cameras if c.id == cam_id), None)
+
+    @model_validator(mode="after")
+    def _camera_ids_are_unique(self) -> Settings:
+        # Ids name repositories, and some filesystems (and rclone remotes)
+        # ignore case: `Door` and `door` would share one. `reovault-config`
+        # is configbackup.REPO, the config backup's repository.
+        ids = [c.id.casefold() for c in self.cameras]
+        if len(set(ids)) != len(ids):
+            raise ValueError("camera ids must be unique (ignoring case)")
+        if "reovault-config" in ids:
+            raise ValueError("camera id 'reovault-config' is reserved")
+        return self
 
     @model_validator(mode="after")
     def _destinations_make_sense(self) -> Settings:

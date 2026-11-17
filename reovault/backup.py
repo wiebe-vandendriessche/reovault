@@ -33,7 +33,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from reovault.camera import Camera, CardStatus, Downloaded, Found, scan_card
+from reovault.camera import TRANSIENT_CODES, Camera, CardStatus, Downloaded, Found, scan_card
 from reovault.db import Clip, Db, iso, parse_iso
 from reovault.logging import get_logger
 from reovault.restic import Restic
@@ -45,6 +45,11 @@ BATCH_BYTES = 2 * 1024**3
 MAX_ATTEMPTS = 5
 SIZE_RETRY_PAUSE_SECS = 10.0  # D340W: a short file right after a big one
 FULL_SCAN_EVERY = timedelta(days=1)
+TWIN_LOST = (
+    "the card has two clips named {name} (the clocks went back) and the camera only "
+    "hands out the other one"
+)
+OVERWRITTEN = "overwritten on the SD card before it could be backed up"
 # Timeouts scale with the bytes: a flat limit would kill a 2 GB batch.
 _MIN_DOWNLOAD_RATE = 0.5 * 1024**2
 _MIN_UPLOAD_RATE = 0.25 * 1024**2
@@ -121,6 +126,9 @@ class CameraState:
     index_mismatch: bool = False
     # Since when the camera hasn't answered; None while it does.
     unreachable_since: datetime | None = None
+    # Why the last run stopped early on its own (the size-limit hold), shown
+    # and alerted: a stopped run is neither ok nor an error.
+    held: str | None = None
     stop: threading.Event = field(default_factory=threading.Event)
 
 
@@ -212,7 +220,20 @@ class BackupRun:
         return result
 
     def _run(self, result: RunResult, run_id: int) -> None:
-        open_repository(self.db, self.destination, self.camera.id, self.restic)
+        self.state.held = None
+        try:
+            open_repository(self.db, self.destination, self.camera.id, self.restic)
+        except (ToolError, RunError):
+            # The destination is down, but the card can still be read: record
+            # what it holds, so the dashboard shows the real backlog and the
+            # clips are first in line once it is back. Only with an index:
+            # without one, `_rebuild_index` must run before anything is listed.
+            if self.db.location_roots(self.camera.id, self.destination):
+                try:
+                    self._list()
+                except ToolError as exc:
+                    logger.warning("backup.list_failed", camera=self.camera.id, error=str(exc))
+            raise
         self._rebuild_index()
         self._recover(result, run_id)
         self._list()
@@ -225,6 +246,7 @@ class BackupRun:
                     break
                 if reason := self.hold():
                     result.outcome, result.error = "stopped", reason
+                    self.state.held = reason
                     break
                 # The batch being uploaded is already on disk, so this is
                 # room for one more.
@@ -286,19 +308,25 @@ class BackupRun:
     # -- steps -----------------------------------------------------------
 
     def _recover(self, result: RunResult, run_id: int) -> None:
-        """Wipe half-finished downloads; back up verified leftovers."""
+        """Wipe half-finished downloads; back up verified leftovers. A file
+        is only kept when its size still matches its clip's: a crash can leave
+        one cut short, and nothing is `backed_up` without that match."""
         shutil.rmtree(self.incoming, ignore_errors=True)
         files = _files(self.batch_dir)
         if not files:
             return
-        clips = self.db.clips_by_name(self.camera.id, [f.stem for f in files])
+        named: dict[str, list[Clip]] = defaultdict(list)
+        for c in self.db.clips_named(self.camera.id, [f.stem for f in files]):
+            if c.state == "pending":
+                named[c.name].append(c)
         keep: dict[int, Path] = {}
         for f in files:
-            clip = clips.get(f.stem)
-            if clip is not None and clip.state == "pending":
+            size = f.stat().st_size
+            clip = next((c for c in named.get(f.stem, []) if c.size == size), None)
+            if clip is not None and clip.id not in keep:
                 keep[clip.id] = f
             else:
-                f.unlink()  # already safe, or not ours
+                f.unlink()  # already safe, not ours, or cut short
         if keep:
             logger.info("backup.recovering_batch", camera=self.camera.id, files=len(keep))
             clips_n, size = self._commit(keep, run_id)
@@ -315,9 +343,11 @@ class BackupRun:
         if not due:
             self._search_recent()
             return
-        found, oldest = scan_card(self.camera, now)
+        before = self.state.oldest_on_card
+        found, oldest = scan_card(self.camera, now, known_start=before)
         self.state.unreachable_since = None  # it answered
         self._upsert(found)
+        self._mark_overwritten(found, oldest, before)
         self.state.oldest_on_card, self.state.scanned_at = oldest, now
         if oldest is not None:  # remembered, so a restart doesn't forget where the card starts
             self.db.set_setting(f"card_start:{self.camera.id}", iso(oldest))
@@ -326,9 +356,31 @@ class BackupRun:
         except ToolError as exc:  # only shown, never acted on
             logger.warning("backup.storage_status_failed", camera=self.camera.id, error=str(exc))
 
+    def _mark_overwritten(
+        self, found: list[Found], oldest: datetime | None, before: datetime | None
+    ) -> None:
+        """A waiting clip the card no longer lists and that is older than both
+        this scan's and the previous scan's oldest clip is gone for good (the
+        card overwrites oldest first). Two scans, so one odd answer can't
+        lose a clip. Covers clips that never get downloaded (no size), which
+        `_settle_failures` never sees."""
+        if oldest is None or before is None:
+            return
+        cutoff = min(oldest, before)
+        on_card = {f.name for f in found}
+        lost = 0
+        for clip in self.db.pending(self.camera.id):
+            if clip.name not in on_card and parse_iso(clip.start_utc) < cutoff:
+                self.db.mark_lost(clip.id, OVERWRITTEN)
+                lost += 1
+        if lost:
+            logger.warning("backup.clips_lost", camera=self.camera.id, count=lost)
+
     def _search_recent(self) -> None:
         now = self.clock()
-        newest = self.db.newest_start(self.camera.id) or now - 2 * self.interval
+        # Never later than now: one clip stamped in the future (a camera clock
+        # glitch) would otherwise make every quick search empty.
+        newest = min(self.db.newest_start(self.camera.id) or now - 2 * self.interval, now)
         found = self.camera.search(newest - timedelta(hours=2), now + timedelta(hours=2))
         self.state.unreachable_since = None  # it answered
         self._upsert(found)
@@ -342,6 +394,7 @@ class BackupRun:
         """Downloads and verifies a batch into `incoming/`."""
         by_name = {c.name: c for c in batch}
         got = self._download(batch)
+        result.lost += self._settle_twins(got, by_name)
         # A short file is retried once after a pause, then counts as a failure.
         short = [n for n, p in got.files.items() if _short(p, by_name[n])]
         if short:
@@ -362,6 +415,36 @@ class BackupRun:
                     got.failed[n] = again.failed.get(n, "no file on the retry")
         result.lost += self._settle_failures({by_name[n]: r for n, r in got.failed.items()})
         return {by_name[n]: p for n, p in got.files.items()}
+
+    def _settle_twins(self, got: Downloaded, by_name: dict[str, Clip]) -> int:
+        """Two clips can share a name across a DST fold, and the camera hands
+        out one of them for that name, always the same one. A file whose size
+        is the twin's belongs to the twin (staged for it, or dropped when it is
+        already safe), and the clip asked for can never be had: it is marked
+        lost with the reason, instead of failing every day until the card
+        overwrites it. Returns how many were marked lost."""
+        lost = 0
+        for name, path in list(got.files.items()):
+            clip, size = by_name[name], path.stat().st_size
+            if size == clip.size:
+                continue
+            twin = next(
+                (
+                    c
+                    for c in self.db.clips_named(self.camera.id, [name])
+                    if c.id != clip.id and c.size == size
+                ),
+                None,
+            )
+            if twin is None:
+                continue
+            self.db.mark_lost(clip.id, TWIN_LOST.format(name=name))
+            lost += 1
+            if twin.state == "pending":
+                by_name[name] = twin
+            else:
+                got.files.pop(name).unlink()
+        return lost
 
     def _stage(self, fetched: dict[Clip, Path]) -> dict[int, Path]:
         """Moves verified files into `batch/<camera-local day>/`. Only ever
@@ -401,6 +484,8 @@ class BackupRun:
             try:
                 got = self.camera.download([clip.name], self.incoming, timeout=_timeout([clip]))
             except ToolError as exc:
+                if exc.unreachable or exc.code in TRANSIENT_CODES:
+                    raise  # the camera dropped mid-way: no clip is to blame
                 merged.failed[clip.name] = str(exc)
                 continue
             merged.files.update(got.files)
@@ -549,10 +634,14 @@ def pick(pending: list[Clip], now: datetime, interval: timedelta) -> list[Clip]:
     rest = [c for c in due if c not in recent]
     ordered = recent + sorted(rest, key=lambda c: (stubborn(c), c.start_utc))
     batch: list[Clip] = []
+    names: set[str] = set()
     total = 0
     for clip in ordered:
+        if clip.name in names:
+            continue  # a DST twin: one name per download, the other goes next batch
         if batch and total + (clip.size or 0) > BATCH_BYTES:
             break
+        names.add(clip.name)
         batch.append(clip)
         total += clip.size or 0
     return batch

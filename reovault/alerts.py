@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from reovault.config import AlertsConfig, Settings
@@ -153,16 +153,48 @@ def channel_status(cfg: AlertsConfig) -> list[dict[str, Any]]:
     ]
 
 
+# Every condition, in plain words, for the Alerts settings page. Each one
+# either clears by itself or has a way out in the dashboard (its `actions`,
+# see docs/dashboard.md), so none stays open for good.
+CATALOG: dict[str, str] = {
+    "no_destination": "No backup destination is set up.",
+    "failing": "Two backups of a camera in a row fail.",
+    "stale": "A camera has had no successful backup for several hours.",
+    "held": "Backups wait because the destination is at its size limit.",
+    "camera_offline": "A camera stops answering.",
+    "at_risk": "Clips waiting on an SD card are close to being overwritten.",
+    "clips_keep_failing": "Clips keep failing to download.",
+    "check_errors": "The weekly restic check finds damage, twice in a row.",
+    "maintenance": "Retention or the weekly check keeps failing.",
+    "index_mismatch": "The destination answers with no backups where there should be some.",
+    "no_channel": "Alerts are on but have nowhere to go.",
+    "destination_failing": "A copy destination can't be reached.",
+    "copy_behind": "A copy destination falls more than a day behind.",
+    "quota_too_small": "A destination's size limit can't even hold the newest backups.",
+    "quota_retention_short": "A size limit deletes backups younger than you asked to keep.",
+    "quota_blocked": "A destination is over its size limit until its copies catch up.",
+    "config_backup": "The backup of ReoVault's own settings keeps failing.",
+}
+
+Action = Literal[
+    "run", "check", "retry_clips", "give_up_clips", "destinations", "alerts", "recovery"
+]
+
+
 @dataclass(frozen=True, slots=True)
 class Condition:
     condition: str
     camera: str | None
     title: str
     message: str
+    subject: str | None = None  # a destination: one alert per destination, not one for all
+    severity: Literal["error", "warning"] = "error"
+    actions: tuple[Action, ...] = ()  # what resolves it from the dashboard
 
     @property
     def key(self) -> str:
-        return f"{self.condition}:{self.camera or '*'}"
+        parts = [self.condition, *([self.subject] if self.subject else []), self.camera or "*"]
+        return ":".join(parts)
 
 
 @dataclass(frozen=True, slots=True)

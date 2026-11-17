@@ -29,8 +29,17 @@ class Snap:
     camera: str
     id: str  # its own id in that repository
     root: str  # the id it had where it was first made
-    time: datetime
+    time: datetime  # when the snapshot was made
     bytes: int = 0  # the footage it holds (sum of clip sizes)
+    footage: datetime | None = None  # its newest clip's start, when the index knows it
+
+    @property
+    def age(self) -> datetime:
+        """How old the footage is, for retention and the quota. A snapshot made
+        today can hold days-old clips (a first run, a backlog after an outage,
+        a clip retried for days): counting it by its own time would keep old
+        footage long past `keep_days` and cut newer footage before it."""
+        return self.footage or self.time
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +67,9 @@ def newest_by_camera(snaps: list[Snap]) -> dict[str, Snap]:
 
 def wants(keep_days: int, floor: datetime | None, snap: Snap, newest: Snap) -> bool:
     """Would a destination with this policy keep `snap`?"""
-    if floor is not None and snap.time < floor:
+    if floor is not None and snap.age < floor:
         return False
-    return keep_days == 0 or snap.time >= newest.time - timedelta(days=keep_days)
+    return keep_days == 0 or snap.age >= newest.time - timedelta(days=keep_days)
 
 
 def age_cut(snaps: list[Snap], keep_days: int) -> list[Snap]:
@@ -89,7 +98,7 @@ def quota_cut(
         return [], False, False
     newest = newest_by_camera(usage)
     forget: list[Snap] = []
-    for s in sorted(usage, key=lambda x: x.time):
+    for s in sorted(usage, key=lambda x: x.age):
         if used <= cap * QUOTA_LOW:
             break
         if s.id in skip or s == newest[s.camera]:
@@ -113,7 +122,7 @@ def copy_candidates(primary: list[Snap], copy: CopyView) -> list[Snap]:
     newest = newest_by_camera(primary)
     return sorted(
         (s for s in primary if _lacks(copy, s, newest[s.camera])),
-        key=lambda x: x.time,
+        key=lambda x: x.age,
         reverse=True,
     )
 
@@ -141,17 +150,36 @@ def decide(
     keep_days: int,
     max_gb: int,
     copies: list[CopyView] | None = None,
+    quota_floor: datetime | None = None,
 ) -> Cut:
     """The cut for one camera's repository on one destination. `snaps` are that
     repository's snapshots, `usage` every camera's snapshots on the destination
     (for the quota), `copies` the destinations that must hold a snapshot first
-    (only for the primary)."""
+    (only for the primary).
+
+    The quota is shared, but each camera's thread can only forget its own
+    snapshots. So the cut is a footage age (`Cut.floor`, kept by the caller
+    as `quota_floor` for a while): every camera's pass forgets its own
+    snapshots up to it, even once an earlier pass brought usage back under
+    the mark. Without it the first camera to pass paid for the others."""
     aged = age_cut(snaps, keep_days)
     skip = {s.id for s in aged}
     quota, short, too_small = quota_cut(usage, keep_days, max_gb, skip)
-    floor = max((s.time for s in quota), default=None)
-    mine = {s.id for s in snaps}
-    wanted = aged + [s for s in quota if s.camera == camera and s.id in mine]
+    floor = max((s.age for s in quota), default=None)
+    if quota_floor is not None and (floor is None or quota_floor > floor):
+        floor = quota_floor
+    newest = newest_by_camera(snaps)
+    trimmed = [
+        s
+        for s in snaps
+        if floor is not None
+        and s.camera == camera
+        and s.id not in skip
+        and s != newest[s.camera]
+        and s.age <= floor
+    ]
+    short = short or any(wants(keep_days, None, s, newest[s.camera]) for s in trimmed)
+    wanted = aged + trimmed
     blocked = 0
     if copies:
         wanted, blocked = release(wanted, snaps, copies)

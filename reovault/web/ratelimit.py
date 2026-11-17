@@ -8,6 +8,10 @@ if `forwarded_allow_ips` is misconfigured behind a reverse proxy, every
 request collapses onto the proxy's container IP and the per-IP bucket
 silently becomes a single shared bucket anyway. Making that bucket explicit
 means it still limits correctly instead of quietly not limiting at all.
+
+The global bucket never escalates and locks out for at most 5 minutes:
+strangers' failures must not keep the owner out for an hour. Callers that are
+already authenticated (password re-confirmation) skip it with `shared=False`.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import time
 from collections import OrderedDict
 
 _GLOBAL_KEY = "__global__"
+_GLOBAL_MAX_LOCKOUT_SECS = 300.0
 
 
 class LoginLimiter:
@@ -44,14 +49,14 @@ class LoginLimiter:
         self._lock = threading.Lock()
         self._failures: OrderedDict[str, list[float]] = OrderedDict()
 
-    def retry_after(self, key: str) -> float | None:
+    def retry_after(self, key: str, *, shared: bool = True) -> float | None:
         """Seconds until the next attempt is allowed, or `None` if it's
-        allowed now. Checks both the caller's own bucket and the global
-        one."""
+        allowed now. Checks the caller's own bucket and, with `shared`, the
+        global one."""
         now = time.time()
         with self._lock:
             wait = self._retry_after_locked(key, now, self._max_attempts)
-            if wait is not None:
+            if wait is not None or not shared:
                 return wait
             return self._retry_after_locked(_GLOBAL_KEY, now, self._global_max_attempts)
 
@@ -60,17 +65,20 @@ class LoginLimiter:
         self._failures[key] = attempts
         if len(attempts) < threshold:
             return None
-        # Escalates every additional block of `threshold` failures, capped
-        # so a very old, very hammered key can't lock out forever.
-        excess_blocks = (len(attempts) - threshold) // threshold
-        lockout = min(self._lockout_secs * (2**excess_blocks), self._window_secs * 4)
+        if key == _GLOBAL_KEY:
+            lockout = min(self._lockout_secs, _GLOBAL_MAX_LOCKOUT_SECS)
+        else:
+            # Escalates every additional block of `threshold` failures, capped
+            # so a very old, very hammered key can't lock out forever.
+            excess_blocks = (len(attempts) - threshold) // threshold
+            lockout = min(self._lockout_secs * (2**excess_blocks), self._window_secs * 4)
         remaining = lockout - (now - attempts[-1])
         return remaining if remaining > 0 else None
 
-    def record_failure(self, key: str) -> None:
+    def record_failure(self, key: str, *, shared: bool = True) -> None:
         now = time.time()
         with self._lock:
-            for k in (key, _GLOBAL_KEY):
+            for k in (key, _GLOBAL_KEY) if shared else (key,):
                 self._failures.setdefault(k, []).append(now)
                 self._failures.move_to_end(k)
             while len(self._failures) > self._max_keys:

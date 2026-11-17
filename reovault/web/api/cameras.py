@@ -11,9 +11,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, SecretStr
 
 from reovault import camera as cam_cli
+from reovault.alerts import Action
 from reovault.backup import CameraState
 from reovault.config_store import remove_camera_entry, upsert_camera_entry
 from reovault.db import Run, parse_iso
+from reovault.destinations import request_check
 from reovault.status import Verdict, camera_status, coverage, coverage_start
 from reovault.tools import ToolError
 from reovault.web.api.config import write
@@ -25,6 +27,8 @@ router = APIRouter(tags=["cameras"])
 
 # kv key: when the user confirmed they stored the restic password elsewhere.
 PASSWORD_CONFIRMED = "restic_password_confirmed"
+
+GIVEN_UP = "given up in the dashboard"
 
 # The repository that holds ReoVault's own config backup sits next to the cameras' ones.
 RESERVED_ID = "reovault-config"
@@ -108,6 +112,9 @@ class CameraOut(BaseModel):
     running: bool
     next_run_at: datetime | None
     last_run: RunOut | None
+    last_ok_at: datetime | None  # when the last successful backup finished
+    check_errors: int  # errors a confirmed restic check found, over all destinations
+    maintenance_error: str | None  # why retention or the check last failed
     # Where the footage of the chosen span is; only on the overview.
     coverage: CoverageOut | None = None
 
@@ -149,6 +156,12 @@ def camera_out(st: AppState, cam_id: str, *, coverage_span: str | None = None) -
         running=bool(worker and worker.running),
         next_run_at=worker.next_run_at if worker else None,
         last_run=run_out(st, runs[0]) if runs else None,
+        last_ok_at=status.last_ok_utc,
+        check_errors=sum(
+            int(st.db.get_setting(f"check_errors:{d.name}:{cam_id}") or 0)
+            for d in st.settings.destinations
+        ),
+        maintenance_error=st.redact(worker.health.maintenance_error) if worker else None,
         coverage=CoverageOut.model_validate(
             asdict(
                 coverage(
@@ -162,9 +175,14 @@ def camera_out(st: AppState, cam_id: str, *, coverage_span: str | None = None) -
 
 
 class IssueOut(BaseModel):
+    key: str
     camera: str | None
     title: str
     message: str
+    severity: Literal["error", "warning", "info"] = "error"
+    # What resolves it from the dashboard: a button for camera actions, a
+    # link for the settings pages.
+    actions: list[Action] = []
 
 
 class OverviewOut(BaseModel):
@@ -191,7 +209,9 @@ def overview(st: State, span: Annotated[str, Query(pattern=_SPAN)] = "card") -> 
     if any(c.backed_up_clips for c in cams) and st.db.get_setting(PASSWORD_CONFIRMED) is None:
         notices.append(
             IssueOut(
+                key="restic_password",
                 camera=None,
+                severity="info",
                 title="Keep your restic password safe",
                 message="Every backup is unreadable without it. Store it somewhere other than this "
                 "server, then confirm on the Recovery tab in Settings.",
@@ -199,7 +219,15 @@ def overview(st: State, span: Annotated[str, Query(pattern=_SPAN)] = "card") -> 
         )
     return OverviewOut(
         issues=[
-            IssueOut(camera=c.camera, title=c.title, message=c.message) for c in st.rt.conditions()
+            IssueOut(
+                key=c.key,
+                camera=c.camera,
+                title=c.title,
+                message=c.message,
+                severity=c.severity,
+                actions=list(c.actions),
+            )
+            for c in st.rt.conditions()
         ],
         notices=notices,
         cameras=cams,
@@ -220,6 +248,54 @@ def run_now(cam_id: str, st: State) -> CameraOut:
         raise HTTPException(409, "This camera is turned off.")
     worker.run_now()
     return camera_out(st, cam_id)
+
+
+@router.post("/cameras/{cam_id}/check", responses={409: {}})
+def check_again(cam_id: str, st: State) -> CameraOut:
+    """Runs restic's read-back check of this camera's repositories soon: on
+    the primary after a backup run, which starts now, and on each copy in its
+    next round. A clean result clears a check alert, a damaged one confirms it."""
+    worker = st.rt.workers.get(camera_or_404(st, cam_id).id)
+    if worker is None:
+        raise HTTPException(409, "This camera is turned off.")
+    for d in st.settings.destinations:
+        if d.enabled:
+            request_check(st.db, f"{d.name}:{cam_id}")
+            st.db.delete_setting(f"check_suspect:{d.name}:{cam_id}")
+    worker.run_now()
+    st.rt.destinations.wake()
+    return camera_out(st, cam_id)
+
+
+class ClipIdsIn(BaseModel):
+    ids: list[int] | None = None  # None: every clip that keeps failing
+
+
+class ClipsChangedOut(BaseModel):
+    changed: int
+
+
+@router.post("/cameras/{cam_id}/clips/retry")
+def retry_clips(cam_id: str, st: State, body: ClipIdsIn | None = None) -> ClipsChangedOut:
+    """Clips that keep failing start over and go first in the next backup,
+    which starts now."""
+    camera_or_404(st, cam_id)
+    changed = st.db.retry(cam_id, body.ids if body else None)
+    if worker := st.rt.workers.get(cam_id):
+        worker.run_now()
+    st.rt.notifier.evaluate()
+    return ClipsChangedOut(changed=changed)
+
+
+@router.post("/cameras/{cam_id}/clips/give-up")
+def give_up_clips(cam_id: str, st: State, body: ClipIdsIn | None = None) -> ClipsChangedOut:
+    """Stop trying clips that keep failing: they count as lost and are never
+    downloaded again. For clips the camera can't hand out whole."""
+    camera_or_404(st, cam_id)
+    changed = st.db.give_up(cam_id, body.ids if body else None, GIVEN_UP)
+    st.rt.notifier.evaluate()
+    st.rt.bus.publish("activity", camera=cam_id)
+    return ClipsChangedOut(changed=changed)
 
 
 @router.post("/cameras/{cam_id}/stop", responses={409: {}})

@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from reovault.alerts import Message, channel_status
+from reovault.alerts import CATALOG, Message, channel_status
 from reovault.config import AlertRules
 from reovault.config_store import env_locked, set_fields, table_at
 from reovault.db import parse_iso
@@ -24,6 +24,7 @@ class ChannelOut(BaseModel):
 
 
 class OpenAlertOut(BaseModel):
+    key: str
     condition: str
     camera: str | None
     title: str
@@ -37,6 +38,7 @@ class AlertsOut(BaseModel):
     env_pinned: bool
     channels: list[ChannelOut]
     open: list[OpenAlertOut]
+    conditions: list[str]  # what is alerted on, in plain words
 
 
 class TestResultOut(BaseModel):
@@ -52,6 +54,7 @@ def _alerts_out(st: AppState) -> AlertsOut:
         channels=[ChannelOut(**c) for c in channel_status(st.settings.alerts)],
         open=[
             OpenAlertOut(
+                key=a["key"],
                 condition=a["condition"],
                 camera=a["camera"],
                 title=a["title"],
@@ -61,6 +64,7 @@ def _alerts_out(st: AppState) -> AlertsOut:
             )
             for a in st.db.list_alerts()
         ],
+        conditions=list(CATALOG.values()),
     )
 
 

@@ -7,6 +7,7 @@ import os
 from dataclasses import asdict
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -151,16 +152,27 @@ def daemon() -> None:
     )
     stop = rt.start()
     try:
-        uvicorn.run(
-            create_app(rt),
-            host=settings.web.host,
-            port=settings.web.port,
-            proxy_headers=True,
-            forwarded_allow_ips=settings.web.forwarded_allow_ips,
-            log_config=None,
-            # Open dashboards hold an SSE stream; don't wait on them forever.
-            timeout_graceful_shutdown=3,
-        )
+
+        class Server(uvicorn.Server):
+            async def shutdown(self, sockets: Any = None) -> None:
+                # End open dashboards' event streams first: uvicorn's lifespan
+                # shutdown only runs after it has cancelled them, with a
+                # traceback in the log.
+                rt.bus.close()
+                await super().shutdown(sockets)
+
+        Server(
+            uvicorn.Config(
+                create_app(rt),
+                host=settings.web.host,
+                port=settings.web.port,
+                proxy_headers=True,
+                forwarded_allow_ips=settings.web.forwarded_allow_ips,
+                log_config=None,
+                # A safety net: streams should already have ended.
+                timeout_graceful_shutdown=3,
+            )
+        ).run()
     finally:
         rt.stop(stop)
 

@@ -1,7 +1,9 @@
 """One thread per enabled camera. Everything that touches a camera's restic
 repository happens in that camera's thread, one step after another: backup
 runs, the daily `forget` and the weekly `check`. So a repository is never used
-by two ReoVault operations at once, and no restic lock is ever waited on.
+by two ReoVault camera operations at once. Copy threads only read it (a shared
+lock); a lock left behind by a process that died is removed by `Restic._run`
+when a command trips over it.
 """
 
 from __future__ import annotations
@@ -19,11 +21,12 @@ from reovault.camera import Camera, DemoCamera, Gateway, ReolinkCamera
 from reovault.config import CameraConfig, DestinationConfig, Settings
 from reovault.db import Db, now_iso, parse_iso
 from reovault.destinations import (
-    CHECK_EVERY,
-    CHECK_SUBSET,
     copy_view,
+    quota_floor,
     record_cut,
+    remember_quota_floor,
     restic_for,
+    run_check,
     snaps_of,
     usage,
 )
@@ -54,10 +57,11 @@ def camera_for(settings: Settings, cfg: CameraConfig, gateway: Gateway) -> Camer
 
 @dataclass
 class Health:
-    """What the maintenance steps found, for status and alerts."""
+    """How the maintenance steps (retention, the weekly check) went, for
+    status and alerts. What a check found is in the index (`check_errors:*`)."""
 
-    check_errors: int = 0
     maintenance_error: str | None = None
+    maintenance_failures: int = 0  # passes in a row that failed
 
 
 @dataclass
@@ -203,9 +207,11 @@ class Worker:
         self.on_backed_up()
         primary = settings.primary()
         if primary is not None and primary.max_gb:
-            self._maintain(settings)  # a size limit can't wait for the run to end
+            # A size limit can't wait for the run to end. Retention only: the
+            # hours-long check would hold up the run and its downloads.
+            self._maintain(settings, check=False)
 
-    def _maintain(self, settings: Settings) -> None:
+    def _maintain(self, settings: Settings, *, check: bool = True) -> None:
         """The primary's share of upkeep, in this camera's thread: where each
         snapshot is, retention and quota, and the weekly read-back."""
         primary = settings.primary()
@@ -213,15 +219,13 @@ class Worker:
             return
         try:
             restic = restic_for(settings, self.id, primary)
+            if restic.state() != "ok":
+                return
             # Keyed by destination too: after a primary switch, the old
             # repository's check results say nothing about the new one.
             tag = f"{primary.name}:{self.id}"
-            self.health.check_errors = int(self.db.get_setting(f"check_errors:{tag}") or 0)
-            if restic.state() != "ok":
-                return
-            # Stamped before running: a forget or check that fails or times
-            # out (up to 6 h) waits for its next due time instead of being
-            # retried after every backup run.
+            # Stamped before running: a forget that fails or times out waits
+            # for its next due time instead of being retried after every run.
             # A size limit is checked hourly: a first run on a full card can fill
             # the disk long before a daily pass.
             every = timedelta(hours=1) if primary.max_gb else FORGET_EVERY
@@ -229,17 +233,12 @@ class Worker:
             if over or self._due(f"forget:{tag}", every):
                 self.db.set_setting(f"forget:{tag}", now_iso())
                 self._retain(settings, primary, restic)
-            if self.db.get_setting(f"check:{tag}") is None:
-                # First check a week after the first backup, not right away.
-                self.db.set_setting(f"check:{tag}", now_iso())
-            elif self._due(f"check:{tag}", CHECK_EVERY):
-                self.db.set_setting(f"check:{tag}", now_iso())
-                self.health.check_errors = restic.check(CHECK_SUBSET)
-                # Persisted: a restart must not "resolve" a corruption alert.
-                self.db.set_setting(f"check_errors:{tag}", str(self.health.check_errors))
-            self.health.maintenance_error = None
+            if check and (problem := run_check(self.db, tag, restic)):
+                raise ToolError(f"the weekly check couldn't finish: {problem}")
+            self.health.maintenance_error, self.health.maintenance_failures = None, 0
         except ToolError as exc:
             self.health.maintenance_error = str(exc)
+            self.health.maintenance_failures += 1
             logger.error("worker.maintenance_failed", camera=self.id, error=str(exc))
 
     def _retain(self, settings: Settings, primary: DestinationConfig, restic: Restic) -> None:
@@ -259,8 +258,10 @@ class Worker:
             keep_days=primary.keep_days,
             max_gb=primary.max_gb,
             copies=[copy_view(self.db, d, cameras) for d in settings.copies()],
+            quota_floor=quota_floor(self.db, primary.name),
         )
-        record_cut(self.db, primary.name, used, cut, self.id)
+        remember_quota_floor(self.db, primary.name, cut.floor)
+        record_cut(self.db, primary, used, cut, self.id)
         if cut.ids:
             logger.info(
                 "worker.forgetting", camera=self.id, destination=primary.name, n=len(cut.ids)

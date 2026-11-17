@@ -52,3 +52,14 @@ def test_max_keys_bound_evicts_oldest():
         limiter.record_failure(f"key{i}")
     # Should not grow unboundedly (accounts for the __global__ key too).
     assert len(limiter._failures) <= 4
+
+
+def test_global_bucket_locks_out_at_most_five_minutes_without_escalation():
+    """Strangers' failures must not lock the owner out for an hour, and
+    password re-confirmation (already signed in) skips the global bucket."""
+    limiter = LoginLimiter(max_attempts=5, window_secs=3600, lockout_secs=3600)
+    for i in range(100):
+        limiter.record_failure(f"10.0.0.{i}")
+    wait = limiter.retry_after("owner")
+    assert wait is not None and wait <= 300
+    assert limiter.retry_after("owner", shared=False) is None

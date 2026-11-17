@@ -135,11 +135,60 @@ def test_decide_without_copies_forgets_by_age_and_quota():
 
 
 def test_each_cameras_cut_is_remembered_so_a_later_camera_cant_clear_it(tmp_path):
+    from reovault.config import DestinationConfig
     from reovault.db import Db
     from reovault.destinations import record_cut, status_of
     from reovault.retention import Cut
 
     db = Db(tmp_path / "x.db")
-    record_cut(db, "d", [], Cut(ids=[], floor=None, short=False, too_small=False, blocked=3), "a")
-    record_cut(db, "d", [], Cut(ids=[], floor=None, short=False, too_small=False, blocked=0), "b")
+    d = DestinationConfig(name="d", repository="/r")
+    record_cut(db, d, [], Cut(ids=[], floor=None, short=False, too_small=False, blocked=3), "a")
+    record_cut(db, d, [], Cut(ids=[], floor=None, short=False, too_small=False, blocked=0), "b")
     assert status_of(db, "d")["blocked"] == 3
+
+
+def test_the_quota_takes_the_oldest_footage_whichever_camera_passes_first():
+    """Production, 2026-11-12: the driveway's pass counted the front door's
+    older snapshots as freed but could only forget its own; usage then fell
+    under the mark and the front door's pass cut nothing, so the driveway
+    kept losing newer footage while older front-door footage stayed."""
+    usage = [snap("front", 10, gb=10), snap("drive", 6, gb=10), snap("drive", 5, gb=10)]
+    usage += [snap("front", 0, gb=65), snap("drive", 0, gb=5)]  # 100 GB on a 100 GB cap
+    drive = decide(
+        camera="drive",
+        snaps=[s for s in usage if s.camera == "drive"],
+        usage=usage,
+        keep_days=0,
+        max_gb=100,
+    )
+    assert drive.ids == ["drive-6"]
+    after = [s for s in usage if s.id not in drive.ids]  # now at 90 GB: not over the mark
+    front = decide(
+        camera="front",
+        snaps=[s for s in after if s.camera == "front"],
+        usage=after,
+        keep_days=0,
+        max_gb=100,
+        quota_floor=drive.floor,
+    )
+    assert front.ids == ["front-10"]  # older than what the driveway gave up
+
+
+def test_a_floor_from_another_camera_cuts_even_once_usage_is_back_under_the_mark():
+    usage = [snap("front", 10, gb=1), snap("front", 0, gb=1)]
+    cut = decide(
+        camera="front",
+        snaps=usage,
+        usage=usage,
+        keep_days=0,
+        max_gb=100,
+        quota_floor=NOW - timedelta(days=9),
+    )
+    assert cut.ids == ["front-10"]
+
+
+def test_a_snapshot_is_as_old_as_the_footage_it_holds():
+    """A backlog backed up today holds days-old clips: by footage it is old."""
+    backlog = Snap("a", "late", "late", NOW, GB, footage=NOW - timedelta(days=20))
+    newest = Snap("a", "new", "new", NOW + timedelta(minutes=5), GB)
+    assert [s.id for s in age_cut([backlog, newest], 14)] == ["late"]
