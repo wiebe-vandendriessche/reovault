@@ -228,3 +228,117 @@ def test_a_new_camera_address_needs_the_password_again(backed_up, env, monkeypat
     assert "203.0.113.66" not in env.toml.read_text()
     r = client.put("/api/v1/cameras/gate", json={**edit, "password": "s3cret-pw"})
     assert r.status_code == 200 and tried == ["203.0.113.66"]
+
+
+def test_closing_the_bus_ends_open_event_streams():
+    """uvicorn waits for open responses on shutdown; an SSE stream must end
+    when it starts, not be cancelled with a traceback after the timeout."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from reovault.web.api.events import events
+    from reovault.web.events import EventBus
+
+    async def run() -> list[str]:
+        bus = EventBus()
+
+        async def connected() -> bool:
+            return False
+
+        request = SimpleNamespace(is_disconnected=connected)
+        response = await events(request, SimpleNamespace(bus=bus))
+        body = response.body_iterator
+        chunks = [await anext(body)]  # hello
+        bus.close()
+        chunks += [c async for c in body]
+        return chunks
+
+    chunks = asyncio.run(asyncio.wait_for(run(), timeout=5))
+    assert len(chunks) == 1 and "hello" in chunks[0]
+
+
+def _issues(client: TestClient) -> dict[str, dict]:
+    return {i["key"]: i for i in client.get("/api/v1/overview").json()["issues"]}
+
+
+def _finished(rt, outcome: str, error: str | None = None, ago_hours: float = 0) -> None:
+    run_id = rt.db.start_run("demo", "schedule")
+    rt.db.finish_run(run_id, outcome, error)
+    from datetime import UTC, datetime, timedelta
+
+    from reovault.db import iso
+
+    at = iso(datetime.now(UTC) - timedelta(hours=ago_hours))
+    with rt.db.tx() as c:
+        c.execute("UPDATE runs SET started_at = ?, finished_at = ? WHERE id = ?", (at, at, run_id))
+
+
+def test_a_stopped_run_neither_hides_nor_resolves_failing_backups(backed_up):
+    rt, client = backed_up
+    _finished(rt, "error", "restic open failed: locked")
+    _finished(rt, "stopped")  # a restart or the Stop button proves nothing
+    _finished(rt, "error", "restic open failed: locked")
+    issue = _issues(client)["failing:demo"]
+    assert issue["actions"] == ["run"]
+    assert "locked" in issue["message"]
+
+
+def test_hours_without_a_backup_raise_one_stale_alert_instead_of_failing(backed_up):
+    rt, client = backed_up
+    with rt.db.tx() as c:  # the fixture's good run, made old
+        c.execute("UPDATE runs SET started_at = ?, finished_at = ?", ("2026-01-01T00:00:00Z",) * 2)
+    _finished(rt, "error", "boom")
+    _finished(rt, "error", "boom")
+    issues = _issues(client)
+    assert "stale:demo" in issues and "failing:demo" not in issues
+    assert "boom" in issues["stale:demo"]["message"]
+
+
+def test_check_errors_are_per_destination_and_check_again_asks_for_a_check(backed_up):
+    rt, client = backed_up
+    rt.db.set_setting("check_errors:local:demo", "2")
+    issue = _issues(client)["check_errors:local:demo"]
+    assert issue["actions"] == ["check"]
+    assert client.post("/api/v1/cameras/demo/check").status_code == 200
+    assert rt.db.get_setting("check_requested:local:demo")
+
+
+def test_failing_clips_can_be_retried_or_given_up_from_the_dashboard(backed_up):
+    rt, client = backed_up
+    from datetime import UTC, datetime, timedelta
+
+    rt.db.upsert_clips("demo", [("0120990202000000", datetime.now(UTC), None, 10, "md")])
+    (clip,) = rt.db.clips_by_name("demo", ["0120990202000000"]).values()
+    for _ in range(5):
+        rt.db.record_failure(clip.id, "downloaded 3 bytes, expected 10")
+    assert _issues(client)["clips_keep_failing:demo"]["actions"] == ["retry_clips", "give_up_clips"]
+    r = client.post("/api/v1/cameras/demo/clips/retry", json={})
+    assert r.json() == {"changed": 1}
+    assert "clips_keep_failing:demo" not in _issues(client)
+    for _ in range(5):
+        rt.db.record_failure(clip.id, "downloaded 3 bytes, expected 10")
+    r = client.post("/api/v1/cameras/demo/clips/give-up", json={"ids": [clip.id]})
+    assert r.json() == {"changed": 1}
+    assert rt.db.get_clip(clip.id).state == "lost"
+    assert "clips_keep_failing:demo" not in _issues(client)
+    _ = timedelta
+
+
+def test_a_quota_notice_clears_once_the_limits_change(backed_up):
+    rt, client = backed_up
+    from reovault.destinations import update_status
+
+    update_status(rt.db, "local", short_until="2099-01-01T00:00:00Z", short_for="0/0")
+    assert "quota_retention_short:local:*" in _issues(client)
+    update_status(rt.db, "local", short_for="14/500")  # cut under limits since changed
+    assert "quota_retention_short:local:*" not in _issues(client)
+
+
+def test_a_failing_settings_backup_is_raised_and_points_to_recovery(backed_up):
+    rt, client = backed_up
+    from reovault.destinations import update_status
+
+    update_status(rt.db, "local", config_error="restic backup failed: boom")
+    assert _issues(client)["config_backup:local:*"]["actions"] == ["recovery"]
+    update_status(rt.db, "local", config_error=None)
+    assert "config_backup:local:*" not in _issues(client)

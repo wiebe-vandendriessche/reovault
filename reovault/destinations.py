@@ -55,16 +55,55 @@ def restic_for(settings: Settings, cam_id: str, dest: DestinationConfig | None =
 def usage(db: Db, destination: str) -> list[Snap]:
     """Every snapshot on a destination, with the footage it holds."""
     return [
-        Snap(r["camera"], r["snapshot_id"], r["root"], parse_iso(r["time"]), int(r["bytes"]))
+        Snap(
+            r["camera"],
+            r["snapshot_id"],
+            r["root"],
+            parse_iso(r["time"]),
+            int(r["bytes"]),
+            parse_iso(r["footage"]) if r["footage"] else None,
+        )
         for r in db.snapshot_usage(destination)
     ]
 
 
 def snaps_of(camera: str, snapshots: list[Snapshot], used: list[Snap]) -> list[Snap]:
     """A camera's snapshots as retention sees them: restic's listing (what is
-    really there) with the footage sizes the index knows."""
-    held = {s.id: s.bytes for s in used if s.camera == camera}
-    return [Snap(camera, s.id, s.root, s.time, held.get(s.id, 0)) for s in snapshots]
+    really there) with the footage sizes and times the index knows."""
+    held = {s.id: s for s in used if s.camera == camera}
+    return [
+        Snap(
+            camera,
+            s.id,
+            s.root,
+            s.time,
+            held[s.id].bytes if s.id in held else 0,
+            held[s.id].footage if s.id in held else None,
+        )
+        for s in snapshots
+    ]
+
+
+QUOTA_FLOOR_TTL = timedelta(hours=6)  # every camera's hourly pass sees a cut in time
+
+
+def quota_floor(db: Db, dest: str) -> datetime | None:
+    """The footage age a recent quota cut reached on `dest`, so every camera
+    trims up to it, not only the one whose pass computed it. Short-lived: an
+    old cut must not delete what a new camera backs up later."""
+    raw = db.get_setting(f"quota_floor:{dest}")
+    if not raw:
+        return None
+    at, _, floor = raw.partition("|")
+    if datetime.now(UTC) - parse_iso(at) > QUOTA_FLOOR_TTL:
+        return None
+    return parse_iso(floor)
+
+
+def remember_quota_floor(db: Db, dest: str, floor: datetime | None) -> None:
+    current = quota_floor(db, dest)
+    if floor is not None and (current is None or floor > current):
+        db.set_setting(f"quota_floor:{dest}", f"{now_iso()}|{iso(floor)}")
 
 
 def copy_view(db: Db, dest: DestinationConfig, cameras: list[str]) -> CopyView:
@@ -77,20 +116,27 @@ def copy_view(db: Db, dest: DestinationConfig, cameras: list[str]) -> CopyView:
     )
 
 
+_status_lock = threading.Lock()  # camera, copy and config-backup threads all write it
+
+
 def update_status(db: Db, name: str, **fields: Any) -> None:
     """What the dashboard and alerts show about a destination, kept in the
     index so a restart remembers it: `{used, short, too_small, blocked, ...}`."""
-    status = status_of(db, name)
-    status.update(fields)
-    db.set_setting(f"dest_status:{name}", json.dumps(status))
+    with _status_lock:
+        status = status_of(db, name)
+        status.update(fields)
+        db.set_setting(f"dest_status:{name}", json.dumps(status))
 
 
-def record_cut(db: Db, name: str, used: list[Snap], cut: retention.Cut, camera: str) -> None:
+def record_cut(
+    db: Db, dest: DestinationConfig, used: list[Snap], cut: retention.Cut, camera: str
+) -> None:
     """What the dashboard and alerts need after a retention pass. `short_until`
     keeps "the quota cut retention short" on for a week after the last such
     cut: the next pass has nothing left to trim and must not clear it."""
     # Each camera's pass reports its own verdict; the destination shows them all,
     # so a later camera with nothing to report can't clear an earlier one's.
+    name = dest.name
     by_camera = dict(status_of(db, name).get("by_camera", {}))
     by_camera[camera] = {"too_small": cut.too_small, "blocked": cut.blocked}
     fields: dict[str, Any] = {
@@ -101,11 +147,20 @@ def record_cut(db: Db, name: str, used: list[Snap], cut: retention.Cut, camera: 
     }
     if cut.short and cut.ids:
         fields["short_until"] = iso(datetime.now(UTC) + QUOTA_NOTICE)
+        fields["short_for"] = _limits(dest)
     update_status(db, name, **fields)
 
 
-def quota_short(status: dict[str, Any]) -> bool:
+def _limits(dest: DestinationConfig) -> str:
+    return f"{dest.keep_days}/{dest.max_gb}"
+
+
+def quota_short(status: dict[str, Any], dest: DestinationConfig | None = None) -> bool:
+    """The quota cut retention short in the last week, under the limits that
+    still apply: raising `max_gb` or lowering `keep_days` answers it at once."""
     until = status.get("short_until")
+    if dest is not None and status.get("short_for") != _limits(dest):
+        return False
     return isinstance(until, str) and parse_iso(until) > datetime.now(UTC)
 
 
@@ -132,6 +187,57 @@ QUOTA_NOTICE = timedelta(days=7)
 ROUND_EVERY = timedelta(minutes=15)  # between rounds, when nothing wakes a thread sooner
 CHECK_EVERY = timedelta(days=7)
 CHECK_SUBSET = "500M"  # read back this much data a week: catches bit rot cheaply
+CHECK_RETRY = timedelta(hours=6)  # after a check that couldn't finish
+CHECK_CONFIRM = timedelta(hours=1)  # a second look before calling it damage
+
+
+def request_check(db: Db, tag: str) -> None:
+    """The dashboard's "Check again": the next maintenance pass checks."""
+    db.set_setting(f"check_requested:{tag}", now_iso())
+
+
+def _check_due(db: Db, tag: str, now: datetime) -> bool:
+    if db.get_setting(f"check_requested:{tag}"):
+        return True
+    nxt = db.get_setting(f"check_next:{tag}")
+    if nxt:
+        return now >= parse_iso(nxt)
+    last = db.get_setting(f"check:{tag}")
+    if last is None:  # the first check a week after the first backup
+        db.set_setting(f"check_next:{tag}", iso(now + CHECK_EVERY))
+        return False
+    return now - parse_iso(last) >= CHECK_EVERY
+
+
+def run_check(db: Db, tag: str, restic: Restic) -> str | None:
+    """The weekly read-back of one repository (`tag` is `<destination>:<camera>`),
+    when due. Returns why it couldn't finish; that is a maintenance problem,
+    retried in a few hours, and says nothing about the data. Errors are only
+    recorded after a second check finds them too: a backend that drops reads
+    makes restic count errors in a healthy repository."""
+    now = datetime.now(UTC)
+    if not _check_due(db, tag, now):
+        return None
+    db.set_setting(f"check:{tag}", iso(now))
+    db.delete_setting(f"check_requested:{tag}")
+    result = restic.check(CHECK_SUBSET)
+    if result.outcome == "failed":
+        db.set_setting(f"check_next:{tag}", iso(now + CHECK_RETRY))
+        return result.message
+    if result.outcome == "errors" and not db.get_setting(f"check_suspect:{tag}"):
+        db.set_setting(f"check_suspect:{tag}", result.message)
+        db.set_setting(f"check_next:{tag}", iso(now + CHECK_CONFIRM))
+        return None
+    db.delete_setting(f"check_suspect:{tag}")
+    db.set_setting(f"check_errors:{tag}", str(result.errors))
+    if result.errors:
+        packs = " ".join(result.broken_packs)
+        detail = f"{result.message}" + (f" Damaged packs: {packs}." if packs else "")
+        db.set_setting(f"check_detail:{tag}", detail)
+    else:
+        db.delete_setting(f"check_detail:{tag}")
+    db.set_setting(f"check_next:{tag}", iso(now + CHECK_EVERY))
+    return None
 
 
 class DestinationWorker:
@@ -225,11 +331,23 @@ class DestinationWorker:
         for done, snap in enumerate(todo):
             if self._quit.is_set():
                 break
+            if cap and held + snap.bytes > cap * retention.QUOTA_HIGH and done == 0:
+                # Newer footage beats older: trim the copy's oldest to make room.
+                # Only before this round copied anything: the index then knows
+                # exactly what the copy holds (and while seeding, newest
+                # first, an older snapshot never pushes out a newer one).
+                held = self._make_room(settings, dest, snap)
             if cap and held + snap.bytes > cap * retention.QUOTA_HIGH:
-                # Everything older would be cut again at once: stop here, and
-                # remember it so older snapshots aren't tried every round.
-                self._floor(dest, snap.time + timedelta(seconds=1))
-                update_status(self.db, dest.name, short_until=iso(datetime.now(UTC) + QUOTA_NOTICE))
+                # Everything held is newer than this one, so it and everything
+                # older would be cut again at once: stop here, and remember it
+                # so older snapshots aren't tried every round.
+                self._floor(dest, snap.age + timedelta(seconds=1))
+                update_status(
+                    self.db,
+                    dest.name,
+                    short_until=iso(datetime.now(UTC) + QUOTA_NOTICE),
+                    short_for=_limits(dest),
+                )
                 break
             held += snap.bytes
             self._progress(cam_id, done, len(todo))
@@ -243,6 +361,35 @@ class DestinationWorker:
         self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in theirs])
         self._retain(settings, dest, cam_id, dst, theirs)
         self._check(dest, cam_id, dst)
+
+    def _make_room(self, settings: Settings, dest: DestinationConfig, incoming: Snap) -> int:
+        """Forgets the copy's snapshots, of any camera, that its quota would cut
+        once `incoming` is in: only ones older than it, never a camera's newest
+        here.
+        This thread is the only one touching the copy's repositories, so it
+        may trim them all. Returns the bytes held afterwards."""
+        used = usage(self.db, dest.name)
+        # A camera's newest snapshot here carries its index: never this one.
+        keep = {s.id for s in retention.newest_by_camera(used).values()}
+        if any(s.age < incoming.age and s.id not in keep for s in used):
+            cut, _, _ = retention.quota_cut(used + [incoming], dest.keep_days, dest.max_gb, set())
+            by_camera: dict[str, list[str]] = {}
+            for s in cut:
+                if s is not incoming and s.age < incoming.age and s.id not in keep:
+                    by_camera.setdefault(s.camera, []).append(s.id)
+            trimmed = [s.age for s in cut if s.camera in by_camera and s.id in by_camera[s.camera]]
+            if trimmed:  # or the next round copies them straight back
+                self._floor(dest, max(trimmed) + timedelta(seconds=1))
+            for cam_id, ids in by_camera.items():
+                dst = restic_for(settings, cam_id, dest)
+                logger.info(
+                    "destination.making_room", destination=dest.name, camera=cam_id, n=len(ids)
+                )
+                dst.forget_ids(ids)
+                after = dst.snapshots()
+                self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in after])
+                self.db.expire_unlocated(cam_id)
+        return sum(s.bytes for s in usage(self.db, dest.name))
 
     def _floor(self, dest: DestinationConfig, at: datetime) -> None:
         """Never copy snapshots older than `at` (only ever moves forward)."""
@@ -275,8 +422,10 @@ class DestinationWorker:
             usage=used,
             keep_days=dest.keep_days,
             max_gb=dest.max_gb,
+            quota_floor=quota_floor(self.db, dest.name),
         )
-        record_cut(self.db, dest.name, used, cut, cam_id)
+        remember_quota_floor(self.db, dest.name, cut.floor)
+        record_cut(self.db, dest, used, cut, cam_id)
         if cut.floor is not None:
             self._floor(dest, cut.floor + timedelta(seconds=1))  # not copied back tomorrow
         if cut.ids:
@@ -291,15 +440,10 @@ class DestinationWorker:
             logger.info("destination.clips_expired", camera=cam_id, count=expired)
 
     def _check(self, dest: DestinationConfig, cam_id: str, dst: Restic) -> None:
-        key = f"check:{dest.name}:{cam_id}"
-        last = self.db.get_setting(key)
-        if last is None:
-            self.db.set_setting(key, now_iso())  # first check a week from now
-        elif datetime.now(UTC) - parse_iso(last) >= CHECK_EVERY:
-            self.db.set_setting(key, now_iso())
-            errors = dst.check(CHECK_SUBSET)
-            self.db.set_setting(f"check_errors:{dest.name}:{cam_id}", str(errors))
-            self.publish("destinations")
+        problem = run_check(self.db, f"{dest.name}:{cam_id}", dst)
+        self.publish("destinations")
+        if problem:
+            raise ToolError(f"the weekly check couldn't finish: {problem}")
 
 
 class Destinations:

@@ -247,6 +247,10 @@ class Db:
                 (key, value),
             )
 
+    def delete_setting(self, key: str) -> None:
+        with self.tx() as c:
+            c.execute("DELETE FROM kv WHERE key = ?", (key,))
+
     # -- clips -----------------------------------------------------------
 
     def upsert_clips(
@@ -263,16 +267,32 @@ class Db:
             before = c.execute("SELECT COUNT(*) FROM clips WHERE camera = ?", (camera,)).fetchone()[
                 0
             ]
+            # A clip already known under the same name and size but another
+            # start is the same clip seen through a different timezone (the
+            # camera's zone was edited): never a new clip to download again.
+            # Two clips sharing a name across a DST fold differ in size.
             c.executemany(
                 """
                 INSERT INTO clips (camera, name, start_utc, end_utc, size, rec_type, first_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                SELECT :camera, :name, :start, :end, :size, :type, :now
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM clips WHERE camera = :camera AND name = :name
+                    AND size = :size AND start_utc != :start
+                )
                 ON CONFLICT (camera, name, start_utc) DO UPDATE
                   SET size = excluded.size, end_utc = excluded.end_utc
                   WHERE clips.state = 'pending'
                 """,
                 [
-                    (camera, name, iso(start), iso(end) if end else None, size, rec_type, now)
+                    {
+                        "camera": camera,
+                        "name": name,
+                        "start": iso(start),
+                        "end": iso(end) if end else None,
+                        "size": size,
+                        "type": rec_type,
+                        "now": now,
+                    }
                     for name, start, end, size, rec_type in found
                 ],
             )
@@ -289,15 +309,28 @@ class Db:
         )
         return [Clip(**dict(r)) for r in rows]
 
-    def clips_by_name(self, camera: str, names: list[str]) -> dict[str, Clip]:
+    def clips_named(self, camera: str, names: list[str]) -> list[Clip]:
+        """Every row with one of these names: usually one per name, two for
+        clips that share a name across a DST fold."""
         if not names:
-            return {}
-        marks = ",".join("?" * len(names))
+            return []
+        marks = ",".join("?" * len(set(names)))
         rows = self._all(
             f"SELECT {_CLIP_COLS} FROM clips WHERE camera = ? AND name IN ({marks})",
-            (camera, *names),
+            (camera, *set(names)),
         )
-        return {r["name"]: Clip(**dict(r)) for r in rows}
+        return [Clip(**dict(r)) for r in rows]
+
+    def clips_by_name(self, camera: str, names: list[str]) -> dict[str, Clip]:
+        """One row per name (of DST twins, either one)."""
+        return {c.name: c for c in self.clips_named(camera, names)}
+
+    def last_ok(self, camera: str) -> datetime | None:
+        """When the camera's last successful run finished."""
+        row = self._one(
+            "SELECT MAX(finished_at) AS m FROM runs WHERE camera = ? AND outcome = 'ok'", (camera,)
+        )
+        return parse_iso(row["m"]) if row and row["m"] else None
 
     def newest_start(self, camera: str) -> datetime | None:
         row = self._one("SELECT MAX(start_utc) AS m FROM clips WHERE camera = ?", (camera,))
@@ -327,12 +360,14 @@ class Db:
             c.execute("DELETE FROM locations WHERE destination = ?", (name,))
             # GLOB: a destination name is [A-Za-z0-9_-], none of which is special to it.
             c.execute(
-                "DELETE FROM kv WHERE key GLOB ? OR key GLOB ? OR key GLOB ? OR key IN (?, ?, ?)",
+                "DELETE FROM kv WHERE key GLOB ? OR key GLOB ? OR key GLOB ? "
+                "OR key IN (?, ?, ?, ?)",
                 (
                     f"repo_seen:{name}:*",
                     f"check:{name}:*",
-                    f"check_errors:{name}:*",
+                    f"check_*:{name}:*",  # errors, next, suspect, requested, detail
                     f"copy_floor:{name}",
+                    f"quota_floor:{name}",
                     f"dest_status:{name}",
                     f"copied_at:{name}",
                 ),
@@ -375,13 +410,37 @@ class Db:
                 (error, now_iso(), clip_id),
             )
 
-    def mark_lost(self, clip_id: int) -> None:
+    def mark_lost(self, clip_id: int, reason: str | None = None) -> None:
+        """Lost for good: never downloaded again. `reason` replaces the last
+        error when the cause isn't the card overwriting it."""
         with self.tx() as c:
             c.execute(
-                "UPDATE clips SET state = 'lost', last_attempt_at = ? "
-                "WHERE id = ? AND state = 'pending'",
-                (now_iso(), clip_id),
+                "UPDATE clips SET state = 'lost', last_attempt_at = ?, "
+                "last_error = COALESCE(?, last_error) WHERE id = ? AND state = 'pending'",
+                (now_iso(), reason, clip_id),
             )
+
+    def give_up(self, camera: str, ids: list[int] | None, reason: str) -> int:
+        """Marks failing clips (or just `ids`) lost on the user's word."""
+        where, args = ("AND id IN ({})".format(",".join("?" * len(ids))), ids) if ids else ("", [])
+        with self.tx() as c:
+            cur = c.execute(
+                "UPDATE clips SET state = 'lost', last_attempt_at = ?, last_error = ? "
+                f"WHERE camera = ? AND state = 'pending' AND attempts > 0 {where}",
+                (now_iso(), reason, camera, *args),
+            )
+            return cur.rowcount
+
+    def retry(self, camera: str, ids: list[int] | None = None) -> int:
+        """Failing clips (or just `ids`) start over: the next run tries them first."""
+        where, args = ("AND id IN ({})".format(",".join("?" * len(ids))), ids) if ids else ("", [])
+        with self.tx() as c:
+            cur = c.execute(
+                "UPDATE clips SET attempts = 0, last_attempt_at = NULL "
+                f"WHERE camera = ? AND state = 'pending' AND attempts > 0 {where}",
+                (camera, *args),
+            )
+            return cur.rowcount
 
     def index_rows(self, camera: str, staged: dict[int, Path]) -> list[dict[str, object]]:
         """The camera's index for a snapshot's manifest: every backed-up clip,
@@ -520,7 +579,7 @@ class Db:
         rows = self._all(
             """
             SELECT l.camera, l.snapshot_id, l.source_snapshot AS root, l.time,
-                   COALESCE(SUM(c.size), 0) AS bytes
+                   COALESCE(SUM(c.size), 0) AS bytes, MAX(c.start_utc) AS footage
             FROM locations l
             LEFT JOIN clips c ON c.camera = l.camera AND c.snapshot_id = l.source_snapshot
                               AND c.state = 'backed_up'
@@ -730,11 +789,21 @@ class Db:
             )
 
     def runs(
-        self, camera: str | None = None, limit: int = 50, *, finished: bool = False
+        self,
+        camera: str | None = None,
+        limit: int = 50,
+        *,
+        finished: bool = False,
+        decided: bool = False,
     ) -> list[Run]:
+        """`decided`: only runs that ended `ok` or `error`. A stopped or
+        skipped run (a restart, the size-limit hold, the Stop button) says
+        nothing about whether backups work."""
         conds, params = (["camera = ?"], [camera]) if camera else ([], [])
         if finished:
             conds.append("finished_at IS NOT NULL")
+        if decided:
+            conds.append("outcome IN ('ok', 'error')")
         where = f"WHERE {' AND '.join(conds)}" if conds else ""
         rows = self._all(
             f"SELECT {_RUN_COLS} FROM runs {where} ORDER BY started_at DESC, id DESC LIMIT ?",

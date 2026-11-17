@@ -1,4 +1,4 @@
-import { api, setCsrf, type Session } from '#lib/api/index.js';
+import { api, ApiError, setCsrf, type Session } from '#lib/api/index.js';
 
 export const session = $state({
 	ready: false,
@@ -33,5 +33,20 @@ export async function loadSession() {
 	} catch (e) {
 		session.blocked = e instanceof Error ? e.message : String(e);
 		session.ready = true;
+	}
+}
+
+/** POSTs /login or /setup with a CSRF token fetched just now: the one held may
+ * be bound to a session that has since expired, or past the anonymous token's
+ * 10 minutes. A CSRF refusal anyway (a race with a logout) refreshes once more. */
+export async function postWithFreshCsrf(path: '/login' | '/setup', body: unknown): Promise<Session> {
+	for (let attempt = 0; ; attempt++) {
+		setCsrf((await api<Session>('/session')).csrf_token);
+		try {
+			return await api<Session>(path, { method: 'POST', body });
+		} catch (e) {
+			const csrf = e instanceof ApiError && e.status === 403 && e.message.includes('CSRF');
+			if (!csrf || attempt > 0) throw e;
+		}
 	}
 }

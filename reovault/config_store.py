@@ -43,6 +43,8 @@ from reovault.logging import get_logger
 
 logger = get_logger(__name__)
 
+WATCH_RETRY_SECS = 5.0
+
 # Fields read once at startup and shown read-only in the dashboard.
 INFRA_SECTIONS = frozenset({"storage", "tools"})
 # The few [web] fields that are safe to change live from the browser; every
@@ -244,7 +246,12 @@ class ConfigStore:
             text = self._read_text()
             if expected_version is not None and _hash(text) != expected_version:
                 raise ConfigConflictError("reovault.toml changed on disk; reload and try again.")
-            doc = tomlkit.parse(text)
+            try:
+                doc = tomlkit.parse(text)
+            except ParseError as exc:  # a hand edit broke the file
+                raise ConfigInvalidError(
+                    f"{self.path} is not valid TOML ({exc}). Fix it by hand, then try again."
+                ) from None
             mutate(doc)
             new_text = tomlkit.dumps(doc)
             tmp = self.path.with_name(f".{self.path.name}.tmp")
@@ -262,8 +269,11 @@ class ConfigStore:
                 os.fsync(fh.fileno())
             if self.path.exists():
                 bak = self.path.with_name(self.path.name + ".bak")
-                shutil.copyfile(self.path, bak)
-                bak.chmod(0o600)
+                # Created 0600 (it holds the camera passwords), never briefly umask-wide.
+                fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                os.fchmod(fd, 0o600)  # an existing .bak keeps its old mode otherwise
+                with os.fdopen(fd, "wb") as fh, open(self.path, "rb") as src:
+                    shutil.copyfileobj(src, fh)
             os.replace(tmp, self.path)
             self.last_origin = "dashboard"
             self._apply(loaded, _hash(new_text))
@@ -287,14 +297,24 @@ class ConfigStore:
             def is_config(change: watchfiles.Change, p: str) -> bool:
                 return Path(p).resolve() == path and only_config(change, p)
 
-            for changes in watchfiles.watch(
-                path.parent, stop_event=stop, debounce=500, watch_filter=is_config
-            ):
-                if changes:
-                    try:
-                        self.reload()
-                    except Exception as exc:  # noqa: BLE001 - the watcher must survive
-                        logger.error("config.reload_failed", error=str(exc), exc_info=exc)
+            while not stop.is_set():
+                try:
+                    # Not recursive: the folder holds ./data (staging, cache, db).
+                    for changes in watchfiles.watch(
+                        path.parent,
+                        stop_event=stop,
+                        debounce=500,
+                        watch_filter=is_config,
+                        recursive=False,
+                    ):
+                        if changes:
+                            try:
+                                self.reload()
+                            except Exception as exc:  # noqa: BLE001 - the watcher must survive
+                                logger.error("config.reload_failed", error=str(exc), exc_info=exc)
+                except Exception as exc:  # noqa: BLE001 - restart the watch, never die silently
+                    logger.error("config.watch_failed", error=str(exc), exc_info=exc)
+                    stop.wait(WATCH_RETRY_SECS)
 
         thread = threading.Thread(target=run, name="config-watch", daemon=True)
         thread.start()

@@ -230,3 +230,32 @@ def test_downloads_need_a_login(env, web_settings, web_password_hash):
     assert client.get("/api/v1/download/preview", params=p).status_code == 401
     assert client.get("/api/v1/download/zip", params=p).status_code == 401
     assert web_app is not None
+
+
+def test_a_disconnect_kills_restic_and_frees_the_zip_lock(two_cameras, monkeypatch):
+    """Starlette never closes a sync body on a disconnect: restic would live
+    on and every later zip would answer 409."""
+    import anyio
+
+    from reovault.restic import Restic
+
+    rt, client = two_cameras
+    procs = []
+    real_dump = Restic.dump
+    monkeypatch.setattr(Restic, "dump", lambda *a: procs.append(real_dump(*a)) or procs[-1])
+    day = _local(1)
+    response = download.download_zip("demo", f"{day}T00:00", f"{day}T23:59", client.app.state.rv)
+    sent = anyio.Event()
+
+    async def send(message):
+        if message.get("body"):
+            sent.set()
+
+    async def receive():
+        await sent.wait()  # the client goes away after the first chunk
+        return {"type": "http.disconnect"}
+
+    anyio.run(response, {"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send)
+    assert procs and all(p.poll() is not None for p in procs)
+    assert download._zip_lock.acquire(blocking=False)
+    download._zip_lock.release()

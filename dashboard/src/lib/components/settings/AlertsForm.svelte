@@ -72,14 +72,6 @@
 		}
 	}
 
-	// What the server alerts on (reovault/runtime.py), for the reader.
-	const conditions = [
-		'Two backups of a camera in a row fail.',
-		'Clips waiting on an SD card are close to being overwritten.',
-		'Clips keep failing to download.',
-		'The weekly restic check finds errors.',
-		'The destination answers with no backups where there should be some.'
-	];
 </script>
 
 {#if loaded.error}
@@ -125,7 +117,7 @@
 			<Card.Root>
 				<Card.Header><Card.Title>Open now</Card.Title></Card.Header>
 				<Card.Content class="flex flex-col gap-3">
-					{#each loaded.data.open as a (a.condition + (a.camera ?? ""))}
+					{#each loaded.data.open as a (a.key)}
 						<div class="flex flex-col gap-0.5">
 							<span class="text-sm font-medium">{a.title}</span>
 							<span class="text-muted-foreground text-sm">{a.message}</span>
@@ -161,7 +153,7 @@
 							<div>
 								<p class="text-sm font-medium">An alert goes out when</p>
 								<ul class="text-muted-foreground mt-1 list-disc pl-5 text-sm">
-									{#each conditions as c (c)}<li>{c}</li>{/each}
+									{#each loaded.data.conditions as c (c)}<li>{c}</li>{/each}
 								</ul>
 							</div>
 							<div class="grid gap-4 sm:grid-cols-2">

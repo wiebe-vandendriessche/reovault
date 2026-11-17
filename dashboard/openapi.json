@@ -137,6 +137,13 @@
             "title": "Channels",
             "type": "array"
           },
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
           "env_pinned": {
             "title": "Env Pinned",
             "type": "boolean"
@@ -156,7 +163,8 @@
           "rules",
           "env_pinned",
           "channels",
-          "open"
+          "open",
+          "conditions"
         ],
         "title": "AlertsOut",
         "type": "object"
@@ -290,6 +298,10 @@
               }
             ]
           },
+          "check_errors": {
+            "title": "Check Errors",
+            "type": "integer"
+          },
           "coverage": {
             "anyOf": [
               {
@@ -338,6 +350,18 @@
             "title": "Id",
             "type": "string"
           },
+          "last_ok_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ok At"
+          },
           "last_run": {
             "anyOf": [
               {
@@ -351,6 +375,17 @@
           "lost_7d": {
             "title": "Lost 7D",
             "type": "integer"
+          },
+          "maintenance_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Error"
           },
           "name": {
             "anyOf": [
@@ -459,7 +494,10 @@
           "backed_up_bytes",
           "running",
           "next_run_at",
-          "last_run"
+          "last_run",
+          "last_ok_at",
+          "check_errors",
+          "maintenance_error"
         ],
         "title": "CameraOut",
         "type": "object"
@@ -524,6 +562,26 @@
           "configured"
         ],
         "title": "ChannelOut",
+        "type": "object"
+      },
+      "ClipIdsIn": {
+        "properties": {
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids"
+          }
+        },
+        "title": "ClipIdsIn",
         "type": "object"
       },
       "ClipOut": {
@@ -612,6 +670,19 @@
           "last_error"
         ],
         "title": "ClipOut",
+        "type": "object"
+      },
+      "ClipsChangedOut": {
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "ClipsChangedOut",
         "type": "object"
       },
       "ConfigOut": {
@@ -1327,6 +1398,23 @@
       },
       "IssueOut": {
         "properties": {
+          "actions": {
+            "default": [],
+            "items": {
+              "enum": [
+                "run",
+                "check",
+                "retry_clips",
+                "give_up_clips",
+                "destinations",
+                "alerts",
+                "recovery"
+              ],
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
           "camera": {
             "anyOf": [
               {
@@ -1338,8 +1426,22 @@
             ],
             "title": "Camera"
           },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
           "message": {
             "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "default": "error",
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
             "type": "string"
           },
           "title": {
@@ -1348,6 +1450,7 @@
           }
         },
         "required": [
+          "key",
           "camera",
           "title",
           "message"
@@ -1451,6 +1554,10 @@
             "title": "First Seen At",
             "type": "string"
           },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
           "last_sent_at": {
             "anyOf": [
               {
@@ -1473,6 +1580,7 @@
           }
         },
         "required": [
+          "key",
           "condition",
           "camera",
           "title",
@@ -2492,6 +2600,172 @@
           }
         },
         "summary": "Edit Camera",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{cam_id}/check": {
+      "post": {
+        "description": "Runs restic's read-back check of this camera's repositories soon: on\nthe primary after a backup run, which starts now, and on each copy in its\nnext round. A clean result clears a check alert, a damaged one confirms it.",
+        "operationId": "check_again_api_v1_cameras__cam_id__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cam_id",
+            "required": true,
+            "schema": {
+              "title": "Cam Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Again",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{cam_id}/clips/give-up": {
+      "post": {
+        "description": "Stop trying clips that keep failing: they count as lost and are never\ndownloaded again. For clips the camera can't hand out whole.",
+        "operationId": "give_up_clips_api_v1_cameras__cam_id__clips_give_up_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cam_id",
+            "required": true,
+            "schema": {
+              "title": "Cam Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClipIdsIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipsChangedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Give Up Clips",
+        "tags": [
+          "cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{cam_id}/clips/retry": {
+      "post": {
+        "description": "Clips that keep failing start over and go first in the next backup,\nwhich starts now.",
+        "operationId": "retry_clips_api_v1_cameras__cam_id__clips_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cam_id",
+            "required": true,
+            "schema": {
+              "title": "Cam Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClipIdsIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipsChangedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Clips",
         "tags": [
           "cameras"
         ]

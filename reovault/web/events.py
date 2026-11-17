@@ -23,7 +23,7 @@ _QUEUE_MAX = 100
 
 @dataclass(frozen=True, slots=True)
 class Event:
-    type: str  # activity | problems | devices | alert | resync
+    type: str  # activity | problems | devices | destinations | alert | resync | closing
     data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -57,6 +57,11 @@ class EventBus:
             with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(_offer, queue, event)
 
+    def close(self) -> None:
+        """Ends every open stream. Call when the server starts shutting down:
+        it waits for open responses, and an SSE stream never ends on its own."""
+        self.publish("closing")
+
 
 def _offer(queue: asyncio.Queue[Event], event: Event) -> None:
     """A subscriber too slow to drain 100 hints gets its backlog replaced by
@@ -66,4 +71,4 @@ def _offer(queue: asyncio.Queue[Event], event: Event) -> None:
     except asyncio.QueueFull:
         while not queue.empty():
             queue.get_nowait()
-        queue.put_nowait(Event("resync"))
+        queue.put_nowait(event if event.type == "closing" else Event("resync"))

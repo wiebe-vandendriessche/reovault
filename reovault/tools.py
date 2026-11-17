@@ -4,7 +4,24 @@ from __future__ import annotations
 
 import signal
 import subprocess
+import threading
 from collections.abc import Mapping, Sequence
+
+INTERRUPT_GRACE_SECS = 30  # after a timeout's SIGINT, before SIGKILL
+
+_running: set[subprocess.Popen[str]] = set()
+_running_lock = threading.Lock()
+
+
+def interrupt_all() -> None:
+    """At shutdown: ask every tool still running to stop (SIGINT). restic then
+    removes its repository lock; killed along with the process (a container's
+    stop), it would leave the lock behind."""
+    with _running_lock:
+        procs = list(_running)
+    for proc in procs:
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
 
 
 class ToolError(Exception):
@@ -49,19 +66,46 @@ def run(
     stdin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `cmd` to completion. A missing binary or a timeout raises
-    `ToolError`; a non-zero exit is the caller's to interpret."""
+    `ToolError`; a non-zero exit is the caller's to interpret.
+
+    On timeout the tool is interrupted first and killed only if it ignores
+    that: restic removes its repository lock on SIGINT, while a killed restic
+    leaves the lock behind for every later command to trip over."""
     try:
-        return subprocess.run(
-            list(cmd), capture_output=True, text=True, timeout=timeout, env=env, input=stdin
+        proc = subprocess.Popen(
+            list(cmd),
+            stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise ToolError(f"{cmd[0]} is not installed or not on PATH") from exc
+    with _running_lock:
+        _running.add(proc)
+    try:
+        out, err = proc.communicate(stdin, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.communicate(timeout=INTERRUPT_GRACE_SECS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
         raise ToolError(
             f"{cmd[0]} {cmd[1] if len(cmd) > 1 else ''} timed out after {timeout:.0f}s".strip(),
             detail=" ".join(cmd),
             timed_out=True,
         ) from exc
+    except BaseException:
+        proc.kill()
+        proc.communicate()
+        raise
+    finally:
+        with _running_lock:
+            _running.discard(proc)
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
 
 
 def assert_version(version_cmd: Sequence[str], version: str) -> None:

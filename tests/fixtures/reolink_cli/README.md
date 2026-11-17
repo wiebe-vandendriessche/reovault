@@ -17,6 +17,14 @@ fixture-pin the parsing in `reovault/camera.py` so a
   representative item per distinct `recordType` combination observed (14
   total), with real `fileSize`/`streamType`/`recordType` values but
   synthetic times and a single placeholder day, durations preserved.
+- `vod_search_dst_fold.json`: a reduced `vod search` of the driveway camera
+  (Europe/Brussels) across the night the clocks went back, 2026-10-25,
+  captured 2026-11-17 with reolink-cli 0.20.0. The card lists both passes
+  through 02:00-03:00 by local time only, sorted as one hour, with no field
+  that tells them apart. Kept verbatim: the two clips that share the name
+  `0120261025024413` (same `startTime`, different `endTime` and `fileSize`)
+  and the clip that ends after the change. The other items are a few
+  neighbours; the last `fileSize` is a placeholder.
 
 Confirmed field shapes (parser tries these first, falls back to
 originally-assumed spellings that have never actually been observed):

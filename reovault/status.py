@@ -32,6 +32,7 @@ class CameraStatus:
     lost_7d: int
     failing_clips: int
     last_error: str | None
+    last_ok_utc: datetime | None
 
 
 def camera_status(
@@ -41,9 +42,10 @@ def camera_status(
     pending, pending_bytes, oldest = db.backlog(cam_id)
     oldest_pending = parse_iso(oldest) if oldest else None
     oldest_on_card = state.oldest_on_card if state else None
-    # The last *finished* run: one in progress hasn't proven anything yet
-    # (on a first run the card may not even be read).
-    runs = db.runs(cam_id, limit=1, finished=True)
+    # The last *finished* run that decided something: one in progress hasn't
+    # proven anything yet (on a first run the card may not even be read), and
+    # a stopped one (restart, Stop button, size-limit hold) neither.
+    runs = db.runs(cam_id, limit=1, finished=True, decided=True)
     last = runs[0] if runs else None
     rate = db.throughput(cam_id)
     eta = pending_bytes / rate if rate and pending_bytes else None
@@ -87,6 +89,7 @@ def camera_status(
         lost_7d=lost,
         failing_clips=failing_clips,
         last_error=last.error if last and last.outcome == "error" else None,
+        last_ok_utc=db.last_ok(cam_id),
     )
 
 

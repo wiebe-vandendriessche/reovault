@@ -162,12 +162,18 @@ def create(
     destination: str,
     kind: RemoteType,
     values: dict[str, str],
+    *,
+    replace: bool = False,
 ) -> str:
     """Creates `reovault-<destination>` (rclone writes the file) and returns its
-    name. Raises `ToolError` with a clean message when rclone refuses."""
+    name. An existing remote of that name is replaced only with `replace` (one
+    left behind by a disconnected destination). Raises `ToolError` with a clean
+    message when rclone refuses."""
     name = remote_name(destination)
     if name in remotes(binary):
-        raise ToolError(f"An rclone remote named {name} already exists.")
+        if not replace:
+            raise ToolError(f"An rclone remote named {name} already exists.")
+        delete(binary, name)
     secrets = [v for f in kind.fields if f.secret and (v := values.get(f.key))]
     if kind.paste:
         params = parse_section(values.get("section", ""), kind.rclone_type)

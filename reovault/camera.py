@@ -16,7 +16,7 @@ import re
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
@@ -39,16 +39,19 @@ _SIZE_KEYS = ("fileSize", "size")
 _TYPE_KEYS = ("recordType", "type", "recType")
 # reolink-cli exit codes that mean "the camera or the network is the problem":
 # the whole invocation failed, so no single clip is to blame.
-_TRANSIENT_CODES = {2, 3}  # network, auth
+TRANSIENT_CODES = {2, 3}  # network, auth
 _NETWORK_EXIT = 2
 _SHORT_CALL_SECS = 60
 _HARDWARE_SCOPE_RE = re.compile(r"^onvif://[^/]+/hardware/(?P<model>.+)$")
 _NAME_SCOPE_RE = re.compile(r"^reolink-lan://name/(?P<name>.+)$")
 # The card scan walks back one local day at a time and stops after this many
-# empty days in a row; a camera that recorded nothing for longer makes the
-# oldest clip look newer than it is (only ever shown, never acted on).
-EMPTY_DAYS_TO_STOP = 3
+# empty days in a row, but never before the card start it saw last time. Clips
+# behind a longer gap on a first scan would never be backed up, so the gap is
+# generous: an empty day costs one quick search.
+EMPTY_DAYS_TO_STOP = 14
 _MAX_SCAN_DAYS = 3650
+# A clip name goes into reolink-cli's argv and into file paths.
+_NAME_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,30 +183,49 @@ class ReolinkCamera:
     def search(self, from_utc: datetime, to_utc: datetime) -> list[Found]:
         """One `vod search` per camera-local day: search time grows with the
         clips on the card, and a multi-day search outruns the gateway's own
-        60 s budget on a busy camera."""
+        60 s budget on a busy camera.
+
+        When clocks go back, the card lists both passes through the repeated
+        hour by local time alone (verified on the driveway camera, 2026-10-25):
+        nothing tells them apart, so every such clip is taken as the first
+        pass, except a second clip with the same name and start, which can
+        only be from the second pass. Without that, one of the two was
+        dropped here and never backed up."""
         seen: dict[tuple[str, datetime], Found] = {}
-        start = from_utc.astimezone(self.tz)
-        end = to_utc.astimezone(self.tz)
+        # Compared in UTC: two aware times sharing a zone compare as wall
+        # times, and inside the repeated hour that ends the loop at once.
+        start, end = from_utc.astimezone(UTC), to_utc.astimezone(UTC)
         while start < end:
-            midnight = datetime.combine(start.date() + timedelta(days=1), dtime(), tzinfo=self.tz)
-            chunk_end = min(midnight, end)
-            for clip in self._search_local(start, chunk_end):
+            local = start.astimezone(self.tz)
+            midnight = datetime.combine(local.date() + timedelta(days=1), dtime(), tzinfo=self.tz)
+            chunk_end = min(midnight.astimezone(UTC), end)
+            for clip in self._search_local(local, chunk_end.astimezone(self.tz)):
+                twin = seen.get((clip.name, clip.start_utc))
+                if twin is not None and (twin.size, twin.end_utc) != (clip.size, clip.end_utc):
+                    clip = self._second_pass(clip)
                 seen.setdefault((clip.name, clip.start_utc), clip)  # midnight-spanning clips
             start = chunk_end
         return list(seen.values())
 
+    def _second_pass(self, clip: Found) -> Found:
+        """The same local times, read as the second pass through a repeated hour."""
+
+        def later(t: datetime) -> datetime:
+            wall = t.astimezone(self.tz).replace(tzinfo=None)
+            return wall.replace(tzinfo=self.tz, fold=1).astimezone(UTC)
+
+        return replace(
+            clip,
+            start_utc=later(clip.start_utc),
+            end_utc=later(clip.end_utc) if clip.end_utc else None,
+        )
+
     def _search_local(self, start: datetime, end: datetime) -> list[Found]:
+        frm, to = start.strftime(_LOCAL_ISO), end.strftime(_LOCAL_ISO)
+        if to <= frm:  # a window inside the repeated hour: ask for the whole hour
+            frm = (start.replace(tzinfo=None) - timedelta(hours=1)).strftime(_LOCAL_ISO)
         data = self._call(
-            [
-                "vod",
-                "search",
-                "--from",
-                start.strftime(_LOCAL_ISO),
-                "--to",
-                end.strftime(_LOCAL_ISO),
-                "--limit",
-                "0",
-            ],
+            ["vod", "search", "--from", frm, "--to", to, "--limit", "0"],
             timeout=60,
         )
         if data.get("truncated"):
@@ -220,25 +242,34 @@ class ReolinkCamera:
             raise ToolError(
                 "vod search answered without a recording list", detail=repr(data)[:2000]
             )
-        return [self._parse(i) for i in items if isinstance(i, dict)]
+        parsed = (self._parse(i) for i in items if isinstance(i, dict))
+        return [f for f in parsed if f is not None]
 
-    def _parse(self, item: dict[str, Any]) -> Found:
+    def _parse(self, item: dict[str, Any]) -> Found | None:
         name, start = _first(item, _NAME_KEYS), _first(item, _START_KEYS)
         if not isinstance(name, str) or not isinstance(start, str):
             raise ToolError("vod search returned a clip without a name or start", detail=repr(item))
+        if not _NAME_RE.fullmatch(name):
+            logger.warning("camera.clip_name_rejected", camera=self.id, name=name[:80])
+            return None
 
-        def utc(s: str) -> datetime:
+        def utc(s: str, fold: int = 0) -> datetime:
             # Explicitly via the camera's zone: astimezone() alone would use
             # the container's zone.
-            return datetime.strptime(s, _LOCAL_ISO).replace(tzinfo=self.tz).astimezone(UTC)
+            wall = datetime.strptime(s, _LOCAL_ISO).replace(tzinfo=self.tz, fold=fold)
+            return wall.astimezone(UTC)
 
         end = _first(item, _END_KEYS)
         size = _first(item, _SIZE_KEYS)
         rec_type = _first(item, _TYPE_KEYS)
+        start_utc = utc(start)
+        end_utc = utc(end) if isinstance(end, str) else None
+        if end_utc is not None and end_utc < start_utc:  # ends after the clocks went back
+            end_utc = utc(end, fold=1)
         return Found(
             name=name,
-            start_utc=utc(start),
-            end_utc=utc(end) if isinstance(end, str) else None,
+            start_utc=start_utc,
+            end_utc=end_utc,
             size=size if isinstance(size, int) else None,
             rec_type=rec_type if isinstance(rec_type, str) else None,
         )
@@ -254,7 +285,7 @@ class ReolinkCamera:
                 ["vod", "download", *names, "--directory", str(dest)], timeout=timeout
             )
         except ToolError as exc:
-            if len(names) != 1 or exc.code is None or exc.code in _TRANSIENT_CODES:
+            if len(names) != 1 or exc.code is None or exc.code in TRANSIENT_CODES:
                 raise
             out.failed[names[0]] = str(exc)  # a one-name batch fails the whole call
             return out
@@ -345,9 +376,12 @@ class DemoCamera:
         return DeviceInfo("Demo camera", "demo", None)
 
 
-def scan_card(camera: Camera, now: datetime) -> tuple[list[Found], datetime | None]:
+def scan_card(
+    camera: Camera, now: datetime, known_start: datetime | None = None
+) -> tuple[list[Found], datetime | None]:
     """Everything on the card plus its oldest clip, walking back one local
-    day at a time until `EMPTY_DAYS_TO_STOP` empty days in a row."""
+    day at a time until `EMPTY_DAYS_TO_STOP` empty days in a row, counted
+    only once past `known_start` (where the card started last time)."""
     tz = ZoneInfo(camera.timezone)
     day_end = now.astimezone(tz) + timedelta(hours=2)  # a camera clock running ahead
     found: list[Found] = []
@@ -360,7 +394,9 @@ def scan_card(camera: Camera, now: datetime) -> tuple[list[Found], datetime | No
         found += clips
         if clips:
             empty = 0
-        elif day_start <= now:  # the look-ahead into tomorrow is not an empty day
+        elif day_start <= now and (known_start is None or day_start <= known_start):
+            # The look-ahead into tomorrow is not an empty day, and neither is
+            # a gap inside what the card is known to hold.
             empty += 1
         if empty >= EMPTY_DAYS_TO_STOP:
             break
@@ -389,23 +425,28 @@ class Gateway:
         return bool(data.get("listening"))
 
     def ensure(self) -> str:
-        """The gateway's address, starting it first if needed."""
+        """The gateway's address, starting it first if needed. One that is
+        still running but slow to answer is waited for, not doubled: a second
+        one can't bind the address, and its handle would replace the first's,
+        which `stop()` could then no longer stop."""
         with self._lock:
             if self.listening():
                 return self.addr
-            logger.info("gateway.starting", addr=self.addr)
-            self._proc = subprocess.Popen(
-                [self.binary, "gateway", "start", "--addr", self.addr],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            if self._proc is None or self._proc.poll() is not None:
+                logger.info("gateway.starting", addr=self.addr)
+                self._proc = subprocess.Popen(
+                    [self.binary, "gateway", "start", "--addr", self.addr],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            proc = self._proc
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 if self.listening():
                     return self.addr
-                if self._proc.poll() is not None:
-                    raise ToolError(f"reolink-gateway exited early (code {self._proc.returncode})")
+                if proc.poll() is not None:
+                    raise ToolError(f"reolink-gateway exited early (code {proc.returncode})")
                 time.sleep(0.3)
             raise ToolError("reolink-gateway did not start within 15 s")
 

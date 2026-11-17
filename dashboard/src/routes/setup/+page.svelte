@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { api, ApiError, type Session } from '#lib/api/index.js';
-	import { applySession, session } from '#lib/state/session.svelte.js';
+	import { ApiError } from '#lib/api/index.js';
+	import { applySession, postWithFreshCsrf, session } from '#lib/state/session.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as Field from '#lib/components/ui/field/index.js';
@@ -30,7 +30,7 @@
 		error = null;
 		try {
 			const body = { code, password, email: session.setupEmail ? null : email };
-			applySession(await api<Session>('/setup', { method: 'POST', body }));
+			applySession(await postWithFreshCsrf('/setup', body));
 			goto('/', { replace: true });
 		} catch (err) {
 			error = err instanceof ApiError ? err.message : 'Setup failed.';

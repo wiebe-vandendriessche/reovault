@@ -5,12 +5,32 @@
 	import StatusBadge from '#lib/components/app/StatusBadge.svelte';
 	import { bytes, plural } from '#lib/format.js';
 	import { stateLabel, typeLabel, typesOf } from '#lib/labels.js';
+	import GiveUpButton from '#lib/components/issues/GiveUpButton.svelte';
+	import { api } from '#lib/api/index.js';
+	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 
 	/** One clip of a day. Only a backed-up clip can be downloaded: it comes
 	 * straight out of restic. Clips still on the SD card play in the Reolink
 	 * app. */
-	let { clip, withDate = false, label }: { clip: Clip; withDate?: boolean; label?: string } = $props();
+	let {
+		clip,
+		withDate = false,
+		label,
+		actions = false
+	}: { clip: Clip; withDate?: boolean; label?: string; actions?: boolean } = $props();
+
+	async function retry() {
+		try {
+			await api(`/cameras/${encodeURIComponent(clip.camera)}/clips/retry`, {
+				method: 'POST',
+				body: { ids: [clip.id] }
+			});
+			toast.success('Tried again in the backup that starts now.');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+		}
+	}
 
 	const time = $derived(clip.start.slice(11, 19));
 	const when = $derived(withDate ? `${clip.start.slice(0, 10)} ${time}` : time);
@@ -40,7 +60,17 @@
 	{#if clip.state === 'pending' && clip.last_error}
 		<div class="border-t px-3 py-2.5 text-sm">
 			<p class="text-muted-foreground font-mono text-xs break-all">{clip.last_error}</p>
-			<p class="text-subtle mt-1 text-xs">{plural(clip.attempts, 'attempt')}; tried again on the next backup.</p>
+			<p class="text-subtle mt-1 text-xs">
+				{plural(clip.attempts, 'attempt')}; {clip.attempts >= 5
+					? 'tried again once a day until the SD card overwrites it.'
+					: 'tried again on the next backup.'}
+			</p>
+			{#if actions}
+				<div class="mt-2 flex flex-wrap gap-2">
+					<Button size="sm" variant="outline" onclick={retry}>Try again now</Button>
+					<GiveUpButton camera={clip.camera} ids={[clip.id]} />
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>

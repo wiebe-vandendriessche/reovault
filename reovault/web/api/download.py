@@ -7,7 +7,8 @@ from __future__ import annotations
 import threading
 import weakref
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Generator
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -19,7 +20,14 @@ from pydantic import BaseModel
 from reovault.config import CameraConfig
 from reovault.db import Clip, parse_iso
 from reovault.logging import get_logger
-from reovault.web.api.clips import _dump, _Sink, _types_match, locate, safe_filename
+from reovault.web.api.clips import (
+    _dump,
+    _Sink,
+    _types_match,
+    closing_stream,
+    locate,
+    safe_filename,
+)
 from reovault.web.deps import AppState, State, camera_or_404
 
 logger = get_logger(__name__)
@@ -125,7 +133,7 @@ def download_zip(
             released.set()
             _zip_lock.release()
 
-    def body() -> Iterator[bytes]:
+    def body() -> Generator[bytes]:
         sink = _Sink()
         try:
             with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_STORED) as zf:
@@ -138,8 +146,11 @@ def download_zip(
                             f"{folder}/{local:%Y-%m-%d}/{local:%H%M%S}_{safe_filename(c.name)}",
                             date_time=local.timetuple()[:6],
                         )
-                        with zf.open(info, "w", force_zip64=True) as member:
-                            for data in _dump(st, c):
+                        with (
+                            zf.open(info, "w", force_zip64=True) as member,
+                            closing(_dump(st, c)) as dump,
+                        ):
+                            for data in dump:
                                 member.write(data)
                                 yield sink.drain()
             yield sink.drain()  # the central directory
@@ -154,7 +165,7 @@ def download_zip(
     stream = body()
     weakref.finalize(stream, release)  # a never-started generator never runs `finally`
     return StreamingResponse(
-        stream,
+        closing_stream(stream),
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_filename(name)[:-4]}.zip"',

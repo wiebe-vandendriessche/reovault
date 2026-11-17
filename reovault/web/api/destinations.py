@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -59,6 +59,10 @@ def destination_out(st: AppState, d: DestinationConfig) -> DestinationOut:
     ]
     last_ok = parse_iso(s["last_ok"]) if s.get("last_ok") else None
     role = "off" if not d.enabled else "primary" if d is primary else "copy"
+    behind = False
+    if role == "copy" and not seeding:  # the same test as the `copy_behind` alert
+        missing, oldest = lag(st.db, st.settings, d)
+        behind = bool(missing and oldest and datetime.now(UTC) - oldest > timedelta(days=1))
     return DestinationOut(
         name=d.name,
         repository=st.rt.scrub_credentials(d.repository) or "",
@@ -73,7 +77,7 @@ def destination_out(st: AppState, d: DestinationConfig) -> DestinationOut:
         quota_short=quota_short(s),
         quota_too_small=bool(s.get("too_small")),
         held_back=int(s.get("blocked") or 0),
-        behind=role == "copy" and not seeding and bool(s.get("failures")),
+        behind=behind,
     )
 
 
@@ -164,7 +168,11 @@ def connect(body: ConnectIn, st: State) -> list[DestinationOut]:
             kind = rclone.BY_ID.get(body.kind)
             if kind is None:
                 raise HTTPException(422, "Unknown destination type.")
-            created = rclone.create(binary, body.name, kind, body.values)
+            # Disconnecting leaves the remote in rclone.conf; reconnecting under the
+            # same name replaces it, unless a configured destination still uses it.
+            prefix = f"rclone:{rclone.remote_name(body.name)}:"
+            in_use = any(d.repository.startswith(prefix) for d in st.settings.destinations)
+            created = rclone.create(binary, body.name, kind, body.values, replace=not in_use)
             rclone.check(binary, created)
             repository = f"rclone:{created}:{_remote_path(body.path)}"
         current = st.settings.primary()

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, ApiError, type Session } from '#lib/api/index.js';
-	import { applySession, session } from '#lib/state/session.svelte.js';
+	import { ApiError } from '#lib/api/index.js';
+	import { applySession, postWithFreshCsrf, session } from '#lib/state/session.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as Field from '#lib/components/ui/field/index.js';
@@ -31,7 +31,7 @@
 		busy = true;
 		error = null;
 		try {
-			applySession(await api<Session>('/login', { method: 'POST', body: { email, password } }));
+			applySession(await postWithFreshCsrf('/login', { email, password }));
 		} catch (err) {
 			error = err instanceof ApiError ? err.message : 'Sign-in failed.';
 			password = '';

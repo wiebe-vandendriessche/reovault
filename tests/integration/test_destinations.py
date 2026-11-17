@@ -239,3 +239,18 @@ def test_a_lost_database_is_rebuilt_across_destinations_without_downloads(env):
     assert {c.state for c in clips.values()} == {"backed_up"}
     for c in clips.values():
         assert e.db.clip_location(c, ["second"]) is not None
+
+
+def test_a_full_copy_makes_room_for_new_footage_instead_of_freezing(env):
+    """A copy at its size limit used to skip every new snapshot (and move its
+    floor past it), so new footage only ever had the primary."""
+    e = env(second_extra="max_gb = 3")  # room for three of the 1000-byte snapshots
+    _fill(e, 4)
+    e.copy_round()
+    for h in (1, 2, 3):
+        e.cam.add(NOW + timedelta(hours=h))
+        assert e.backup().outcome == "ok"
+        e.copy_round()
+    newest = max(e.snaps("local"), key=lambda s: s.time).root
+    assert status_of(e.db, "second")["error"] is None
+    assert newest in {s.root for s in e.snaps("second")}

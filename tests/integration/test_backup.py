@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import shutil
 import sqlite3
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from reovault import backup
 from reovault.backup import BackupRun, CameraState
+from reovault.camera import Downloaded, Found
 from reovault.db import Db
 from reovault.restic import Restic
 from reovault.tools import ToolError
@@ -303,7 +306,7 @@ def test_an_unexpected_error_ends_the_run_not_the_thread(env, monkeypatch):
     env.cam.add(NOW - timedelta(hours=2))
     monkeypatch.setattr(type(env.cam), "storage", lambda self: 1 / 0)
     monkeypatch.setattr(
-        backup, "scan_card", lambda cam, now: (_ for _ in ()).throw(ValueError("bad time"))
+        backup, "scan_card", lambda cam, now, **_kw: (_ for _ in ()).throw(ValueError("bad time"))
     )
     result = env.run()
     assert (result.outcome, result.error) == ("error", "unexpected error: bad time")
@@ -512,3 +515,79 @@ def test_where_the_card_starts_is_remembered_across_restarts(env):
     env.run()
     assert env.state.oldest_on_card is not None
     assert env.db.get_setting("card_start:cam") == iso(env.state.oldest_on_card)
+
+
+def test_dst_twins_get_their_own_rows_and_the_one_the_camera_hands_out_is_kept(env, monkeypatch):
+    """Two clips named alike across the night the clocks went back: the camera
+    hands out one of them for the name. That one is backed up; the other is
+    closed as lost with the reason, instead of failing every day."""
+    first = NOW - timedelta(days=2)
+    name = env.cam.add(first, size=1000)
+    data = os.urandom(1500)  # what the camera really hands out for this name
+    second = Found(
+        name, first + timedelta(hours=1), first + timedelta(hours=1, seconds=30), 1500, "md"
+    )
+    original_search = env.cam.search
+
+    def search(from_utc, to_utc):
+        found = original_search(from_utc, to_utc)
+        return found + ([second] if from_utc <= second.start_utc < to_utc else [])
+
+    def download(names, dest, timeout):
+        dest.mkdir(parents=True, exist_ok=True)
+        out = Downloaded()
+        for n in names:
+            (dest / f"{n}.mp4").write_bytes(data)
+            out.files[n] = dest / f"{n}.mp4"
+        return out
+
+    monkeypatch.setattr(env.cam, "search", search)
+    monkeypatch.setattr(env.cam, "download", download)
+    result = env.run()
+    assert result.outcome == "ok", result.error
+    rows = {r["size"]: dict(r) for r in env.db._all("SELECT * FROM clips WHERE name = ?", (name,))}
+    assert rows[1500]["state"] == "backed_up"
+    assert rows[1000]["state"] == "lost"
+    assert "clocks went back" in rows[1000]["last_error"]
+    clip = env.db.get_clip(rows[1500]["id"])
+    assert clip is not None
+    got, _ = env.restic.dump(clip.snapshot_id, clip.path).communicate()
+    assert got == data
+
+
+def test_a_recovered_file_cut_short_is_not_backed_up(env):
+    name = env.cam.add(NOW - timedelta(hours=3), size=1000)
+    env.db.upsert_clips(
+        "cam",
+        [(c.name, c.start_utc, c.end_utc, c.size, c.rec_type) for c, _ in env.cam.card.values()],
+    )
+    day = (NOW - timedelta(hours=3)).astimezone(ZoneInfo("Europe/Brussels")).date().isoformat()
+    left = env.staging / "batch" / day / f"{name}.mp4"
+    left.parent.mkdir(parents=True)
+    left.write_bytes(env.cam.card[name][1][:400])  # a crash cut it short
+    result = env.run()
+    assert result.outcome == "ok", result.error
+    clip = env.db.clips_by_name("cam", [name])[name]
+    assert clip.state == "backed_up"
+    got, _ = env.restic.dump(clip.snapshot_id, clip.path).communicate()
+    assert got == env.cam.card[name][1]  # downloaded again whole, not the short leftover
+
+
+def test_a_waiting_clip_the_card_overwrote_is_closed_as_lost(env):
+    env.cam.add(NOW - timedelta(hours=2))
+    gone = NOW - timedelta(days=3)
+    env.db.upsert_clips(
+        "cam", [("0120990101000000", gone, None, None, "md")]
+    )  # no size: never fetched
+    env.state.oldest_on_card = NOW - timedelta(days=1)  # what the previous scan saw
+    result = env.run()
+    assert result.outcome == "ok", result.error
+    assert env.states()["0120990101000000"] == "lost"
+
+
+def test_a_timezone_edit_does_not_make_backed_up_clips_new_again(env):
+    name = env.cam.add(NOW - timedelta(hours=3))
+    assert env.run().outcome == "ok"
+    clip, _ = env.cam.card[name]
+    env.db.upsert_clips("cam", [(name, clip.start_utc + timedelta(hours=1), None, clip.size, "md")])
+    assert env.states() == {name: "backed_up"}

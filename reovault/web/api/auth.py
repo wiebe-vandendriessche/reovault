@@ -92,11 +92,11 @@ def _session_out(st: State, jti: str | None) -> SessionOut:
     )
 
 
-def _throttle(st: State, request: Request) -> str:
+def _throttle(st: State, request: Request, *, shared: bool = True) -> str:
     """The caller's rate-limit key; raises 429 while locked out. Setup codes,
     logins and password changes all count against the same buckets."""
     key = request.client.host if request.client else "unknown"
-    retry_after = st.limiter.retry_after(key)
+    retry_after = st.limiter.retry_after(key, shared=shared)
     if retry_after is not None:
         minutes = int(retry_after // 60) + 1
         raise HTTPException(
@@ -110,11 +110,12 @@ def _throttle(st: State, request: Request) -> str:
 def confirm_password(st: State, request: Request, password: str | None) -> None:
     """Destructive changes (tightening retention, disconnecting or switching the
     primary destination) ask for the dashboard password again, so a stolen
-    session can't wipe backups. Counts against the same lockout as logins."""
-    client_key = _throttle(st, request)
+    session can't wipe backups. Counts against the caller's own lockout, not
+    the global one: a signed-in owner isn't held up by strangers' logins."""
+    client_key = _throttle(st, request, shared=False)
     current = load_password_hash(st.settings.web)
     if not password or current is None or not security.verify_password(password.encode(), current):
-        st.limiter.record_failure(client_key)
+        st.limiter.record_failure(client_key, shared=False)
         raise HTTPException(401, "Enter your dashboard password to confirm this change.")
     st.limiter.record_success(client_key)
 
