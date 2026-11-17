@@ -369,26 +369,40 @@ class DestinationWorker:
         This thread is the only one touching the copy's repositories, so it
         may trim them all. Returns the bytes held afterwards."""
         used = usage(self.db, dest.name)
-        # A camera's newest snapshot here carries its index: never this one.
-        keep = {s.id for s in retention.newest_by_camera(used).values()}
-        if any(s.age < incoming.age and s.id not in keep for s in used):
-            cut, _, _ = retention.quota_cut(used + [incoming], dest.keep_days, dest.max_gb, set())
-            by_camera: dict[str, list[str]] = {}
-            for s in cut:
-                if s is not incoming and s.age < incoming.age and s.id not in keep:
-                    by_camera.setdefault(s.camera, []).append(s.id)
-            trimmed = [s.age for s in cut if s.camera in by_camera and s.id in by_camera[s.camera]]
-            if trimmed:  # or the next round copies them straight back
-                self._floor(dest, max(trimmed) + timedelta(seconds=1))
-            for cam_id, ids in by_camera.items():
-                dst = restic_for(settings, cam_id, dest)
-                logger.info(
-                    "destination.making_room", destination=dest.name, camera=cam_id, n=len(ids)
-                )
-                dst.forget_ids(ids)
-                after = dst.snapshots()
-                self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in after])
-                self.db.expire_unlocated(cam_id)
+        # A camera's newest snapshot here carries its index: never that one.
+        # Asked from restic: the index keeps times to the second, and two
+        # snapshots made within one second can't be told apart there.
+        keep = {
+            snaps[-1].id
+            for cam_id in {s.camera for s in used}
+            if (snaps := restic_for(settings, cam_id, dest).snapshots())
+        }
+        candidates = sorted(
+            (s for s in used if s.age < incoming.age and s.id not in keep), key=lambda s: s.age
+        )
+        excess = (
+            sum(s.bytes for s in used)
+            + incoming.bytes
+            - dest.max_gb * retention.GB * retention.QUOTA_LOW
+        )
+        victims: list[Snap] = []
+        for s in candidates:  # oldest footage first, down to the low-water mark
+            if excess <= 0:
+                break
+            victims.append(s)
+            excess -= s.bytes
+        if victims:  # floor: or the next round copies them straight back
+            self._floor(dest, max(s.age for s in victims) + timedelta(seconds=1))
+        by_camera: dict[str, list[str]] = {}
+        for s in victims:
+            by_camera.setdefault(s.camera, []).append(s.id)
+        for cam_id, ids in by_camera.items():
+            dst = restic_for(settings, cam_id, dest)
+            logger.info("destination.making_room", destination=dest.name, camera=cam_id, n=len(ids))
+            dst.forget_ids(ids)
+            after = dst.snapshots()
+            self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in after])
+            self.db.expire_unlocated(cam_id)
         return sum(s.bytes for s in usage(self.db, dest.name))
 
     def _floor(self, dest: DestinationConfig, at: datetime) -> None:
