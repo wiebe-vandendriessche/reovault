@@ -247,8 +247,8 @@ def test_a_full_copy_makes_room_for_new_footage_instead_of_freezing(env):
     e = env(second_extra="max_gb = 3")  # room for three of the 1000-byte snapshots
     _fill(e, 4)
     e.copy_round()
-    for h in (1, 2, 3):
-        e.cam.add(NOW + timedelta(hours=h))
+    for m in (30, 20, 10):  # new footage, recorded just now: never in the future
+        e.cam.add(datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=m))
         assert e.backup().outcome == "ok"
         e.copy_round()
     newest = max(e.snaps("local"), key=lambda s: s.time).root
