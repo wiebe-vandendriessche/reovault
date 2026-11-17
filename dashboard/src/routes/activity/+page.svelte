@@ -60,11 +60,12 @@
 					<Card.Title>Clips that keep failing</Card.Title>
 					<Card.Description>
 						Still on the SD card, but {plural(a.failing.length, 'download')} failed several times. They are
-						tried again once a day until they back up or the card overwrites them.
+						tried again once a day until they back up or the card overwrites them. Try one again now, or
+						give up on a clip the camera can't hand out whole.
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-2">
-					{#each a.failing as clip (clip.id)}<ClipRow {clip} withDate label={camera ? undefined : names.get(clip.camera) ?? clip.camera} />{/each}
+					{#each a.failing as clip (clip.id)}<ClipRow {clip} actions withDate label={camera ? undefined : names.get(clip.camera) ?? clip.camera} />{/each}
 				</Card.Content>
 			</Card.Root>
 		{/if}

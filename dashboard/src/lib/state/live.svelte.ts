@@ -19,6 +19,9 @@ export const live = $state({
 });
 
 let source: EventSource | null = null;
+let onAlertCb: (() => void) | undefined;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let backoff = 1000;
 
 function bumpAll() {
 	live.activity++;
@@ -28,22 +31,29 @@ function bumpAll() {
 	live.settings++;
 }
 
+function bumpActivity() {
+	live.activity++;
+	live.problems++;
+}
+
 export function connectLive(onAlert?: () => void) {
-	if (source) return;
-	source = new EventSource(`${API}/events`);
-	source.addEventListener('hello', () => {
+	if (onAlert) onAlertCb = onAlert;
+	if (source || retryTimer) return;
+	const es = new EventSource(`${API}/events`);
+	source = es;
+	es.addEventListener('hello', () => {
+		backoff = 1000;
 		live.connected = true;
 		live.everConnected = true;
 		bumpAll();
 	});
-	source.addEventListener('resync', bumpAll);
-	source.addEventListener('activity', () => {
-		live.activity++;
-		live.problems++;
-	});
-	source.addEventListener('problems', () => live.problems++);
-	source.addEventListener('devices', () => live.devices++);
-	source.addEventListener('settings', (e) => {
+	es.addEventListener('resync', bumpAll);
+	es.addEventListener('activity', bumpActivity);
+	// Destination views (overview, settings) refetch with activity.
+	es.addEventListener('destinations', bumpActivity);
+	es.addEventListener('problems', () => live.problems++);
+	es.addEventListener('devices', () => live.devices++);
+	es.addEventListener('settings', (e) => {
 		live.settings++;
 		try {
 			if (JSON.parse(e.data).origin === 'file') live.fileEdits++;
@@ -51,17 +61,28 @@ export function connectLive(onAlert?: () => void) {
 			/* older server: no origin */
 		}
 	});
-	source.addEventListener('alert', () => {
+	es.addEventListener('alert', () => {
 		live.alert++;
-		onAlert?.();
+		onAlertCb?.();
 	});
-	source.onerror = () => {
-		// EventSource reconnects on its own (server sends `retry: 5000`).
+	es.onerror = () => {
 		live.connected = false;
+		// A network drop reconnects on its own (`retry: 5000`), but a non-200
+		// (a proxy's 502 while the container restarts) closes the stream for good.
+		if (es.readyState !== EventSource.CLOSED || source !== es) return;
+		source = null;
+		retryTimer = setTimeout(() => {
+			retryTimer = undefined;
+			connectLive();
+		}, backoff);
+		backoff = Math.min(backoff * 2, 30_000);
 	};
 }
 
 export function disconnectLive() {
+	clearTimeout(retryTimer);
+	retryTimer = undefined;
+	backoff = 1000;
 	source?.close();
 	source = null;
 	live.connected = false;

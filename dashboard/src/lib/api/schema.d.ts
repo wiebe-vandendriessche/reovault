@@ -113,6 +113,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/{cam_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Again
+         * @description Runs restic's read-back check of this camera's repositories soon: on
+         *     the primary after a backup run, which starts now, and on each copy in its
+         *     next round. A clean result clears a check alert, a damaged one confirms it.
+         */
+        post: operations["check_again_api_v1_cameras__cam_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}/clips/give-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give Up Clips
+         * @description Stop trying clips that keep failing: they count as lost and are never
+         *     downloaded again. For clips the camera can't hand out whole.
+         */
+        post: operations["give_up_clips_api_v1_cameras__cam_id__clips_give_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{cam_id}/clips/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Clips
+         * @description Clips that keep failing start over and go first in the next backup,
+         *     which starts now.
+         */
+        post: operations["retry_clips_api_v1_cameras__cam_id__clips_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/{cam_id}/device": {
         parameters: {
             query?: never;
@@ -714,6 +778,8 @@ export interface components {
         AlertsOut: {
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
+            /** Conditions */
+            conditions: string[];
             /** Env Pinned */
             env_pinned: boolean;
             /** Open */
@@ -771,6 +837,8 @@ export interface components {
             /** Backed Up Clips */
             backed_up_clips: number;
             card: components["schemas"]["CardOut"] | null;
+            /** Check Errors */
+            check_errors: number;
             coverage?: components["schemas"]["CoverageOut"] | null;
             /** Demo */
             demo: boolean;
@@ -784,9 +852,13 @@ export interface components {
             host: string | null;
             /** Id */
             id: string;
+            /** Last Ok At */
+            last_ok_at: string | null;
             last_run: components["schemas"]["RunOut"] | null;
             /** Lost 7D */
             lost_7d: number;
+            /** Maintenance Error */
+            maintenance_error: string | null;
             /** Name */
             name: string | null;
             /** Next Run At */
@@ -829,6 +901,11 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ClipIdsIn */
+        ClipIdsIn: {
+            /** Ids */
+            ids?: number[] | null;
+        };
         /** ClipOut */
         ClipOut: {
             /** Attempts */
@@ -854,6 +931,11 @@ export interface components {
             start: string;
             /** State */
             state: string;
+        };
+        /** ClipsChangedOut */
+        ClipsChangedOut: {
+            /** Changed */
+            changed: number;
         };
         /** ConfigOut */
         ConfigOut: {
@@ -1096,10 +1178,23 @@ export interface components {
         };
         /** IssueOut */
         IssueOut: {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: ("run" | "check" | "retry_clips" | "give_up_clips" | "destinations" | "alerts" | "recovery")[];
             /** Camera */
             camera: string | null;
+            /** Key */
+            key: string;
             /** Message */
             message: string;
+            /**
+             * Severity
+             * @default error
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
             /** Title */
             title: string;
         };
@@ -1141,6 +1236,8 @@ export interface components {
              * Format: date-time
              */
             first_seen_at: string;
+            /** Key */
+            key: string;
             /** Last Sent At */
             last_sent_at: string | null;
             /** Message */
@@ -1637,6 +1734,114 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_again_api_v1_cameras__cam_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    give_up_clips_api_v1_cameras__cam_id__clips_give_up_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClipIdsIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClipsChangedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_clips_api_v1_cameras__cam_id__clips_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cam_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClipIdsIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClipsChangedOut"];
+                };
             };
             /** @description Validation Error */
             422: {

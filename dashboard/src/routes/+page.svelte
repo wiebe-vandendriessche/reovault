@@ -13,6 +13,7 @@
 	import NoCamera from '#lib/components/app/NoCamera.svelte';
 	import CameraTile from '#lib/components/overview/CameraTile.svelte';
 	import DestinationCard from '#lib/components/overview/DestinationCard.svelte';
+	import IssueActions from '#lib/components/issues/IssueActions.svelte';
 	import Info from '@lucide/svelte/icons/info';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
@@ -122,12 +123,16 @@
 					</Card.Header>
 					<Card.Content>
 						<ul class="flex flex-col gap-4">
-							{#each o.issues as issue, i (i)}
+							{#each o.issues as issue (issue.key)}
 								<li class="flex items-start gap-3">
-									<TriangleAlert class="text-warn mt-0.5 size-4 shrink-0" aria-hidden="true" />
+									<TriangleAlert
+										class="{issue.severity === 'error' ? 'text-bad' : 'text-warn'} mt-0.5 size-4 shrink-0"
+										aria-hidden="true"
+									/>
 									<div class="min-w-0">
 										<p class="text-sm font-medium">{issue.title}</p>
 										<p class="text-muted-foreground text-sm">{issue.message}</p>
+										<IssueActions {issue} />
 									</div>
 								</li>
 							{/each}
