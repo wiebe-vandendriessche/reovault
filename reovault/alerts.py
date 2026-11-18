@@ -158,6 +158,8 @@ def channel_status(cfg: AlertsConfig) -> list[dict[str, Any]]:
 # see docs/dashboard.md), so none stays open for good.
 CATALOG: dict[str, str] = {
     "no_destination": "No backup destination is set up.",
+    "destination_unreachable": "The backup destination can't be reached (backups then resume "
+    "on their own).",
     "failing": "Two backups of a camera in a row fail.",
     "stale": "A camera has had no successful backup for several hours.",
     "held": "Backups wait because the destination is at its size limit.",

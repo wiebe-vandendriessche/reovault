@@ -342,3 +342,20 @@ def test_a_failing_settings_backup_is_raised_and_points_to_recovery(backed_up):
     assert _issues(client)["config_backup:local:*"]["actions"] == ["recovery"]
     update_status(rt.db, "local", config_error=None)
     assert "config_backup:local:*" not in _issues(client)
+
+
+def test_an_unreachable_destination_is_one_problem_not_one_per_camera(backed_up):
+    rt, client = backed_up
+    from reovault.destinations import update_status
+
+    with rt.db.tx() as c:  # long since the last good backup
+        c.execute("UPDATE runs SET started_at = ?, finished_at = ?", ("2026-01-01T00:00:00Z",) * 2)
+    _finished(rt, "error", "restic open failed: error talking HTTP to rclone")
+    _finished(rt, "error", "restic open failed: error talking HTTP to rclone")
+    update_status(rt.db, "local", config_error="restic backup failed: connection refused")
+    rt.db.set_setting("down_since:local", "2026-11-17T17:45:00Z")
+    issues = _issues(client)
+    assert set(issues) - {"no_channel:*"} == {"destination_unreachable:local:*"}
+    assert "resume on their own" in issues["destination_unreachable:local:*"]["message"]
+    rt.db.delete_setting("down_since:local")  # it answered again
+    assert "destination_unreachable:local:*" not in _issues(client)

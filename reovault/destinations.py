@@ -209,10 +209,10 @@ def _check_due(db: Db, tag: str, now: datetime) -> bool:
     return now - parse_iso(last) >= CHECK_EVERY
 
 
-def run_check(db: Db, tag: str, restic: Restic) -> str | None:
+def run_check(db: Db, tag: str, restic: Restic) -> None:
     """The weekly read-back of one repository (`tag` is `<destination>:<camera>`),
-    when due. Returns why it couldn't finish; that is a maintenance problem,
-    retried in a few hours, and says nothing about the data. Errors are only
+    when due. Raises `ToolError` when it couldn't finish: a maintenance
+    problem, retried in a few hours, that says nothing about the data. Errors are only
     recorded after a second check finds them too: a backend that drops reads
     makes restic count errors in a healthy repository."""
     now = datetime.now(UTC)
@@ -223,11 +223,14 @@ def run_check(db: Db, tag: str, restic: Restic) -> str | None:
     result = restic.check(CHECK_SUBSET)
     if result.outcome == "failed":
         db.set_setting(f"check_next:{tag}", iso(now + CHECK_RETRY))
-        return result.message
+        raise ToolError(
+            f"the weekly check couldn't finish: {result.message}",
+            destination_down=result.destination_down,
+        )
     if result.outcome == "errors" and not db.get_setting(f"check_suspect:{tag}"):
         db.set_setting(f"check_suspect:{tag}", result.message)
         db.set_setting(f"check_next:{tag}", iso(now + CHECK_CONFIRM))
-        return None
+        return
     db.delete_setting(f"check_suspect:{tag}")
     db.set_setting(f"check_errors:{tag}", str(result.errors))
     if result.errors:
@@ -237,7 +240,6 @@ def run_check(db: Db, tag: str, restic: Restic) -> str | None:
     else:
         db.delete_setting(f"check_detail:{tag}")
     db.set_setting(f"check_next:{tag}", iso(now + CHECK_EVERY))
-    return None
 
 
 class DestinationWorker:
@@ -454,10 +456,10 @@ class DestinationWorker:
             logger.info("destination.clips_expired", camera=cam_id, count=expired)
 
     def _check(self, dest: DestinationConfig, cam_id: str, dst: Restic) -> None:
-        problem = run_check(self.db, f"{dest.name}:{cam_id}", dst)
-        self.publish("destinations")
-        if problem:
-            raise ToolError(f"the weekly check couldn't finish: {problem}")
+        try:
+            run_check(self.db, f"{dest.name}:{cam_id}", dst)
+        finally:
+            self.publish("destinations")
 
 
 class Destinations:

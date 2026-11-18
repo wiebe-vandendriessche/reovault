@@ -104,6 +104,19 @@ def open_repository(
     db.mark_repo_seen(destination, name)
 
 
+def note_destination(db: Db, destination: str, *, down: bool) -> None:
+    """Remembers since when `destination` hasn't answered (`down_since:<name>`
+    in the index, so a restart remembers it too); the first success clears it.
+    Alerts then say "can't be reached since ..." once, instead of every camera
+    failing with restic's error text."""
+    key = f"down_since:{destination}"
+    since = db.get_setting(key)
+    if down and since is None:
+        db.set_setting(key, iso(datetime.now(UTC)))
+    elif not down and since is not None:
+        db.delete_setting(key)
+
+
 class RunError(Exception):
     """Ends a run with a message for the dashboard; nothing is lost."""
 
@@ -129,6 +142,8 @@ class CameraState:
     # Why the last run stopped early on its own (the size-limit hold), shown
     # and alerted: a stopped run is neither ok nor an error.
     held: str | None = None
+    # The last run couldn't reach the backup destination.
+    destination_down: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
 
 
@@ -199,6 +214,9 @@ class BackupRun:
                     result.outcome, result.error = "error", str(exc)
                     if isinstance(exc, ToolError) and exc.unreachable:
                         self.state.unreachable_since = self.state.unreachable_since or self.clock()
+                    if isinstance(exc, ToolError) and exc.destination_down:
+                        self.state.destination_down = True
+                        note_destination(self.db, self.destination, down=True)
                     logger.error("backup.run_failed", camera=cam_id, error=str(exc))
                 except Exception as exc:  # noqa: BLE001 - a bug must not end the camera's thread
                     result.outcome, result.error = "error", f"unexpected error: {exc}"
@@ -223,6 +241,8 @@ class BackupRun:
         self.state.held = None
         try:
             open_repository(self.db, self.destination, self.camera.id, self.restic)
+            self.state.destination_down = False
+            note_destination(self.db, self.destination, down=False)
         except (ToolError, RunError):
             # The destination is down, but the card can still be read: record
             # what it holds, so the dashboard shows the real backlog and the

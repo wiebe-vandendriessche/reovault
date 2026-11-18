@@ -204,6 +204,16 @@ to its own repositories, reading the primary with `restic copy`. Lock-taking
 restic commands pass `--retry-lock 10m`, so the two sides wait for each other
 instead of failing. Cameras run in parallel; a camera never does.
 
+**Destination outages.** A restic error that says the destination didn't
+answer (connection refused or reset, timeouts, `error talking HTTP to rclone`,
+a 502/503/504), or a restic call that runs into its own timeout, is an outage,
+not a broken repository: it is never taken as "missing", nothing is created,
+and the index records `down_since:<destination>` until the first success.
+Alerts then report one "can't be reached" problem instead of every camera
+failing, upkeep and the settings backup wait without counting failures, and
+each run still reads the card so the backlog is known. Everything resumes on
+the first run that reaches the destination again.
+
 **Stale locks.** restic never ignores a lock whose process is gone, so one left
 behind blocks every later command. Any restic command that finds the
 repository locked runs `restic unlock` (which removes only locks whose process

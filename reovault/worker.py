@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from reovault import retention
-from reovault.backup import BackupRun, CameraState, RunResult
+from reovault.backup import BackupRun, CameraState, RunResult, note_destination
 from reovault.camera import Camera, DemoCamera, Gateway, ReolinkCamera
 from reovault.config import CameraConfig, DestinationConfig, Settings
 from reovault.db import Db, now_iso, parse_iso
@@ -221,6 +221,7 @@ class Worker:
             restic = restic_for(settings, self.id, primary)
             if restic.state() != "ok":
                 return
+            note_destination(self.db, primary.name, down=False)
             # Keyed by destination too: after a primary switch, the old
             # repository's check results say nothing about the new one.
             tag = f"{primary.name}:{self.id}"
@@ -233,11 +234,16 @@ class Worker:
             if over or self._due(f"forget:{tag}", every):
                 self.db.set_setting(f"forget:{tag}", now_iso())
                 self._retain(settings, primary, restic)
-            if check and (problem := run_check(self.db, tag, restic)):
-                raise ToolError(f"the weekly check couldn't finish: {problem}")
+            if check:
+                run_check(self.db, tag, restic)
             self.health.maintenance_error, self.health.maintenance_failures = None, 0
         except ToolError as exc:
             self.health.maintenance_error = str(exc)
+            if exc.destination_down:
+                # The outage is its own problem; upkeep catches up afterwards.
+                note_destination(self.db, primary.name, down=True)
+                logger.warning("worker.maintenance_waiting", camera=self.id, error=str(exc))
+                return
             self.health.maintenance_failures += 1
             logger.error("worker.maintenance_failed", camera=self.id, error=str(exc))
 

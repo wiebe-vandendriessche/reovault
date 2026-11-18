@@ -103,3 +103,22 @@ def test_the_useful_line_of_a_lock_error_is_kept():
     assert failure_message('{"message_type":"exit_error","code":1,"message":"Fatal: boom"}') == (
         "Fatal: boom"
     )
+
+
+def test_a_destination_that_doesnt_answer_is_told_apart_from_a_broken_repository():
+    from reovault.restic import destination_down
+
+    nextcloud_gone = (
+        'rclone: CRITICAL: Failed to create file system for "r:/repo": read metadata failed: '
+        'Propfind "http://127.0.0.1:9/repo": dial tcp 127.0.0.1:9: connect: connection refused\n'
+        "Fatal: unable to open repository at rclone:r:/repo: error talking HTTP to rclone: "
+        "exit status 1\n"
+    )
+    nextcloud_hung = (
+        "Fatal: unable to open repository at rclone:reovault-Nextcloud:reovault/front-door: "
+        'error talking HTTP to rclone: Get "http://localhost/file-1": context deadline exceeded '
+        "(Client.Timeout exceeded while awaiting headers)\n"
+    )
+    assert destination_down(nextcloud_gone) and destination_down(nextcloud_hung)
+    assert not destination_down("Fatal: wrong password or no key found\n")
+    assert not destination_down("Fatal: repository contains errors\n")

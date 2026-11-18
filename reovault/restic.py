@@ -29,6 +29,29 @@ MISSING, LOCKED, WRONG_PASSWORD = 10, 11, 12
 
 RepoState = Literal["ok", "missing", "wrong_password"]
 
+# What restic and its rclone backend say when the destination doesn't answer
+# (seen on Nextcloud over WebDAV in November 2026, and the usual network
+# errors). Not a damaged repository: it works again once the destination does.
+_DOWN = (
+    "error talking http to rclone",
+    "context deadline exceeded",
+    "client.timeout exceeded",
+    "connection refused",
+    "connection reset",
+    "no such host",
+    "network is unreachable",
+    "i/o timeout",
+    "tls handshake timeout",
+    "503 service unavailable",
+    "502 bad gateway",
+    "504 gateway timeout",
+)
+
+
+def destination_down(stderr: str) -> bool:
+    text = stderr.lower()
+    return any(s in text for s in _DOWN)
+
 
 @dataclass(frozen=True, slots=True)
 class CheckResult:
@@ -42,6 +65,7 @@ class CheckResult:
     errors: int = 0
     broken_packs: tuple[str, ...] = ()
     message: str = ""
+    destination_down: bool = False
 
 
 def _readable(line: str) -> str:
@@ -125,12 +149,18 @@ class Restic:
         wait = ["--retry-lock", LOCK_WAIT] if wait_lock else []
         cmd = [self.binary, "-r", self.repository, *wait, *args]
         limit = timeout + (LOCK_WAIT_SECS if wait_lock else 0)
-        proc = run(cmd, timeout=limit, env=self.env)
-        if proc.returncode == LOCKED and args[:1] != ("unlock",):
-            self.unlock()
-            if also_unlock is not None:
-                also_unlock.unlock()
+        try:
             proc = run(cmd, timeout=limit, env=self.env)
+            if proc.returncode == LOCKED and args[:1] != ("unlock",):
+                self.unlock()
+                if also_unlock is not None:
+                    also_unlock.unlock()
+                proc = run(cmd, timeout=limit, env=self.env)
+        except ToolError as exc:
+            # The limits are generous (scaled to the bytes): a restic call that
+            # runs into one is waiting on a destination that stopped answering.
+            exc.destination_down = exc.timed_out
+            raise
         return proc
 
     def _fail(self, what: str, proc: subprocess.CompletedProcess[str]) -> ToolError:
@@ -138,7 +168,10 @@ class Restic:
         if proc.returncode == LOCKED:
             message = f"the repository is locked by another restic process: {message}"
         return ToolError(
-            f"restic {what} failed: {message}", code=proc.returncode, detail=proc.stderr[-4000:]
+            f"restic {what} failed: {message}",
+            code=proc.returncode,
+            detail=proc.stderr[-4000:],
+            destination_down=destination_down(proc.stderr),
         )
 
     def state(self) -> RepoState:
@@ -277,7 +310,7 @@ class Restic:
                 "check", "--read-data-subset", subset, "--json", timeout=6 * 3600, wait_lock=True
             )
         except ToolError as exc:  # timed out
-            return CheckResult("failed", message=str(exc))
+            return CheckResult("failed", message=str(exc), destination_down=exc.destination_down)
         if proc.returncode == 0:
             return CheckResult("ok")
         summary: dict[str, Any] = next(
@@ -298,7 +331,9 @@ class Restic:
                 broken_packs=tuple(summary.get("broken_packs") or ()),
                 message=message,
             )
-        return CheckResult("failed", message=message)
+        return CheckResult(
+            "failed", message=message, destination_down=destination_down(proc.stderr)
+        )
 
     def dump(self, snapshot_id: str, path: str) -> subprocess.Popen[bytes]:
         """Streams one file out of a snapshot on stdout. Without a lock: the
