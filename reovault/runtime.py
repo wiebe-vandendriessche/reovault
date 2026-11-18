@@ -17,7 +17,7 @@ from reovault.camera import Gateway
 from reovault.config import Settings
 from reovault.config_store import ConfigStore
 from reovault.configbackup import ConfigBackup
-from reovault.db import Db
+from reovault.db import Db, parse_iso
 from reovault.destinations import Destinations, lag, quota_short, status_of
 from reovault.status import camera_status
 from reovault.web.events import EventBus
@@ -107,10 +107,28 @@ class Runtime:
                 )
             )
         now = datetime.now(UTC)
+        primary = settings.primary()
+        down = self._down_since(primary.name) if primary else None
+        if primary and down:
+            out.append(
+                Condition(
+                    "destination_unreachable",
+                    None,
+                    f"{primary.name} can't be reached",
+                    f"ReoVault hasn't reached {primary.name} since {down:%d %b %H:%M} UTC. "
+                    "Nothing needs doing on this side: backups resume on their own once it "
+                    "answers again. Until then new clips wait on the SD cards; if any get "
+                    "close to being overwritten, that is a separate alert.",
+                    subject=primary.name,
+                    actions=("destinations",),
+                )
+            )
         for cam in settings.cameras:
             if not cam.enabled:
                 continue
-            out += self._camera_conditions(settings, cam.id, cam.name or cam.id, now)
+            out += self._camera_conditions(
+                settings, cam.id, cam.name or cam.id, now, primary_down=down is not None
+            )
         alerts = settings.alerts
         if alerts.rules.enabled and not any(c["configured"] for c in channel_status(alerts)):
             out.append(
@@ -126,9 +144,21 @@ class Runtime:
         out += self._destination_conditions(settings)
         return out
 
+    def _down_since(self, destination: str) -> datetime | None:
+        raw = self.db.get_setting(f"down_since:{destination}")
+        return parse_iso(raw) if raw else None
+
     def _camera_conditions(
-        self, settings: Settings, cam_id: str, label: str, now: datetime
+        self,
+        settings: Settings,
+        cam_id: str,
+        label: str,
+        now: datetime,
+        *,
+        primary_down: bool = False,
     ) -> list[Condition]:
+        """`primary_down`: the destination outage is reported once on its own;
+        a camera's failing, stale and upkeep alerts would only repeat it."""
         out: list[Condition] = []
         worker = self.workers.get(cam_id)
         state = worker.state if worker else None
@@ -140,7 +170,9 @@ class Runtime:
         runs = self.db.runs(cam_id, limit=2, finished=True, decided=True)
         last_ok = self.db.last_ok(cam_id)
         stale_after = max(STALE_AFTER, 3 * interval)
-        if last_ok is not None and now - last_ok >= stale_after:
+        if primary_down:
+            pass
+        elif last_ok is not None and now - last_ok >= stale_after:
             error = next((r.error for r in runs if r.outcome == "error"), None)
             out.append(
                 Condition(
@@ -222,7 +254,7 @@ class Runtime:
                         actions=("check",),
                     )
                 )
-        if worker and worker.health.maintenance_failures >= 2:
+        if worker and worker.health.maintenance_failures >= 2 and not primary_down:
             out.append(
                 Condition(
                     "maintenance",
@@ -250,10 +282,15 @@ class Runtime:
 
     def _destination_conditions(self, settings: Settings) -> list[Condition]:
         out: list[Condition] = []
+        primary = settings.primary()
+        primary_down = bool(primary and self._down_since(primary.name))
         for dest in (d for d in settings.destinations if d.enabled):
             st = status_of(self.db, dest.name)
-            role = "primary" if dest is settings.primary() else "copy"
-            if int(st.get("failures") or 0) >= 2:
+            role = "primary" if dest is primary else "copy"
+            down = self._down_since(dest.name) is not None
+            # A copy can't receive anything while the primary is unreachable:
+            # that outage is the one problem to report.
+            if int(st.get("failures") or 0) >= 2 and not (role == "copy" and primary_down):
                 out.append(
                     Condition(
                         "destination_failing",
@@ -312,7 +349,7 @@ class Runtime:
                         actions=("destinations",),
                     )
                 )
-            if st.get("config_error"):
+            if st.get("config_error") and not down:
                 out.append(
                     Condition(
                         "config_backup",

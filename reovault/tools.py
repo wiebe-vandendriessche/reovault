@@ -36,6 +36,7 @@ class ToolError(Exception):
         detail: str | None = None,
         unreachable: bool = False,
         timed_out: bool = False,
+        destination_down: bool = False,
     ):
         super().__init__(message)
         self.code = code
@@ -44,6 +45,9 @@ class ToolError(Exception):
         # with any clip, and the dashboard says "offline", not "failing".
         self.unreachable = unreachable
         self.timed_out = timed_out
+        # The backup destination (not the camera) didn't answer: an outage
+        # that ends by itself, not a failure of any clip or repository.
+        self.destination_down = destination_down
 
 
 def describe_exit(tool: str, code: int) -> str:

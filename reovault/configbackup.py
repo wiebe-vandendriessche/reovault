@@ -17,7 +17,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from reovault.backup import open_repository
+from reovault.backup import note_destination, open_repository
 from reovault.config import DestinationConfig, Settings
 from reovault.db import Db, now_iso
 from reovault.destinations import restic_for, update_status
@@ -78,7 +78,10 @@ class ConfigBackup:
             except ToolError as exc:
                 logger.error("configbackup.failed", destination=dest.name, error=str(exc))
                 update_status(self.db, dest.name, config_error=str(exc))
+                if exc.destination_down:
+                    note_destination(self.db, dest.name, down=True)
                 continue
+            note_destination(self.db, dest.name, down=False)
             self.db.set_setting(f"config_backup_hash:{dest.name}", want)
             update_status(self.db, dest.name, config_ok=now_iso(), config_error=None)
 

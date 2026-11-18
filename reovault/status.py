@@ -58,6 +58,12 @@ def camera_status(
         verdict, text = "offline", f"The camera hasn't answered since {since}."
     elif state and state.card and state.card.mounted is False:
         verdict, text = "not_mounted", "The camera reports no SD card."
+    elif last and last.outcome == "error" and state and state.destination_down:
+        verdict = "failing"
+        text = (
+            "The backup destination can't be reached. Backups resume on their own once it "
+            "answers; until then clips wait on the SD card."
+        )
     elif last and last.outcome == "error":
         verdict, text = "failing", f"The last backup failed: {last.error}"
     elif (

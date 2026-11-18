@@ -51,6 +51,7 @@ or comes with the button or link that resolves it. None stays forever.
 
 | Problem | Clears | From the dashboard |
 |---|---|---|
+| The destination can't be reached | as soon as it answers again (shown once, instead of every camera failing) | **Open destinations** |
 | Backups are failing (two in a row) | on the next good backup | **Back up now** |
 | No backup since ... (6 hours, or 3 intervals) | on the next good backup | **Back up now** |
 | Backups are waiting (size limit) | once the copies catch up | **Open destinations** |
@@ -63,6 +64,12 @@ or comes with the button or link that resolves it. None stays forever.
 | Size limit too small, over its size limit, copy is behind, can't be reached | when the cause is gone | **Open destinations** |
 | Alerts have nowhere to go | when a channel is set up | **Open alert settings** |
 | Settings backup failing | on the next good settings backup | **Open recovery** |
+
+When the destination (say Nextcloud) stops answering, nothing needs doing:
+every camera keeps reading its card and tries again each interval, clips wait
+on the SD cards, and the first run after the destination is back uploads them.
+Only "clips at risk" is still alerted per camera, because that is the one that
+asks for action if an outage lasts as long as the card holds footage.
 
 A repository lock left behind by a restic that died (a timeout, a restart, a
 destination that hung) is removed by ReoVault itself; it never needs a hand.
