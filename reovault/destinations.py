@@ -36,7 +36,13 @@ def restic_env(settings: Settings) -> dict[str, str]:
     env = {
         "RESTIC_CACHE_DIR": os.environ.get(
             "RESTIC_CACHE_DIR", str(settings.storage.data_dir / "restic-cache")
-        )
+        ),
+        # Nextcloud moves every deleted file to its trash bin, and each move
+        # queues a job that rescans the whole bin: a prune's thousands of pack
+        # deletes then fill the server's disk and stall it for hours. The
+        # header deletes for real; other WebDAV servers ignore it. A remote
+        # with its own `headers` setting overrides this.
+        "RCLONE_WEBDAV_HEADERS": os.environ.get("RCLONE_WEBDAV_HEADERS", "X-NC-Skip-Trashbin,true"),
     }
     if settings.backup.password_file is not None:
         env["RESTIC_PASSWORD_FILE"] = str(settings.backup.password_file)
