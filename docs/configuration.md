@@ -69,6 +69,7 @@ for you.
 | `primary` | see below | Exactly one enabled destination is primary. With a single destination it is implied. |
 | `keep_days` | `0` | Delete backups older than this, counted from the newest backup. `0` keeps everything. Keep the primary's longer than your SD cards hold (about 7 days on a busy 256 GB camera). |
 | `max_gb` | `0` | A size limit for this destination, in GB (10^9 bytes, as disks and cloud plans count). At 90% of it the oldest backups go, down to 85%; this is checked after every batch. `0` is no limit. |
+| `check` | `true` | Run the weekly `restic check` that reads 500 MB back. `false` for a server that blocks your IP after large downloads (seen with a Nextcloud behind a strict firewall). |
 | `enabled` | `true` | `false` stops using it; its backups stay. |
 
 Retention is chosen by ReoVault, not by `restic forget --keep-within`: the

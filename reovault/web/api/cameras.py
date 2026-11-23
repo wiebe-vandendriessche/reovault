@@ -160,6 +160,7 @@ def camera_out(st: AppState, cam_id: str, *, coverage_span: str | None = None) -
         check_errors=sum(
             int(st.db.get_setting(f"check_errors:{d.name}:{cam_id}") or 0)
             for d in st.settings.destinations
+            if d.check
         ),
         maintenance_error=st.redact(worker.health.maintenance_error) if worker else None,
         coverage=CoverageOut.model_validate(
@@ -258,10 +259,12 @@ def check_again(cam_id: str, st: State) -> CameraOut:
     worker = st.rt.workers.get(camera_or_404(st, cam_id).id)
     if worker is None:
         raise HTTPException(409, "This camera is turned off.")
-    for d in st.settings.destinations:
-        if d.enabled:
-            request_check(st.db, f"{d.name}:{cam_id}")
-            st.db.delete_setting(f"check_suspect:{d.name}:{cam_id}")
+    checked = [d for d in st.settings.destinations if d.enabled and d.check]
+    if not checked:
+        raise HTTPException(409, "Checks are turned off for this camera's destinations.")
+    for d in checked:
+        request_check(st.db, f"{d.name}:{cam_id}")
+        st.db.delete_setting(f"check_suspect:{d.name}:{cam_id}")
     worker.run_now()
     st.rt.destinations.wake()
     return camera_out(st, cam_id)

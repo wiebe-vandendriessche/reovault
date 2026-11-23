@@ -237,7 +237,8 @@ class Runtime:
                     actions=("retry_clips", "give_up_clips"),
                 )
             )
-        for dest in (d for d in settings.destinations if d.enabled):
+        # A check turned off says nothing current: its last findings aren't alerted.
+        for dest in (d for d in settings.destinations if d.enabled and d.check):
             tag = f"{dest.name}:{cam_id}"
             bad = int(self.db.get_setting(f"check_errors:{tag}") or 0)
             if bad:

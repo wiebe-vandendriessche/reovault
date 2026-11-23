@@ -66,6 +66,19 @@ without changing anything.
 proxy (the default, no port published), or a direct port on your LAN/VPN. See
 the comments at its top and [Security](security.md#deployment-modes).
 
+### A destination behind a strict firewall
+
+Some hosts block your IP for hours after a burst of traffic. iLab.t's Nextcloud
+did so within minutes of every weekly check. For such a destination, turn its
+weekly integrity check off (Settings, Destinations, Limits, or `check = false`
+in `reovault.toml`) and cap rclone in `compose.yaml`:
+
+```yaml
+    environment:
+      RCLONE_TPSLIMIT: "3"        # requests per second, per restic call
+      RCLONE_BWLIMIT: "off:2M"    # uploads unlimited, downloads 2 MiB/s
+```
+
 ## The first run
 
 The first run backs up everything that's on each SD card: on the verified

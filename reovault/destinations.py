@@ -368,7 +368,8 @@ class DestinationWorker:
         theirs = dst.snapshots() if todo else theirs
         self.db.set_locations(cam_id, dest.name, [(s.root, s.id, s.time) for s in theirs])
         self._retain(settings, dest, cam_id, dst, theirs)
-        self._check(dest, cam_id, dst)
+        if dest.check:
+            self._check(dest, cam_id, dst)
 
     def _make_room(self, settings: Settings, dest: DestinationConfig, incoming: Snap) -> int:
         """Forgets the copy's snapshots, of any camera, that its quota would cut

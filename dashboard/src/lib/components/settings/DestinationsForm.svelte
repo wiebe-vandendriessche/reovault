@@ -78,6 +78,7 @@
 	let eKeep = $state(0);
 	let eMax = $state(0);
 	let eOn = $state(true);
+	let eCheck = $state(true);
 	let preview = $state<LimitPreview | null>(null);
 
 	function open(kind: Action['kind'], dest: Destination) {
@@ -87,6 +88,7 @@
 		eKeep = dest.keep_days;
 		eMax = dest.max_gb;
 		eOn = dest.role !== 'off';
+		eCheck = dest.check;
 		preview = null;
 	}
 	$effect(() => {
@@ -109,7 +111,7 @@
 			if (action.kind === 'edit')
 				list.data = await api<Destination[]>(base, {
 					method: 'PUT',
-					body: { keep_days: eKeep, max_gb: eMax, enabled: eOn, confirm_password }
+					body: { keep_days: eKeep, max_gb: eMax, enabled: eOn, check: eCheck, confirm_password }
 				});
 			else if (action.kind === 'primary')
 				list.data = await api<Destination[]>(`${base}/primary`, { method: 'POST', body: { confirm_password } });
@@ -266,6 +268,12 @@
 						</p>
 					{/if}
 					<label class="flex items-center gap-2 text-sm"><Switch bind:checked={eOn} /> In use</label>
+					<Field.Field>
+						<label class="flex items-center gap-2 text-sm"><Switch bind:checked={eCheck} /> Weekly integrity check</label>
+						<Field.Description>
+							Reads 500 MB back each week to catch damage. Turn it off for a server that blocks your IP after large downloads.
+						</Field.Description>
+					</Field.Field>
 				{/if}
 				<Field.Field>
 					<Field.Label for="a-pw">Your dashboard password</Field.Label>

@@ -7,6 +7,7 @@ never ignores a stale lock and ReoVault only unlocked at startup.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -122,3 +123,18 @@ def test_a_destination_that_doesnt_answer_is_told_apart_from_a_broken_repository
     assert destination_down(nextcloud_gone) and destination_down(nextcloud_hung)
     assert not destination_down("Fatal: wrong password or no key found\n")
     assert not destination_down("Fatal: repository contains errors\n")
+
+
+def test_a_prune_deletes_what_only_forgotten_snapshots_used(repo, tmp_path):
+    """Prunes never repack (`--max-unused unlimited`, so they download
+    nothing), yet a forgotten snapshot's own data still leaves the repository."""
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "c.bin").write_bytes(os.urandom(4 * 1024 * 1024))
+    repo.backup(other, timeout=120)
+    data = Path(repo.repository) / "data"
+    before = sum(f.stat().st_size for f in data.rglob("*") if f.is_file())
+    old = next(s for s in repo.snapshots() if s.paths == (str(other),))
+    repo.forget_ids([old.id])
+    after = sum(f.stat().st_size for f in data.rglob("*") if f.is_file())
+    assert before - after > 3 * 1024 * 1024

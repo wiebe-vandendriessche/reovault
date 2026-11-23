@@ -44,6 +44,7 @@ keep_days = 30                # 0 keeps everything; counted from the newest back
 # repository = "rclone:nextcloud:reovault"   # an rclone remote from rclone.conf
 # keep_days = 14
 # max_gb = 200
+# check = false                # skip the weekly read-back, for a server that bans bulk downloads
 
 # Where alerts go (see docs/configuration.md#alerts). Secrets live in files
 # next to this one (the folder is /config in the container).

@@ -944,6 +944,10 @@
             "title": "Behind",
             "type": "boolean"
           },
+          "check": {
+            "title": "Check",
+            "type": "boolean"
+          },
           "error": {
             "anyOf": [
               {
@@ -1021,6 +1025,7 @@
           "role",
           "keep_days",
           "max_gb",
+          "check",
           "used_bytes",
           "snapshots",
           "seeding",
@@ -1259,6 +1264,17 @@
       },
       "EditIn": {
         "properties": {
+          "check": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check"
+          },
           "confirm_password": {
             "anyOf": [
               {

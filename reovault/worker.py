@@ -234,7 +234,7 @@ class Worker:
             if over or self._due(f"forget:{tag}", every):
                 self.db.set_setting(f"forget:{tag}", now_iso())
                 self._retain(settings, primary, restic)
-            if check:
+            if check and primary.check:
                 run_check(self.db, tag, restic)
             self.health.maintenance_error, self.health.maintenance_failures = None, 0
         except ToolError as exc:
