@@ -63,6 +63,9 @@ class DestinationConfig(BaseModel):
     """Keep backups this long, counted from the newest one. 0 keeps everything."""
     max_gb: int = Field(default=0, ge=0)
     """The most this destination may hold. 0 means no limit."""
+    check: bool = True
+    """Run restic's weekly read-back check here. Off for a server that bans an
+    IP after bulk downloads, as some Nextcloud hosts do."""
     enabled: bool = True
 
 

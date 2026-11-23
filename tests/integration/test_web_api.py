@@ -303,6 +303,28 @@ def test_check_errors_are_per_destination_and_check_again_asks_for_a_check(backe
     assert rt.db.get_setting("check_requested:local:demo")
 
 
+def test_a_destination_with_its_check_off_is_never_checked_or_alerted(backed_up):
+    """Some servers ban an IP after the check's bulk download: once it's off,
+    old findings stay quiet and Check again can't start one there."""
+    rt, client = backed_up
+    rt.db.set_setting("check_errors:local:demo", "2")
+    off = {"keep_days": 0, "max_gb": 0, "enabled": True, "check": False}
+    saved = client.put("/api/v1/destinations/local", json=off)
+    assert saved.status_code == 200 and saved.json()[0]["check"] is False
+    assert "check_errors:local:demo" not in _issues(client)
+    # An older dashboard edits limits without the field: the check stays off.
+    del off["check"]
+    assert client.put("/api/v1/destinations/local", json=off).json()[0]["check"] is False
+    (cam,) = client.get("/api/v1/cameras").json()
+    assert cam["check_errors"] == 0
+    assert client.post("/api/v1/cameras/demo/check").status_code == 409
+    rt.db.delete_setting("check_requested:local:demo")
+    rt.db.set_setting("check_next:local:demo", "2000-01-01T00:00:00Z")  # long overdue
+    worker = rt.workers.by_id["demo"]
+    worker._maintain(rt.settings())
+    assert rt.db.get_setting("check:local:demo") is None  # never ran
+
+
 def test_failing_clips_can_be_retried_or_given_up_from_the_dashboard(backed_up):
     rt, client = backed_up
     from datetime import UTC, datetime, timedelta

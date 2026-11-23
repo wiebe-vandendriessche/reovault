@@ -93,6 +93,10 @@ def failure_message(stderr: str) -> str | None:
 
 
 LOCK_WAIT = "10m"
+# Prune only deletes packs no snapshot uses, never downloads and repacks the
+# partly used ones: camera footage leaves few of those, and bulk downloads get
+# an IP banned by some servers (iLab.t's Nextcloud).
+PRUNE = ("--max-unused", "unlimited")
 LOCK_WAIT_SECS = 600  # added to the timeout of anything that may wait for a lock
 
 
@@ -287,15 +291,16 @@ class Restic:
         `--prune` mixes JSON and text output, so only the exit code counts."""
         if not ids:
             return
-        proc = self._run("forget", "--prune", *ids, timeout=6 * 3600, wait_lock=True)
+        proc = self._run("forget", "--prune", *PRUNE, *ids, timeout=6 * 3600, wait_lock=True)
         if proc.returncode != 0:
             raise self._fail("forget", proc)
 
     def forget_last(self, n: int) -> None:
         """Keep only the newest `n` snapshots (for the small config repository)."""
         proc = self._run(
-            "forget", "--host", HOST, "--keep-last", str(n), "--prune", timeout=1800, wait_lock=True
-        )
+            "forget", "--host", HOST, "--keep-last", str(n), "--prune", *PRUNE,
+            timeout=1800, wait_lock=True,
+        )  # fmt: skip
         if proc.returncode != 0:
             raise self._fail("forget", proc)
 

@@ -118,7 +118,10 @@ count errors in a healthy repository, and with `--json` restic reports one
 error for *any* failure, a lock or a timeout included. A check that can't
 finish is a maintenance problem, retried after 6 hours. The check never runs
 inside a backup run (it holds an exclusive lock for as long as it reads), and
-**Check again** in the dashboard asks for one at once.
+**Check again** in the dashboard asks for one at once. A destination with
+`check = false` is never checked and its old findings aren't alerted: some
+servers ban an IP after bulk downloads, and iLab.t's Nextcloud did so within
+minutes of every check in November 2026.
 
 ## Destinations, copies and quotas
 
@@ -137,8 +140,11 @@ clip's snapshot. A clip is **expired** only when no destination holds its
 snapshot, and a download reads from the primary, then any local destination,
 then the rest.
 
-**Retention is chosen by ReoVault**, which runs `forget <ids> --prune` (not
-`--keep-within`), because a destination's `keep_days` and `max_gb` differ:
+**Retention is chosen by ReoVault**, which runs `forget <ids> --prune
+--max-unused unlimited` (not `--keep-within`), because a destination's
+`keep_days` and `max_gb` differ. The prune only deletes packs no snapshot uses
+and never downloads and repacks partly used ones: camera footage leaves few of
+those, and a prune then reads nothing back.
 
 * the primary may forget a snapshot only when every copy that wants it has it;
 * a camera's newest snapshot is never forgotten (it carries the clip list);

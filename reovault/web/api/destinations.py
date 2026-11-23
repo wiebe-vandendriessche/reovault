@@ -39,6 +39,7 @@ class DestinationOut(BaseModel):
     role: str  # primary | copy | off
     keep_days: int
     max_gb: int
+    check: bool  # the weekly restic check runs here
     used_bytes: int  # about: the footage in its snapshots
     snapshots: int
     seeding: list[SeedingOut]
@@ -69,6 +70,7 @@ def destination_out(st: AppState, d: DestinationConfig) -> DestinationOut:
         role=role,
         keep_days=d.keep_days,
         max_gb=d.max_gb,
+        check=d.check,
         used_bytes=sum(u.bytes for u in used),
         snapshots=len(used),
         seeding=seeding,
@@ -207,6 +209,7 @@ class EditIn(BaseModel):
     keep_days: int = Field(ge=0, le=36500)
     max_gb: int = Field(ge=0, le=10_000_000)
     enabled: bool = True
+    check: bool | None = None  # None: as it is (an older dashboard doesn't send it)
     confirm_password: str | None = Field(default=None, max_length=1024)
 
 
@@ -233,6 +236,7 @@ def edit(name: str, body: EditIn, request: Request, st: State) -> list[Destinati
         lambda doc: upsert_destination_entry(
             doc, name, keep_days=body.keep_days or None, max_gb=body.max_gb or None,
             enabled=None if body.enabled else False,
+            check=None if (d.check if body.check is None else body.check) else False,
             **({"primary": None} if stale_primary else {}),
         ),
     )  # fmt: skip

@@ -1044,6 +1044,8 @@ export interface components {
         DestinationOut: {
             /** Behind */
             behind: boolean;
+            /** Check */
+            check: boolean;
             /** Error */
             error: string | null;
             /** Held Back */
@@ -1127,6 +1129,8 @@ export interface components {
         };
         /** EditIn */
         EditIn: {
+            /** Check */
+            check?: boolean | null;
             /** Confirm Password */
             confirm_password?: string | null;
             /**
